@@ -10,13 +10,31 @@ import { Shadows } from "@bundle:com.eatapp.recipe/entry/ets/commons/uikit/Theme
 export class RecipeCard extends ViewV2 {
     constructor(parent, params, __localStorage, elmtId = -1, paramsLambda, extraInfo) {
         super(parent, elmtId, extraInfo);
-        this.initParam("item", (params && "item" in params) ? params.item : {} as RecipeListItem);
+        this.initParam("item", (params && "item" in params) ? params.item : {
+            id: '',
+            name: '',
+            coverImage: '',
+            difficulty: 0,
+            cookTime: 0,
+            favoriteCount: 0,
+            likeCount: 0,
+            tagName: ''
+        });
         this.initParam("imageHeight", (params && "imageHeight" in params) ? params.imageHeight : 140);
         this.onTap = "onTap" in params ? params.onTap : () => { };
         this.finalizeConstruction();
     }
     public resetStateVarsOnReuse(params: Object): void {
-        this.resetParam("item", (params && "item" in params) ? params.item : {} as RecipeListItem);
+        this.resetParam("item", (params && "item" in params) ? params.item : {
+            id: '',
+            name: '',
+            coverImage: '',
+            difficulty: 0,
+            cookTime: 0,
+            favoriteCount: 0,
+            likeCount: 0,
+            tagName: ''
+        });
         this.resetParam("imageHeight", (params && "imageHeight" in params) ? params.imageHeight : 140);
         this.onTap = "onTap" in params ? params.onTap : () => { };
     }
@@ -29,7 +47,7 @@ export class RecipeCard extends ViewV2 {
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create({ space: 8 });
-            Column.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(19:5)", "entry");
+            Column.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(28:5)", "entry");
             Column.width('100%');
             Column.padding({ "id": 16777441, "type": 10002, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
             Column.backgroundColor({ "id": 16777234, "type": 10001, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
@@ -45,7 +63,7 @@ export class RecipeCard extends ViewV2 {
                         imgWidth: '100%',
                         imgHeight: this.imageHeight,
                         radius: { "id": 16777437, "type": 10002, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" }
-                    }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/commons/uikit/RecipeCard.ets", line: 20, col: 7 });
+                    }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/commons/uikit/RecipeCard.ets", line: 29, col: 7 });
                     ViewV2.create(componentCall);
                     let paramsLambda = () => {
                         return {
@@ -69,13 +87,13 @@ export class RecipeCard extends ViewV2 {
         }
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create({ space: 6 });
-            Column.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(27:7)", "entry");
+            Column.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(36:7)", "entry");
             Column.alignItems(HorizontalAlign.Start);
             Column.width('100%');
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Text.create(this.item.name);
-            Text.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(28:9)", "entry");
+            Text.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(37:9)", "entry");
             Text.fontSize({ "id": 16777426, "type": 10002, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
             Text.fontWeight(FontWeight.Medium);
             Text.fontColor({ "id": 16777246, "type": 10001, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
@@ -86,13 +104,13 @@ export class RecipeCard extends ViewV2 {
         Text.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Row.create({ space: 8 });
-            Row.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(36:9)", "entry");
+            Row.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(45:9)", "entry");
             Row.width('100%');
         }, Row);
         {
             this.observeComponentCreation2((elmtId, isInitialRender) => {
                 if (isInitialRender) {
-                    let componentCall = new DifficultyStars(this, { value: this.item.difficulty }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/commons/uikit/RecipeCard.ets", line: 37, col: 11 });
+                    let componentCall = new DifficultyStars(this, { value: this.item.difficulty }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/commons/uikit/RecipeCard.ets", line: 46, col: 11 });
                     ViewV2.create(componentCall);
                     let paramsLambda = () => {
                         return {
@@ -111,7 +129,7 @@ export class RecipeCard extends ViewV2 {
         {
             this.observeComponentCreation2((elmtId, isInitialRender) => {
                 if (isInitialRender) {
-                    let componentCall = new CookTimeLabel(this, { minutes: this.item.cookTime }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/commons/uikit/RecipeCard.ets", line: 38, col: 11 });
+                    let componentCall = new CookTimeLabel(this, { minutes: this.item.cookTime }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/commons/uikit/RecipeCard.ets", line: 47, col: 11 });
                     ViewV2.create(componentCall);
                     let paramsLambda = () => {
                         return {
@@ -130,7 +148,7 @@ export class RecipeCard extends ViewV2 {
         Row.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Row.create({ space: 12 });
-            Row.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(42:9)", "entry");
+            Row.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(51:9)", "entry");
             Row.width('100%');
         }, Row);
         this.countItem.bind(this)({ "id": 16777420, "type": 20000, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" }, this.item.favoriteCount);
@@ -142,18 +160,18 @@ export class RecipeCard extends ViewV2 {
     countItem(icon: Resource, count: number, parent = null) {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Row.create({ space: 4 });
-            Row.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(61:5)", "entry");
+            Row.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(70:5)", "entry");
         }, Row);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Image.create(icon);
-            Image.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(62:7)", "entry");
+            Image.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(71:7)", "entry");
             Image.width({ "id": 16777435, "type": 10002, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
             Image.height({ "id": 16777435, "type": 10002, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
             Image.fillColor({ "id": 16777248, "type": 10001, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
         }, Image);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Text.create(Formatter.count(count));
-            Text.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(66:7)", "entry");
+            Text.debugLine("entry/src/main/ets/commons/uikit/RecipeCard.ets(75:7)", "entry");
             Text.fontSize({ "id": 16777428, "type": 10002, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
             Text.fontColor({ "id": 16777248, "type": 10001, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
         }, Text);

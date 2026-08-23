@@ -112,7 +112,7 @@ export class CropCircleWithBorderTransformation extends PixelMapTransformation {
         return c <= (this.mRadius - this.mBorderSize);
     }
 }
-//# sourceMappingURL=CropCircleWithBorderTransformation.js.mapÂ‘ÙœC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\PixelMapTransformation.etsÙ¨C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\CropCircleWithBorderTransformation.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚ+/*
+//# sourceMappingURL=CropCircleWithBorderTransformation.js.mapÂ‘ÙœC:\Users\18790\Desktop\eat\eatharmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\PixelMapTransformation.etsÙ¨C:\Users\18790\Desktop\eat\eatharmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\CropCircleWithBorderTransformation.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\18790\Desktop\eat\eatharmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\18790\Desktop\eat\eatharmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚ+/*
  * Copyright (C) 2024 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the 'License');
  * you may not use this file except in compliance with the License.
@@ -244,7 +244,7 @@ export class CropCircleWithBorderTransformation extends PixelMapTransformation {
     let c: number = Math.sqrt((a + b));
     return c <= (this.mRadius - this.mBorderSize);
   }
-}ÀÔrD‘¸./PixelMapTransformationÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÂÙœC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\PixelMapTransformation.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappingsÙ%CropCircleWithBorderTransformation.js ‘Ù&CropCircleWithBorderTransformation.etsÜ r‘”    ‘” ˜”   ” ”	 	” ”! !”' '”ÌA ÌA”ÌB ÌB‘”   ‘” –”   ” ” ”/ 0”8 8”ÌN ÌN•” %” %” % ” %"”! %1”” &” &	” &” &•” 
+}ÀÔrD‘¸./PixelMapTransformationÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÂÙœC:\Users\18790\Desktop\eat\eatharmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\PixelMapTransformation.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappingsÙ%CropCircleWithBorderTransformation.js ‘Ù&CropCircleWithBorderTransformation.etsÜ r‘”    ‘” ˜”   ” ”	 	” ”! !”' '”ÌA ÌA”ÌB ÌB‘”   ‘” –”   ” ” ”/ 0”8 8”ÌN ÌN•” %” %” % ” %"”! %1”” &” &	” &” &•” 
 ” ”  ” !” "•” 
 ” ” ” ” •” 
 ” ” ” ” •”  

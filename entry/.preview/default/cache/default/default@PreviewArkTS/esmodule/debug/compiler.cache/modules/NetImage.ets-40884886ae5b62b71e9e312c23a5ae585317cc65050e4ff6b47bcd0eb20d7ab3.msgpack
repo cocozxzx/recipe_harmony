@@ -141,7 +141,7 @@ __decorate([
 __decorate([
     Param
 ], NetImage.prototype, "fit", void 0);
-//# sourceMappingURL=NetImage.js.mapÂ‘ÙtC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\index.etsÙSC:\Users\coco\Desktop\eat\eat_harmony\entry\src\main\ets\commons\uikit\NetImage.etsÔrB›ªmoduleName±isLocalDependency¯isNodeEntryFile§pkgPath±belongProjectPath§pkgNameªpkgVersion±dependencyPkgInfo¯hostModulesInfo°belongModulePath¬shouldEmitJs¥entryÃÂÙ+C:\Users\coco\Desktop\eat\eat_harmony\entryÙ%C:\Users\coco\Desktop\eat\eat_harmony¥entry¥1.0.0Ô  ’ÔrC’²hostDependencyName®hostModuleName¿../../../commons/uikit/NetImage¥entryCª./NetImage¥entryÙ+C:\Users\coco\Desktop\eat\eat_harmony\entryÃÃÚŠimport { ImageKnifeComponent, ImageKnifeOption } from '@ohos/imageknife';
+//# sourceMappingURL=NetImage.js.mapÂ‘ÙtC:\Users\18790\Desktop\eat\eatharmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\index.etsÙSC:\Users\18790\Desktop\eat\eatharmony\entry\src\main\ets\commons\uikit\NetImage.etsÔrB›ªmoduleName±isLocalDependency¯isNodeEntryFile§pkgPath±belongProjectPath§pkgNameªpkgVersion±dependencyPkgInfo¯hostModulesInfo°belongModulePath¬shouldEmitJs¥entryÃÂÙ+C:\Users\18790\Desktop\eat\eatharmony\entryÙ%C:\Users\18790\Desktop\eat\eatharmony¥entry¥1.0.0Ô  ’ÔrC’²hostDependencyName®hostModuleName¿../../../commons/uikit/NetImage¥entryCª./NetImage¥entryÙ+C:\Users\18790\Desktop\eat\eatharmony\entryÃÃÚ¸import { ImageKnifeComponent, ImageKnifeOption } from '@ohos/imageknife';
 
 /**
  * ç½‘ç»œå›¾ç‰‡ç»Ÿä¸€å…¥å£ã€‚å†…å­˜ + ç£ç›˜äºŒçº§ç¼“å­˜ç”± ImageKnife æä¾›ã€‚
@@ -187,7 +187,7 @@ export struct NetImage {
     .backgroundColor($r('app.color.bg_sunken'))
   }
 }
-ÀÔrD‘°@ohos/imageknifeÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÂÙtC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\index.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappings«NetImage.js ‘¬NetImage.etsÜ ˜”    ”  ”	  	”  ”  0”$  6”6  ÌH”7  ÌI””   ” ” ” ‘” 
+ÀÔrD‘°@ohos/imageknifeÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÂÙtC:\Users\18790\Desktop\eat\eatharmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\index.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappings«NetImage.js ‘¬NetImage.etsÜ ˜”    ”  ”	  	”  ”  0”$  6”6  ÌH”7  ÌI””   ” ” ” ‘” 
  ’”ÌI ”ÌK ’”ÌX ”Ì^ "’”Ì[ ”Ìa #’”ÌR ”ÌS ””ÌI ”ÌQ !”ÌR "”ÌW '‘”  ÌI’”ÌJ ”ÌL ’”ÌY ”Ì_ "’”Ì\ ”Ìb #’”ÌS ”ÌT ””ÌJ ”ÌR !”ÌS "”ÌX '‘” ’” ” 	˜” ” 	” '” '
 ” '” '” '”% '˜” ” 	” (” (” (” (” (”' (˜” ” 	” )” )” )”# )”$ )”* )–” ” 	” *” *	” *
 ” *”” ” 	” +”! +š” ” 

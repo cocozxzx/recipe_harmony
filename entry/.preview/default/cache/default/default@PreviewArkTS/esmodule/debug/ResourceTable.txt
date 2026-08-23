@@ -234,3 +234,4 @@ media tab_mine 0x010000e8
 media tab_mine_fill 0x010000ea
 profile backup_config 0x010000e6
 profile main_pages 0x01000002
+profile network_config 0x010000ec

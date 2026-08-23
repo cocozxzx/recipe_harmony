@@ -30,7 +30,7 @@ export struct StepList {
               .lineHeight(24)
               .width('100%')
 
-            if (step.image.length > 0) {
+            if (step.image?.length > 0) {
               NetImage({
                 url: step.image,
                 imgWidth: '100%',

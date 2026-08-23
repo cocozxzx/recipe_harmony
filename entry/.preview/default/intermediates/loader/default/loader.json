@@ -1,10 +1,10 @@
 {
   "modulePathMap": {
-    "entry": "C:\\Users\\coco\\Desktop\\eat\\eat_harmony\\entry"
+    "entry": "C:\\Users\\18790\\Desktop\\eat\\eatharmony\\entry"
   },
   "compileMode": "esmodule",
-  "projectRootPath": "C:\\Users\\coco\\Desktop\\eat\\eat_harmony",
-  "nodeModulesPath": "C:\\Users\\coco\\Desktop\\eat\\eat_harmony\\entry\\.preview\\default\\intermediates\\loader_out\\default\\node_modules",
+  "projectRootPath": "C:\\Users\\18790\\Desktop\\eat\\eatharmony",
+  "nodeModulesPath": "C:\\Users\\18790\\Desktop\\eat\\eatharmony\\entry\\.preview\\default\\intermediates\\loader_out\\default\\node_modules",
   "byteCodeHarInfo": {},
   "declarationEntry": [],
   "moduleName": "entry",
@@ -18,7 +18,7 @@
   "hspResourcesMap": {},
   "updateVersionInfo": {},
   "customizedHar": false,
-  "anBuildOutPut": "C:\\Users\\coco\\Desktop\\eat\\eat_harmony\\entry\\.preview\\default\\intermediates\\loader_out\\default\\an\\arm64-v8a",
+  "anBuildOutPut": "C:\\Users\\18790\\Desktop\\eat\\eatharmony\\entry\\.preview\\default\\intermediates\\loader_out\\default\\an\\arm64-v8a",
   "anBuildMode": "type",
   "buildConfigPath": ".preview\\config\\buildConfig.json"
 }
