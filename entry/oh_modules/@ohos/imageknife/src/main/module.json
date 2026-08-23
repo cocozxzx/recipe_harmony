@@ -1,0 +1,31 @@
+{
+	"app": {
+		"bundleName": "com.openharmony.imageknife",
+		"debug": false,
+		"versionCode": 1000000,
+		"versionName": "3.0.0-rc.0",
+		"minAPIVersion": 18,
+		"targetAPIVersion": 18,
+		"apiReleaseType": "Release",
+		"targetMinorAPIVersion": 0,
+		"targetPatchAPIVersion": 0,
+		"compileSdkVersion": "5.1.0.107",
+		"compileSdkType": "OpenHarmony",
+		"appEnvironments": [],
+		"bundleType": "app",
+		"buildMode": "release"
+	},
+	"module": {
+		"name": "library",
+		"type": "har",
+		"deviceTypes": [
+			"default",
+			"tablet"
+		],
+		"packageName": "@ohos/imageknife",
+		"installationFree": false,
+		"virtualMachine": "ark13.0.1.0",
+		"compileMode": "esmodule",
+		"dependencies": []
+	}
+}

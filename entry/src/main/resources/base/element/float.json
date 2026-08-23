@@ -1,0 +1,33 @@
+{
+  "float": [
+    { "name": "space_xs",  "value": "4vp" },
+    { "name": "space_sm",  "value": "8vp" },
+    { "name": "space_md",  "value": "12vp" },
+    { "name": "space_lg",  "value": "16vp" },
+    { "name": "space_xl",  "value": "24vp" },
+    { "name": "space_xxl", "value": "32vp" },
+
+    { "name": "radius_sm",   "value": "8vp" },
+    { "name": "radius_md",   "value": "12vp" },
+    { "name": "radius_lg",   "value": "16vp" },
+    { "name": "radius_xl",   "value": "24vp" },
+
+    { "name": "font_caption", "value": "12fp" },
+    { "name": "font_body_sm", "value": "13fp" },
+    { "name": "font_body",    "value": "15fp" },
+    { "name": "font_title_sm","value": "16fp" },
+    { "name": "font_title",   "value": "18fp" },
+    { "name": "font_title_lg","value": "20fp" },
+    { "name": "font_display", "value": "24fp" },
+
+    { "name": "icon_sm", "value": "16vp" },
+    { "name": "icon_md", "value": "20vp" },
+    { "name": "icon_lg", "value": "24vp" },
+
+    { "name": "button_height", "value": "48vp" },
+    { "name": "chip_height",   "value": "28vp" },
+    { "name": "bar_height",    "value": "56vp" },
+    { "name": "cover_height",  "value": "240vp" },
+    { "name": "card_h_width",  "value": "140vp" }
+  ]
+}

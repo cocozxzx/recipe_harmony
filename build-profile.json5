@@ -1,0 +1,66 @@
+{
+  "app": {
+    "signingConfigs": [],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "targetSdkVersion": "6.1.0(23)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "arkOptions": {
+            "buildProfileFields": {
+              "API_BASE_URL": "https://dev-api.example.com/api/app/v1",
+              "SHARE_BASE_URL": "https://dev-h5.example.com/recipe/",
+              "APP_VERSION": "1.0.0",
+              "ENV": "dev",
+              "LOG_ENABLED": true
+            }
+          }
+        }
+      },
+      {
+        "name": "release",
+        "signingConfig": "default",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "targetSdkVersion": "6.1.0(23)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "arkOptions": {
+            "buildProfileFields": {
+              "API_BASE_URL": "https://api.example.com/api/app/v1",
+              "SHARE_BASE_URL": "https://h5.example.com/recipe/",
+              "APP_VERSION": "1.0.0",
+              "ENV": "prod",
+              "LOG_ENABLED": false
+            }
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default",
+            "release"
+          ]
+        }
+      ]
+    }
+  ]
+}
