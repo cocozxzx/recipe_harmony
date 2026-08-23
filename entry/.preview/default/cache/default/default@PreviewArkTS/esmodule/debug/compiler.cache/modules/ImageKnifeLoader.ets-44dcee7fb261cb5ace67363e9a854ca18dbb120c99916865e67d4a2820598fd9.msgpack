@@ -1,0 +1,519 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚ!¤/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { CacheStrategy } from './model/ImageKnifeData';
+import { FileCache } from './cache/FileCache';
+import { LogUtil } from './utils/LogUtil';
+import { Constants, LoadPhase, LoadPixelMapCode } from './utils/Constants';
+import emitter from '@ohos.events.emitter';
+import { FileTypeUtil } from './utils/FileTypeUtil';
+import { Downsampler } from './downsampling/Downsampler';
+import { ImageLoaderFactory } from './loaderStrategy/ImageLoaderFactory';
+import hiTraceMeter from "@ohos.hiTraceMeter";
+import { ParseImageFactory } from './parseStrategy/ParseImageFactory';
+/**
+ * ImageKnifeDispatcher æŠ½å–å‡ºæ¥çš„æ–¹æ³•ï¼Œå› @Concurrentåªèƒ½importæ–¹æ³•ï¼Œæ•…æŠ½å–åˆ°å¦ä¸€ä¸ªç±»
+ */
+export class ImageKnifeLoader {
+    static execute(request, requestList, fileKey) {
+        ImageKnifeLoader.getImageArrayBuffer(request, requestList, fileKey);
+    }
+    static getUnit8Array(resBuf) {
+        let unit8 = new Uint8Array(resBuf);
+        let unitString = '';
+        if (unit8.length >= 3) {
+            unitString = unit8[0] + ',' + unit8[1] + ',' + unit8[2];
+        }
+        else if (unit8.length > 0 && unit8.length < 3) {
+            unitString = unit8.length + '';
+        }
+        return unitString;
+    }
+    static async parseImage(resBuf, fileKey, request, callBackData, headerObj) {
+        callBackData.bufSize = resBuf.byteLength;
+        let typeValue = new FileTypeUtil().getFileType(resBuf);
+        if (typeValue == null) {
+            LogUtil.log('requestJob.end: getFileType is null: ' + request.componentId + ',srcType:' + request.requestSource + ',' + request.componentVersion);
+            ImageKnifeLoader.makeEmptyResult(request, 'request is not a valid image source:' + request.src + ' ,componentId' + request.componentId + ',srcType:' +
+                request.requestSource + ',' +
+                request.componentVersion + ',buffer:' + resBuf.byteLength + ',unit8:' + ImageKnifeLoader.getUnit8Array(resBuf) +
+                ',header:' + JSON.stringify(headerObj), ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_GET_FORMAT, LoadPixelMapCode.IMAGE_PARSE_FORMAT_FAILED_CODE));
+            return;
+        }
+        callBackData.type = typeValue;
+        const parseFactory = ParseImageFactory.getParseStrategy(request, typeValue);
+        let parseResult = await parseFactory.parseImage(resBuf, typeValue, fileKey, request, callBackData);
+        return parseResult;
+    }
+    static makeEmptyResult(request, error, data) {
+        let res = {
+            pixelMap: undefined,
+            bufferSize: 0,
+            fileKey: '',
+            loadFail: error,
+            imageKnifeData: data
+        };
+        emitter.emit(Constants.CALLBACK_EMITTER + request.memoryKey, { data: { 'value': res } });
+    }
+    static assembleError(data, phase, code) {
+        let errorCallBackData = data?.errorInfo;
+        if (!errorCallBackData) {
+            return data;
+        }
+        errorCallBackData.phase = phase;
+        errorCallBackData.code = code ? code : 0;
+        return data;
+    }
+    static getTimeInfo(callBackData) {
+        let timeInfo;
+        if (callBackData.timeInfo) {
+            timeInfo = callBackData.timeInfo;
+        }
+        else {
+            timeInfo = {};
+            callBackData.timeInfo = timeInfo;
+        }
+        return timeInfo;
+    }
+    static async parseFile(resBuf, fileKey, request, callBackData, saveFile, headerObj) {
+        let res = await ImageKnifeLoader.parseImage(resBuf, fileKey, request, callBackData, headerObj);
+        // ä¿å­˜æ–‡ä»¶ç¼“å­˜
+        if (res && saveFile && request.writeCacheStrategy !== CacheStrategy.Memory) {
+            LogUtil.log('requestJob_saveFileCacheOnlyFile.start:' + request.componentId + ',srcType:' + request.requestSource + ',' + request.componentVersion);
+            hiTraceMeter.startTrace('saveFileCache', request.componentId);
+            FileCache.saveFileCacheOnlyFile(request.context, fileKey, resBuf, request.fileCacheFolder);
+            hiTraceMeter.finishTrace('saveFileCache', request.componentId);
+            LogUtil.log('requestJob_saveFileCacheOnlyFile.end:' + request.componentId + ',srcType:' + request.requestSource + ',' + request.componentVersion);
+        }
+        if (res) {
+            emitter.emit(Constants.CALLBACK_EMITTER + request.memoryKey, { data: { 'value': res } });
+        }
+    }
+    static getHeaderObj(request) {
+        let headerObj = {};
+        if (request.headers != undefined && headerObj !== undefined) {
+            request.headers.forEach((value) => {
+                headerObj[value.key] = value.value;
+            });
+        }
+        else if (request.allHeaders.size > 0 && headerObj !== undefined) {
+            request.allHeaders.forEach((value, key) => {
+                headerObj[key] = value;
+            });
+        }
+        else {
+            headerObj = undefined;
+        }
+        return headerObj;
+    }
+    // è·å–å›¾ç‰‡èµ„æº
+    static async getImageArrayBuffer(request, requestList, fileKey) {
+        let resBuf;
+        let loadError = '';
+        //å®šä¹‰å›¾ç‰‡å„ä¸ªé˜¶æ®µé”™è¯¯ä¿¡æ¯
+        let error = { code: 0, phase: LoadPhase.PHASE_LOAD };
+        //å®šä¹‰åŠ è½½æ—¶é—´ç‚¹
+        let callBackTimeInfo = {};
+        //å®šä¹‰åŠ è½½ä¿¡æ¯å›è°ƒæ•°æ®
+        let callBackData = {
+            source: '',
+            imageWidth: 0,
+            imageHeight: 0,
+            timeInfo: callBackTimeInfo,
+            errorInfo: error
+        };
+        const loaderStrategy = ImageLoaderFactory.getLoaderStrategy(request);
+        if (loaderStrategy) {
+            await loaderStrategy.loadImage(request, requestList, fileKey, callBackData, callBackTimeInfo);
+        }
+        else {
+            loadError = `Unsupported request type: ${request.src}`;
+            callBackTimeInfo.requestEndTime = Date.now();
+            ImageKnifeLoader.makeEmptyResult(request, loadError, callBackData);
+        }
+    }
+    static isLocalLoadSrc(context, loadSrc) {
+        if (context != undefined) {
+            let fileDir = context.filesDir;
+            let cacheDir = context.cacheDir;
+            if (loadSrc.startsWith(fileDir) || loadSrc.startsWith(cacheDir)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    static getDownsamplerDecodingOptions(typeValue, request, size, SRC) {
+        let reqSize = new Downsampler().calculateScaling(typeValue, size.width, size.height, request.targetWidth, request.targetHeight, request.downsampType);
+        if (typeValue == 'svg') {
+            return {
+                height: reqSize.height,
+                width: reqSize.width
+            };
+        }
+        else {
+            return {
+                width: reqSize.width,
+                height: reqSize.height
+            };
+        }
+    }
+    static getOrientation(orientation) {
+        let horizontal = false;
+        let vertical = false;
+        let rotate = 0;
+        switch (orientation) {
+            case 'Top-left': break;
+            case 'Top-right':
+                horizontal = true;
+                break;
+            case 'Bottom-left':
+                vertical = true;
+                break;
+            case 'Bottom-right':
+                rotate = 180;
+                break;
+            case 'Left-top':
+                horizontal = true;
+                rotate = 270;
+                break;
+            case 'Right-top':
+                rotate = 90;
+                break;
+            case 'Left-bottom':
+                rotate = 270;
+                break;
+            case 'Right-bottom':
+                horizontal = true;
+                rotate = 90;
+                break;
+        }
+        let data = { horizontal: horizontal, vertical: vertical, rotate: rotate };
+        return data;
+    }
+}
+//# sourceMappingURL=ImageKnifeLoader.js.mapÂšÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\FileCache.etsÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\Constants.etsÙ` hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.events.emitter.d.tsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\FileTypeUtil.etsÙ”C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\downsampling\Downsampler.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\loaderStrategy\ImageLoaderFactory.etsÙ^ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.hiTraceMeter.d.tsÙ›C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\parseStrategy\ParseImageFactory.etsÙŒC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnifeLoader.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚ$b/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import {
+  CacheStrategy,
+  DecodeImageInfo,
+  ErrorInfo,
+  FlipRotate,
+  ImageKnifeData,
+  ImageKnifeRequestSource,
+  ImageKnifeRequestWithSource, RequestJobRequest,
+  TimeInfo } from './model/ImageKnifeData';
+import List from '@ohos.util.List'
+import { FileCache } from './cache/FileCache';
+import { LogUtil } from './utils/LogUtil';
+import { Constants, LoadPhase, LoadPixelMapCode } from './utils/Constants';
+import http from '@ohos.net.http';
+import { combineArrayBuffers } from './utils/ArrayBufferUtils';
+import { BusinessError } from '@kit.BasicServicesKit';
+import fs from '@ohos.file.fs';
+import emitter from '@ohos.events.emitter';
+import image from '@ohos.multimedia.image';
+import { RequestJobResult } from './model/ImageKnifeData'
+import util from '@ohos.util';
+import { FileTypeUtil } from './utils/FileTypeUtil';
+import { DownsampleStrategy } from './downsampling/DownsampleStartegy';
+import { Downsampler } from './downsampling/Downsampler';
+import { common } from '@kit.AbilityKit';
+import { ImageLoaderFactory } from './loaderStrategy/ImageLoaderFactory';
+import { taskpool } from '@kit.ArkTS';
+import { hiTraceMeter } from '@kit.PerformanceAnalysisKit';
+import { ParseImageFactory } from './parseStrategy/ParseImageFactory';
+
+/**
+ * ImageKnifeDispatcher æŠ½å–å‡ºæ¥çš„æ–¹æ³•ï¼Œå› @Concurrentåªèƒ½importæ–¹æ³•ï¼Œæ•…æŠ½å–åˆ°å¦ä¸€ä¸ªç±»
+ */
+export class ImageKnifeLoader {
+  static execute(request: RequestJobRequest, requestList: List<ImageKnifeRequestWithSource> | undefined, fileKey: string){
+    ImageKnifeLoader.getImageArrayBuffer(request,requestList,fileKey)
+  }
+  static getUnit8Array (resBuf: ArrayBuffer) {
+    let unit8 = new Uint8Array(resBuf)
+    let unitString = ''
+    if (unit8.length >= 3) {
+      unitString = unit8[0] + ',' + unit8[1] + ',' + unit8[2]
+    } else if (unit8.length > 0 && unit8.length < 3) {
+      unitString = unit8.length + ''
+    }
+    return unitString
+  }
+  static async parseImage(resBuf: ArrayBuffer, fileKey: string,
+    request: RequestJobRequest, callBackData: ImageKnifeData,headerObj?: Record<string, Object>): Promise<RequestJobResult | undefined> {
+    callBackData.bufSize = resBuf.byteLength;
+    let typeValue = new FileTypeUtil().getFileType(resBuf);
+    if(typeValue == null) {
+      LogUtil.log('requestJob.end: getFileType is null: ' + request.componentId + ',srcType:' + request.requestSource + ',' + request.componentVersion)
+      ImageKnifeLoader.makeEmptyResult(request,
+        'request is not a valid image source:' + request.src + ' ,componentId' + request.componentId + ',srcType:' +
+        request.requestSource + ',' +
+        request.componentVersion + ',buffer:' + resBuf.byteLength + ',unit8:' + ImageKnifeLoader.getUnit8Array(resBuf) +
+          ',header:' + JSON.stringify(headerObj),
+        ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_GET_FORMAT,
+          LoadPixelMapCode.IMAGE_PARSE_FORMAT_FAILED_CODE))
+      return
+    }
+    callBackData.type = typeValue;
+    const parseFactory = ParseImageFactory.getParseStrategy(request,typeValue)
+    let parseResult = await parseFactory.parseImage(resBuf,typeValue,fileKey,request,callBackData)
+    return parseResult
+  }
+
+  static makeEmptyResult(request:RequestJobRequest,error: string, data?: ImageKnifeData){
+    let res: RequestJobResult = {
+      pixelMap: undefined,
+      bufferSize: 0,
+      fileKey: '',
+      loadFail: error,
+      imageKnifeData: data
+    }
+    emitter.emit(Constants.CALLBACK_EMITTER + request.memoryKey, { data: { 'value': res } })
+  }
+
+  static assembleError(data: ImageKnifeData | undefined, phase: string, code?: number): ImageKnifeData | undefined {
+    let errorCallBackData = data?.errorInfo;
+    if (!errorCallBackData) {
+      return data;
+    }
+    errorCallBackData.phase = phase;
+    errorCallBackData.code = code? code: 0;
+    return data
+  }
+
+  static getTimeInfo(callBackData: ImageKnifeData): TimeInfo {
+    let timeInfo: TimeInfo;
+    if (callBackData.timeInfo) {
+      timeInfo = callBackData.timeInfo;
+    }else {
+      timeInfo = {};
+      callBackData.timeInfo = timeInfo;
+    }
+    return timeInfo;
+  }
+  static async  parseFile(resBuf: ArrayBuffer, fileKey: string,
+    request: RequestJobRequest, callBackData: ImageKnifeData,saveFile?: boolean,headerObj?: Record<string, Object>) {
+    let res = await ImageKnifeLoader.parseImage(resBuf,fileKey,request,callBackData,headerObj)
+    // ä¿å­˜æ–‡ä»¶ç¼“å­˜
+    if (res && saveFile && request.writeCacheStrategy !== CacheStrategy.Memory) {
+      LogUtil.log('requestJob_saveFileCacheOnlyFile.start:' + request.componentId + ',srcType:' + request.requestSource + ',' + request.componentVersion)
+      hiTraceMeter.startTrace('saveFileCache',request.componentId)
+      FileCache.saveFileCacheOnlyFile(request.context, fileKey, resBuf , request.fileCacheFolder)
+      hiTraceMeter.finishTrace('saveFileCache',request.componentId)
+      LogUtil.log('requestJob_saveFileCacheOnlyFile.end:' + request.componentId + ',srcType:' + request.requestSource + ',' + request.componentVersion)
+    }
+    if (res) {
+      emitter.emit(Constants.CALLBACK_EMITTER + request.memoryKey, { data: { 'value': res } })
+    }
+  }
+  static getHeaderObj(request:RequestJobRequest){
+    let  headerObj: Record<string, Object> | undefined = {}
+    if (request.headers != undefined && headerObj !== undefined) {
+      request.headers.forEach((value) => {
+        headerObj![value.key] = value.value
+      })
+    } else if (request.allHeaders.size > 0 && headerObj !== undefined) {
+      request.allHeaders.forEach((value, key) => {
+        headerObj![key] = value
+      })
+    } else {
+      headerObj = undefined
+    }
+    return headerObj
+  }
+
+  // è·å–å›¾ç‰‡èµ„æº
+  static async getImageArrayBuffer(request: RequestJobRequest, requestList: List<ImageKnifeRequestWithSource> | undefined,fileKey:string) {
+    let resBuf: ArrayBuffer | undefined
+    let loadError: string = ''
+    //å®šä¹‰å›¾ç‰‡å„ä¸ªé˜¶æ®µé”™è¯¯ä¿¡æ¯
+    let error: ErrorInfo = { code: 0, phase: LoadPhase.PHASE_LOAD }
+    //å®šä¹‰åŠ è½½æ—¶é—´ç‚¹
+    let callBackTimeInfo: TimeInfo = {};
+    //å®šä¹‰åŠ è½½ä¿¡æ¯å›è°ƒæ•°æ®
+    let callBackData: ImageKnifeData = {
+      source: '',
+      imageWidth: 0,
+      imageHeight: 0,
+      timeInfo: callBackTimeInfo,
+      errorInfo: error
+    };
+
+    const loaderStrategy = ImageLoaderFactory.getLoaderStrategy(request);
+    if (loaderStrategy) {
+      await loaderStrategy.loadImage(request, requestList, fileKey, callBackData, callBackTimeInfo);
+    } else {
+      loadError = `Unsupported request type: ${request.src}`;
+      callBackTimeInfo.requestEndTime = Date.now();
+      ImageKnifeLoader.makeEmptyResult(request, loadError, callBackData);
+    }
+  }
+  static isLocalLoadSrc(context: Object | undefined, loadSrc: string): boolean {
+    if (context != undefined) {
+      let fileDir: string = (context as common.UIAbilityContext).filesDir as string;
+      let cacheDir: string = (context as common.UIAbilityContext).cacheDir as string
+      if (loadSrc.startsWith(fileDir) || loadSrc.startsWith(cacheDir)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  static getDownsamplerDecodingOptions(typeValue: string, request: RequestJobRequest, size: Size,
+    SRC?: ImageKnifeRequestSource):image.Size {
+    let reqSize =
+      new Downsampler().calculateScaling(typeValue, size.width, size.height,
+        request.targetWidth, request.targetHeight, request.downsampType)
+    if (typeValue == 'svg') {
+      return {
+        height: reqSize.height,
+        width: reqSize.width
+      }
+    } else {
+      return {
+        width: reqSize.width,
+        height: reqSize.height
+      }
+    }
+  }
+
+  static getOrientation(orientation: string | undefined){
+    let horizontal: boolean = false;
+    let vertical: boolean = false;
+    let rotate: number= 0;
+    switch (orientation){
+      case 'Top-left': break
+      case 'Top-right':
+        horizontal = true;
+        break;
+      case 'Bottom-left':
+        vertical = true;
+        break
+      case 'Bottom-right':
+        rotate = 180;
+        break;
+      case 'Left-top':
+        horizontal = true;
+        rotate = 270;
+        break
+      case 'Right-top':
+        rotate = 90;
+        break;
+      case 'Left-bottom':
+        rotate = 270;
+        break
+      case 'Right-bottom':
+        horizontal = true;
+        rotate = 90;
+        break;
+    }
+
+    let data: FlipRotate = { horizontal: horizontal, vertical: vertical, rotate:rotate };
+    return data
+  }
+}ÀÔrDš´@ohos.events.emitter²@ohos.hiTraceMeter¶./model/ImageKnifeData¯./utils/LogUtil±./utils/Constants±./cache/FileCache´./utils/FileTypeUtilº./downsampling/DownsamplerÙ#./loaderStrategy/ImageLoaderFactoryÙ!./parseStrategy/ParseImageFactoryÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÃÙ` hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.events.emitter.d.tsAÃªoh-resolveÂEAÃÙ^ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.hiTraceMeter.d.tsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsAÃªoh-resolveÂEAÂÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsAÃªoh-resolveÂEAÂÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\Constants.etsAÃªoh-resolveÂEAÂÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\FileCache.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\FileTypeUtil.etsAÃªoh-resolveÂEAÂÙ”C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\downsampling\Downsampler.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\loaderStrategy\ImageLoaderFactory.etsAÃªoh-resolveÂEAÂÙ›C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\parseStrategy\ParseImageFactory.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappings³ImageKnifeLoader.js ‘´ImageKnifeLoader.etsÜ Ì‘”    ‘” ˜”   ” ”	 ” ” ” ”6 *”7 +˜”   ” ”	 	” ” ” ”- -”. .˜”   ” ”	 	” ” ” ”) )”* *œ”   ” ”	 	” ” ” ” ”/ /”1 1”7 7”ÌJ ÌJ”ÌK ÌK–”   ” ” ” ”* *”+ +˜”  # ” #”	 #	” #” #” #”3 #3”4 #4˜”  % ” %”	 %	” %” %” %”8 %8”9 %9˜”  ' ” '”	 '	” '” '”# '#”ÌH 'ÌH”ÌI 'ÌI–”  ) ” )	” )” )”- ):”. );˜”  * ” *”	 *	” *” *”" *"”ÌE *ÌE”ÌF *ÌF‘”  , ‘” .””  / ” /” /” /š” 0”
+ 0” 0	” 0” 0” 0+” 0-”' 0Ìg”) 0Ìi”0 0Ìxœ” 1” 1” 1”, 1(”- 1)”4 10”6 11”ÌA 1<”ÌC 1=”ÌJ 1ÌD”ÌK 1ÌE”ÌL 1ÌE’” 2” 2–” 3”
+ 3” 3	” 3” 3” 3+š” 4” 4” 4” 4” 4”" 4”# 4”) 4%”* 4&”+ 4&–” 5” 5” 5” 5” 5” 5˜” 6” 6” 6” 6” 6” 6” 6” 6Ü ” 7” 7” 7” 7” 7”  7”! 7”$ 7”' 7!”* 7$”/ 7)”0 7*”1 7+”2 7,”5 7/”8 72”; 75”Ì@ 7:”ÌA 7;”ÌB 7<”ÌC 7=”ÌD 7=‘”	 8” 8” 8” 8” 8” 8”  8”! 8”% 8#”* 8(”+ 8)”1 8/”4 82”5 83”7 85™” 9” 9” 9” 9” 9”% 9”( 9"”* 9$”+ 9$‘”	 :”” ;” ;” ;” ;’” <” <Ü ” =”
+ =” =	” =” =” =” =”" =-”$ =/”+ =>”- >”4 >”6 > ”ÌB ><”ÌD >=”ÌM >Ì_™” ?” ?” ?” ?” ?”% ?!”& ?"”0 ?,”1 ?-” Ì@” Ì@” Ì@” Ì@” Ì@”( Ì@$”* Ì@&”+ Ì@'”6 Ì@2”7 Ì@3”= Ì@9”> Ì@:”? Ì@;–” ÌA” ÌA” ÌA” ÌA” ÌA” ÌAÜ ” ÌB” ÌB” ÌB” ÌB” ÌB”? ÌB9”ÌB ÌB<”ÌI ÌBÌC”ÌJ ÌBÌD”ÌU ÌBÌO”ÌX ÌBÌR”Ìc ÌBÌ]”Ìf ÌBÌ`”Ìm ÌBÌg”Ìn ÌBÌh”Ì{ ÌBÌu”Ì~ ÌBÌx”Ì ÌBÌ{”Ì„ ÌBÌ~”Ì‹ ÌBÌ…”ÌŒ ÌBÌ†”Ìœ ÌBÌ–”Ì ÌBÌ—”Ì ÌBÌ—Ü ” ÌC” ÌC” ÌC”, ÌC&”- ÌC'”4 ÌC.”6 ÌD”Ì\ ÌD.”Ì_ ÌD1”Ìf ÌD8”Ìg ÌD9”Ìj ÌD<”Ìm ÌD?”Ì| ÌDÌN”Ì ÌDÌQ”Ì† ÌDÌX”Ì‡ ÌDÌY”Ì’ ÌDÌd”Ì• ÌDÌg”Ì  ÌDÌr–” ÌE” ÌE” ÌE”% ÌE”( ÌE ”+ ÌE#Ü ” ÌF” ÌF” ÌF”( ÌF ”+ ÌF#”5 ÌF-”8 ÌF0”> ÌF6”? ÌF7”ÌI ÌFÌA”ÌL ÌFÌD”ÌU ÌFÌM”ÌX ÌFÌP”Ìh ÌFÌ`”Ìi ÌFÌa”Ìv ÌFÌn”Ìw ÌFÌo”Ì} ÌFÌu”Ì~ ÌFÌvÜ ” ÌG
+” ÌG” ÌG”! ÌG”" ÌG”+ ÌG%”, ÌG&”5 ÌG/”6 ÌG0”8 ÌH”ÌH ÌH”ÌI ÌH”ÌV ÌH&”ÌW ÌH'”Ìc ÌH3”Ìe ÌH5”Ìn ÌH>”Ìo ÌH?”Ì ÌHÌO”Ì ÌI
+”Ì‘ ÌI”Ì’ ÌI”Ì° ÌI9”Ì± ÌI:”Ì² ÌI;”Ì³ ÌI;’” ÌJ” ÌJ‘”	 ÌK—” ÌL” ÌL” ÌL” ÌL” ÌL”% ÌL!”& ÌL"” ÌM” ÌM
+” ÌM” ÌM”. ÌM*”/ ÌM+”? ÌM;”Ì@ ÌM<”ÌG ÌMÌC”ÌI ÌMÌD”ÌR ÌMÌM”ÌS ÌMÌN”ÌT ÌMÌNÜ ” ÌN” ÌN” ÌN” ÌN”  ÌN”, ÌN(”- ÌN)”7 ÌN3”8 ÌN4”> ÌN:”Ì@ ÌN;”ÌI ÌNÌD”ÌK ÌNÌE”ÌR ÌNÌL”ÌT ÌNÌM”Ì[ ÌNÌT”Ì] ÌNÌU”Ìi ÌNÌa”Ìj ÌNÌb”Ìk ÌNÌb”” ÌO” ÌO” ÌO” ÌO’” ÌP” ÌPš” ÌR”
+ ÌR” ÌR	” ÌR” ÌR”" ÌR2”$ ÌR3”) ÌRÌ@”+ ÌRÌB”/ ÌRÌW”” ÌS” ÌS” ÌS” ÌS ”” ÌT” ÌT” ÌT” ÌT”” ÌU” ÌU” ÌU” ÌU”” ÌV” ÌV” ÌV” ÌV”” ÌW” ÌW” ÌW” ÌW”” ÌX” ÌX” ÌX”  ÌX’”	 ÌY”
+ ÌYÜ ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ”/ ÌZ+”2 ÌZ.”9 ÌZ5”: ÌZ6”ÌC ÌZ?”ÌE ÌZÌA”ÌG ÌZÌC”ÌK ÌZÌG”ÌM ÌZÌI”ÌO ÌZÌK”ÌV ÌZÌR”ÌX ÌZÌT”Ì[ ÌZÌW”Ì] ÌZÌY”Ì_ ÌZÌ[”Ì` ÌZÌ\”Ìa ÌZÌ\’” Ì[” Ì[š” Ì]”
+ Ì]” Ì]	” Ì]” Ì]” Ì]7” Ì]9”$ Ì]ÌF”& Ì]ÌH”* Ì]ÌU˜” Ì^” Ì^” Ì^”  Ì^”$ Ì^ ”& Ì^"”/ Ì^+”0 Ì^,•” Ì_” Ì_” Ì_	” Ì_”  Ì_”” Ì`” Ì`” Ì`” Ì`‘”	 Ìa—” Ìb” Ìb” Ìb” Ìb”" Ìb”' Ìb#”( Ìb$Ÿ” Ìc” Ìc” Ìc” Ìc”! Ìc”% Ìc!”& Ìc!”' Ìc"”( Ìc#”, Ìc'”- Ìc'”. Ìc(”/ Ìc)”0 Ìc*”1 Ìc+”” Ìd” Ìd” Ìd” Ìd’” Ìe” Ìe–” Ìg”
+ Ìg” Ìg	” Ìg” Ìg”# Ìg1”” Ìh” Ìh” Ìh” Ìh–” Ìi” Ìi” Ìi” Ìi”! Ìi”# Ìi—” Ìj” Ìj” Ìj”# Ìj”$ Ìj”, Ìj&”- Ìj'‘”	 Ìk‘” Ìk
+•” Ìl” Ìl” Ìl” Ìl” Ìl—” Ìm” Ìm” Ìm”! Ìm”$ Ìm”, Ìm&”- Ìm'‘”	 Ìn”” Ìo” Ìo” Ìo” Ìo’” Ìp” ÌpÜ ” Ìq”
+ Ìq” Ìq	” Ìq” Ìq” Ìq” Ìq”! Ìq-”# Ìq/”* Ìq>”, Ìr”3 Ìr”5 Ìr ”ÌA Ìr<”ÌC Ìr=”ÌK ÌrÌO”ÌM ÌrÌP”ÌV ÌrÌrÜ ” Ìs” Ìs” Ìs” Ìs” Ìs”( Ìs$”) Ìs%”3 Ìs/”4 Ìs0”: Ìs6”< Ìs7”ÌC Ìs>”ÌE Ìs?”ÌL ÌsÌF”ÌN ÌsÌG”ÌZ ÌsÌS”Ì\ ÌsÌT”Ìe ÌsÌ]”Ìf ÌsÌ^”Ìg ÌsÌ^’” Ìt” Ìt” Ìu” Ìu” Ìu” Ìu” Ìu” Ìu”& Ìu"”' Ìu#”9 Ìu5”> Ìu:”ÌK ÌuÌG”ÌL ÌuÌH”ÌR ÌuÌN”ÌT ÌuÌPÜ ” Ìv” Ìv” Ìv” Ìv” Ìv”ÌA Ìv;”ÌD Ìv>”ÌK ÌvÌE”ÌL ÌvÌF”ÌW ÌvÌQ”ÌZ ÌvÌT”Ìe ÌvÌ_”Ìh ÌvÌb”Ìo ÌvÌi”Ìp ÌvÌj”Ì} ÌvÌw”Ì€ ÌvÌz”Ìƒ ÌvÌ}”Ì† ÌvÌ€”Ì ÌvÌ‡”Ì ÌvÌˆ”Ì ÌvÌ˜”ÌŸ ÌvÌ™”Ì  ÌvÌ™œ” Ìw” Ìw” Ìw”# Ìw”$ Ìw”3 Ìw-”5 Ìw.”< Ìw5”= Ìw6”ÌH ÌwÌA”ÌI ÌwÌB”ÌJ ÌwÌBÜ ” Ìx” Ìx” Ìx”+ Ìx%”, Ìx&”3 Ìx-”4 Ìx.”; Ìx5”= Ìx7”ÌD Ìx>”ÌF ÌxÌ@”ÌL ÌxÌF”ÌN ÌxÌI”ÌU ÌxÌP”ÌV ÌxÌQ”Ìe ÌxÌ`”Ìf ÌxÌa”Ìg ÌxÌaœ” Ìy” Ìy” Ìy”$ Ìy”% Ìy”4 Ìy.”6 Ìy/”= Ìy6”> Ìy7”ÌI ÌyÌB”ÌJ ÌyÌC”ÌK ÌyÌCÜ ” Ìz” Ìz” Ìz” Ìz” Ìz”? Ìz9”ÌB Ìz<”ÌI ÌzÌC”ÌJ ÌzÌD”ÌU ÌzÌO”ÌX ÌzÌR”Ìc ÌzÌ]”Ìf ÌzÌ`”Ìm ÌzÌg”Ìn ÌzÌh”Ì{ ÌzÌu”Ì~ ÌzÌx”Ì ÌzÌ{”Ì„ ÌzÌ~”Ì‹ ÌzÌ…”ÌŒ ÌzÌ†”Ìœ ÌzÌ–”Ì ÌzÌ—”Ì ÌzÌ—‘”	 Ì{”” Ì|” Ì|” Ì|” Ì|Ü ” Ì}” Ì}” Ì}” Ì}” Ì}”" Ì}”# Ì}”3 Ì}-”6 Ì}0”= Ì}7”> Ì}8”ÌG Ì}ÌA”ÌI Ì}ÌC”ÌK Ì}ÌE”ÌO Ì}ÌI”ÌQ Ì}ÌK”ÌS Ì}ÌM”ÌZ Ì}ÌT”Ì\ Ì}ÌV”Ì_ Ì}ÌY”Ìa Ì}Ì[”Ìc Ì}Ì]”Ìd Ì}Ì^”Ìe Ì}Ì^‘”	 Ì~’” Ì” Ì–” Ì€”
+ Ì€” Ì€	” Ì€” Ì€” Ì€/–” Ì” Ì	” Ì” Ì9” Ì;” Ì;œ” Ì‚” Ì‚” Ì‚” Ì‚” Ì‚” Ì‚”( Ì‚$”, Ì‚(”5 Ì‚1”: Ì‚6”ÌC Ì‚?”ÌE Ì‚ÌA›” Ìƒ” Ìƒ” Ìƒ” Ìƒ” Ìƒ”# Ìƒ”$ Ìƒ”% Ìƒ”* Ìƒ$”, Ìƒ&”. Ìƒ(œ” Ì„” Ì„” Ì„” Ì„”  Ì„”# Ì„”$ Ì„”' Ì„ ”, Ì„%”- Ì„&”2 Ì„+”3 Ì„+”” Ì…” Ì…” Ì…” Ì…‘”	 Ì†” Ì†” Ì†” Ì†” Ì†”# Ì†!”$ Ì†"”( Ì†&”+ Ì†)”, Ì†*”0 Ì†.”9 Ì†7”> Ì†<”ÌG Ì†ÌE”ÌI Ì†ÌG” Ì‡” Ì‡” Ì‡” Ì‡” Ì‡”& Ì‡ ”' Ì‡!”( Ì‡"”- Ì‡'”/ Ì‡)”2 Ì‡,”4 Ì‡.”6 Ì‡0˜” Ìˆ” Ìˆ” Ìˆ” Ìˆ” Ìˆ”! Ìˆ”& Ìˆ”' Ìˆ”” Ì‰” Ì‰” Ì‰” Ì‰‘”	 ÌŠ‘” ÌŠ•” Ì‹” Ì‹” Ì‹”! Ì‹”" Ì‹‘”	 ÌŒ”” Ì” Ì” Ì” Ì’” Ì” Ì’” Ì” Ìœ” Ì‘”
+ Ì‘” Ì‘	” Ì‘” Ì‘”$ Ì‘"”% Ì‘#”, Ì‘=”. Ì‘?”9 Ì‘Ìy”; Ì‘Ìz”ÌB Ì‘Ìˆ”” Ì’” Ì’” Ì’'” Ì’'–” Ì“” Ì“” Ì“” Ì“” Ì“” Ì“’” Ì”” Ì”Ü ” Ì•” Ì•” Ì•” Ì•” Ì•” Ì•!” Ì•#” Ì•$” Ì•&”$ Ì•+”& Ì•-”/ Ì•6”0 Ì•7”: Ì•ÌA”< Ì•ÌC”= Ì•ÌC’” Ì–” Ì––” Ì—” Ì—” Ì—” Ì—%”! Ì—'”" Ì—(’” Ì˜” Ì˜”” Ì™” Ì™” Ì™” Ì™'”” Ìš” Ìš” Ìš” Ìš”” Ì›” Ì›” Ì›” Ì›”” Ìœ” Ìœ” Ìœ” Ìœ”” Ì” Ì” Ì”& Ì ”” Ì” Ì” Ì” Ì’”	 ÌŸ”
+ ÌŸ›” Ì¡” Ì¡
+” Ì¡” Ì¡”1 Ì¡-”2 Ì¡.”ÌC Ì¡?”ÌD Ì¡Ì@”ÌK Ì¡ÌG”ÌL Ì¡ÌH”ÌM Ì¡ÌI”” Ì¢” Ì¢” Ì¢” Ì¢Ü ” Ì£” Ì£”  Ì£”! Ì£”* Ì£$”+ Ì£%”2 Ì£,”4 Ì£.”? Ì£9”ÌA Ì£;”ÌH Ì£ÌB”ÌJ Ì£ÌD”ÌV Ì£ÌP”ÌX Ì£ÌR”Ìh Ì£Ìb”Ìi Ì£Ìc”Ìj Ì£Ìd‘”	 Ì¤‘” Ì¤™” Ì¥” Ì¥” Ì¥”5 Ì¥/”< Ì¥6”= Ì¥7”Ì@ Ì¥:”ÌB Ì¥<”ÌC Ì¥=š” Ì¦” Ì¦” Ì¦”+ Ì¦%”. Ì¦(”2 Ì¦,”3 Ì¦-”6 Ì¦0”8 Ì¦2”9 Ì¦3œ” Ì§” Ì§” Ì§”, Ì§&”- Ì§'”4 Ì§.”6 Ì§0”? Ì§9”ÌA Ì§;”ÌM Ì§ÌG”ÌN Ì§ÌH”ÌO Ì§ÌI‘”	 Ì¨’” Ì©” Ì©˜” Ìª”
+ Ìª” Ìª	” Ìª” Ìª”! Ìª3”# Ìª5”* ÌªÌD–” Ì«” Ì«” Ì«” Ì«”  Ì«”" Ì«˜” Ì¬” Ì¬
+” Ì¬” Ì¬”! Ì¬Ì@”" Ì¬ÌA”* Ì¬ÌS”+ Ì¬ÌT˜” Ì­” Ì­
+” Ì­” Ì­”" Ì­ÌA”# Ì­ÌB”+ Ì­ÌT”, Ì­ÌTÜ ” Ì®” Ì®
+” Ì®” Ì®”" Ì®”# Ì®”* Ì®$”+ Ì®%”/ Ì®)”6 Ì®0”7 Ì®1”ÌA Ì®;”ÌB Ì®<”ÌJ Ì®ÌD”ÌK Ì®ÌE”ÌM Ì®ÌG”” Ì¯” Ì¯” Ì¯” Ì¯‘” Ì°‘”	 Ì±”” Ì²” Ì²” Ì²” Ì²’” Ì³” Ì³œ” Ì´”
+ Ì´” Ì´	”( Ì´&”) Ì´'”2 Ì´8”4 Ì´:”; Ì´ÌT”= Ì´ÌV”ÌA Ì´Ì`”ÌC Ìµ”ÌF Ìµ!Ü !” Ì¶” Ì¶” Ì¶” Ì·” Ì·
+”% Ì·”' Ì·”( Ì·”8 Ì·(”9 Ì·)”ÌB Ì·2”ÌD Ì·4”ÌH Ì·8”ÌI Ì·9”ÌN Ì·>”ÌP Ì·Ì@”ÌT Ì·ÌD”ÌU Ì·ÌE”Ì[ Ì·ÌK”Ì] Ì¸”Ìd Ì¸”Ìe Ì¸”Ìp Ì¸”Ìr Ì¸”Ìy Ì¸$”Ìz Ì¸%”Ì† Ì¸1”Ìˆ Ì¸3”Ì Ì¸:”Ì Ì¸;”Ìœ Ì¸ÌG”Ì Ì¸ÌH”Ì Ì¸ÌH–” Ì¹” Ì¹” Ì¹” Ì¹” Ì¹”  Ì¹’” Ìº” Ìº–” Ì»” Ì»” Ì»” Ì»”  Ì»”& Ì»–” Ì¼” Ì¼” Ì¼” Ì¼” Ì¼”$ Ì¼’” Ì½” Ì½‘”	 Ì¾‘” Ì¾’” Ì¿” Ì¿–” ÌÀ” ÌÀ” ÌÀ” ÌÀ” ÌÀ”$ ÌÀ–” ÌÁ” ÌÁ” ÌÁ” ÌÁ”  ÌÁ”& ÌÁ’” ÌÂ” ÌÂ‘”	 ÌÃ’” ÌÄ” ÌÄ–” ÌÆ”
+ ÌÆ” ÌÆ	” ÌÆ” ÌÆ”% ÌÆ7–” ÌÇ” ÌÇ” ÌÇ” ÌÇ” ÌÇ#” ÌÇ$–” ÌÈ” ÌÈ” ÌÈ” ÌÈ” ÌÈ!” ÌÈ"–” ÌÉ” ÌÉ” ÌÉ” ÌÉ” ÌÉ” ÌÉ”” ÌÊ” ÌÊ” ÌÊ” ÌÊ–” ÌË” ÌË” ÌË” ÌË” ÌË”# ÌË“” ÌÌ” ÌÌ” ÌÌ•” ÌÍ” ÌÍ” ÌÍ”! ÌÍ”" ÌÍ’” ÌÎ” ÌÎ“” ÌÏ” ÌÏ” ÌÏ•” ÌĞ” ÌĞ” ÌĞ” ÌĞ”  ÌĞ’” ÌÑ” ÌÑ“” ÌÒ” ÌÒ” ÌÒ•” ÌÓ” ÌÓ” ÌÓ” ÌÓ” ÌÓ’” ÌÔ” ÌÔ“” ÌÕ” ÌÕ” ÌÕ•” ÌÖ” ÌÖ” ÌÖ”! ÌÖ”" ÌÖ•” Ì×” Ì×” Ì×” Ì×” Ì×’” ÌØ” ÌØ“” ÌÙ” ÌÙ” ÌÙ•” ÌÚ” ÌÚ” ÌÚ” ÌÚ” ÌÚ’” ÌÛ” ÌÛ“” ÌÜ” ÌÜ” ÌÜ•” Ìİ” Ìİ” Ìİ” Ìİ” Ìİ’” ÌŞ” ÌŞ“” Ìß” Ìß” Ìß•” Ìà” Ìà” Ìà”! Ìà”" Ìà•” Ìá” Ìá” Ìá” Ìá” Ìá’” Ìâ” Ìâ‘”	 ÌãÜ ” Ìå” Ìå” Ìå” Ìå” Ìå” Ìå'”! Ìå)”+ Ìå3”- Ìå5”5 Ìå=”7 Ìå?”? ÌåÌG”ÌA ÌåÌI”ÌG ÌåÌO”ÌI ÌåÌP”ÌO ÌåÌV”ÌQ ÌåÌX”ÌR ÌåÌY”” Ìæ” Ìæ” Ìæ” Ìæ’” Ìç” Ìç‘” ÌèÔrG–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜ Í‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ‘”  Ìs ‘”  Ìt ‘”  Ìu ‘”  Ìv ‘”  Ìw ‘”  Ìx ‘”  Ìy ‘”  Ìz ‘”  Ì{ ‘”  Ì| ‘”  Ì} ‘”  Ì~ ‘”  Ì ‘”  Ì€ ‘”  Ì ‘”  Ì‚ ‘”  Ìƒ ‘”  Ì„ ‘”  Ì… ‘”  Ì† ‘”  Ì‡ ‘”  Ìˆ ‘”  Ì‰ ‘”  ÌŠ ‘”  Ì‹ ‘”  ÌŒ ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì‘ ‘”  Ì’ ‘”  Ì“ ‘”  Ì” ‘”  Ì• ‘”  Ì– ‘”  Ì— ‘”  Ì˜ ‘”  Ì™ ‘”  Ìš ‘”  Ì› ‘”  Ìœ ‘”  Ì ‘”  Ì ‘”  ÌŸ ‘”  Ì  ‘”  Ì¡ ‘”  Ì¢ ‘”  Ì£ ‘”  Ì¤ ‘”  Ì¥ ‘”  Ì¦ ‘”  Ì§ ‘”  Ì¨ ‘”  Ì© ‘”  Ìª ‘”  Ì« ‘”  Ì¬ ‘”  Ì­ ‘”  Ì® ‘”  Ì¯ ‘”  Ì° ‘”  Ì± ‘”  Ì² ‘”  Ì³ ‘”  Ì´ ‘”  Ìµ ‘”  Ì¶ ‘”  Ì· ‘”  Ì¸ ‘”  Ì¹ ‘”  Ìº ‘”  Ì» ‘”  Ì¼ ‘”  Ì½ ‘”  Ì¾ ‘”  Ì¿ ‘”  ÌÀ ‘”  ÌÁ ‘”  ÌÂ ‘”  ÌÃ ‘”  ÌÄ ‘”  ÌÅ ‘”  ÌÆ ‘”  ÌÇ ‘”  ÌÈ ‘”  ÌÉ ‘”  ÌÊ ‘”  ÌË ‘”  ÌÌ ÔrH’§missing¦pluginÃ¦genAbcÂÔ  ÔrI”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrJ–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍüÍ øÔrK–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍÍ øÔrL”¤type¥start£end¤nameªIdentifierÍ	Í°ImageKnifeLoaderÀÔrM”¤type¥start£end¤body©ClassBodyÍÍ øœÔrN˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍ!Í¥ÃÂLªIdentifierÍ(Í/§execute¦methodÔrO™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍ/Í¥ÀÂÂÂ“LªIdentifierÍ0Í7§requestLªIdentifierÍ9ÍD«requestListLªIdentifierÍFÍM§fileKeyM®BlockStatementÍOÍ¥‘ÔrP”¤type¥start£endªexpression³ExpressionStatementÍZÍÔrQ–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍZÍÔrR—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍZÍ~LªIdentifierÍZÍj°ImageKnifeLoaderLªIdentifierÍkÍ~³getImageArrayBufferÂÂ“LªIdentifierÍÍ†§requestLªIdentifierÍˆÍ“«requestListLªIdentifierÍ•Íœ§fileKeyÂN°MethodDefinitionÍ«ÍÃÂLªIdentifierÍ²Í¿­getUnit8Array¦methodO²FunctionExpressionÍ¿ÍÀÂÂÂ‘LªIdentifierÍÀÍÆ¦resBufM®BlockStatementÍÈÍ”ÔrS•¤type¥start£end¬declarations¤kind³VariableDeclarationÍÓÍö‘ÔrT•¤type¥start£end¢id¤init²VariableDeclaratorÍ×ÍõLªIdentifierÍ×ÍÜ¥unit8ÔrU•¤type¥start£end¦callee©arguments­NewExpressionÍßÍõLªIdentifierÍãÍíªUint8Array‘LªIdentifierÍîÍô¦resBuf£letS³VariableDeclarationÍ Í‘T²VariableDeclaratorÍÍLªIdentifierÍÍªunitStringÔrV•¤type¥start£end¥value£raw§LiteralÍÍ ¢''£letÔrW–¤type¥start£end¤testªconsequent©alternate«IfStatementÍÍùÔrX–¤type¥start£end¤left¨operator¥right°BinaryExpressionÍ"Í3R°MemberExpressionÍ"Í.LªIdentifierÍ"Í'¥unit8LªIdentifierÍ(Í.¦lengthÂÂ¢>=V§LiteralÍ2Í3¡3M®BlockStatementÍ5Í‡‘P³ExpressionStatementÍDÍ|ÔrY–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍDÍ{¡=LªIdentifierÍDÍNªunitStringX°BinaryExpressionÍQÍ{X°BinaryExpressionÍQÍpX°BinaryExpressionÍQÍjX°BinaryExpressionÍQÍ_R°MemberExpressionÍQÍYLªIdentifierÍQÍV¥unit8V§LiteralÍWÍX ¡0ÃÂ¡+V§LiteralÍ\Í_¡,£','¡+R°MemberExpressionÍbÍjLªIdentifierÍbÍg¥unit8V§LiteralÍhÍi¡1ÃÂ¡+V§LiteralÍmÍp¡,£','¡+R°MemberExpressionÍsÍ{LªIdentifierÍsÍx¥unit8V§LiteralÍyÍz¡2ÃÂW«IfStatementÍ–ÍùX±LogicalExpressionÍšÍ¾X°BinaryExpressionÍšÍªR°MemberExpressionÍšÍ¦LªIdentifierÍšÍŸ¥unit8LªIdentifierÍ Í¦¦lengthÂÂ¡>V§LiteralÍ©Íª ¡0¢&&X°BinaryExpressionÍ®Í¾R°MemberExpressionÍ®ÍºLªIdentifierÍ®Í³¥unit8LªIdentifierÍ´Íº¦lengthÂÂ¡<V§LiteralÍ½Í¾¡3M®BlockStatementÍÀÍù‘P³ExpressionStatementÍÏÍîY´AssignmentExpressionÍÏÍí¡=LªIdentifierÍÏÍÙªunitStringX°BinaryExpressionÍÜÍíR°MemberExpressionÍÜÍèLªIdentifierÍÜÍá¥unit8LªIdentifierÍâÍè¦lengthÂÂ¡+V§LiteralÍëÍí ¢''ÀÔrZ”¤type¥start£end¨argument¯ReturnStatementÍÍLªIdentifierÍ
+ÍªunitStringN°MethodDefinitionÍ"ÍİÃÂLªIdentifierÍ/Í9ªparseImage¦methodO²FunctionExpressionÍ9ÍİÀÂÂÃ•LªIdentifierÍ:Í@¦resBufLªIdentifierÍBÍI§fileKeyLªIdentifierÍKÍR§requestLªIdentifierÍTÍ`¬callBackDataLªIdentifierÍbÍk©headerObjM®BlockStatementÍmÍİ—P³ExpressionStatementÍxÍ¡Y´AssignmentExpressionÍxÍ ¡=R°MemberExpressionÍxÍŒLªIdentifierÍxÍ„¬callBackDataLªIdentifierÍ…ÍŒ§bufSizeÂÂR°MemberExpressionÍÍ LªIdentifierÍÍ•¦resBufLªIdentifierÍ–Í ªbyteLengthÂÂS³VariableDeclarationÍ«Íâ‘T²VariableDeclaratorÍ¯ÍáLªIdentifierÍ¯Í¸©typeValueQ®CallExpressionÍ»ÍáR°MemberExpressionÍ»ÍÙU­NewExpressionÍ»ÍÍLªIdentifierÍ¿ÍË¬FileTypeUtilLªIdentifierÍÎÍÙ«getFileTypeÂÂ‘LªIdentifierÍÚÍà¦resBufÂ£letW«IfStatementÍìÍ
+ÎX°BinaryExpressionÍğÍLªIdentifierÍğÍù©typeValue¢==V§LiteralÍıÍÀ¤nullM®BlockStatementÍÍ
+Î“P³ExpressionStatementÍÍ¤Q®CallExpressionÍÍ£R°MemberExpressionÍÍLªIdentifierÍÍ§LogUtilLªIdentifierÍÍ£logÂÂ‘X°BinaryExpressionÍÍ¢X°BinaryExpressionÍÍ‡X°BinaryExpressionÍÍX°BinaryExpressionÍÍiX°BinaryExpressionÍÍ[V§LiteralÍÍEÙ%requestJob.end: getFileType is null: Ù''requestJob.end: getFileType is null: '¡+R°MemberExpressionÍHÍ[LªIdentifierÍHÍO§requestLªIdentifierÍPÍ[«componentIdÂÂ¡+V§LiteralÍ^Íi©,srcType:«',srcType:'¡+R°MemberExpressionÍlÍLªIdentifierÍlÍs§requestLªIdentifierÍtÍ­requestSourceÂÂ¡+V§LiteralÍ„Í‡¡,£','¡+R°MemberExpressionÍŠÍ¢LªIdentifierÍŠÍ‘§requestLªIdentifierÍ’Í¢°componentVersionÂÂÂP³ExpressionStatementÍ²Í
+®Q®CallExpressionÍ²Í
+­R°MemberExpressionÍ²ÍÒLªIdentifierÍ²ÍÂ°ImageKnifeLoaderLªIdentifierÍÃÍÒ¯makeEmptyResultÂÂ“LªIdentifierÍÓÍÚ§requestX°BinaryExpressionÍÜÍ
+1X°BinaryExpressionÍÜÍ
+X°BinaryExpressionÍÜÍ	÷X°BinaryExpressionÍÜÍ	ÎX°BinaryExpressionÍÜÍ	ÂX°BinaryExpressionÍÜÍ	®X°BinaryExpressionÍÜÍ	¡X°BinaryExpressionÍÜÍ	uX°BinaryExpressionÍÜÍ	oX°BinaryExpressionÍÜÍ	FX°BinaryExpressionÍÜÍ	8X°BinaryExpressionÍÜÍ	"X°BinaryExpressionÍÜÍ	V§LiteralÍÜÍ	Ù$request is not a valid image source:Ù&'request is not a valid image source:'¡+R°MemberExpressionÍ	Í	LªIdentifierÍ	Í	§requestLªIdentifierÍ	Í	£srcÂÂ¡+V§LiteralÍ	Í	"­ ,componentId¯' ,componentId'¡+R°MemberExpressionÍ	%Í	8LªIdentifierÍ	%Í	,§requestLªIdentifierÍ	-Í	8«componentIdÂÂ¡+V§LiteralÍ	;Í	F©,srcType:«',srcType:'¡+R°MemberExpressionÍ	ZÍ	oLªIdentifierÍ	ZÍ	a§requestLªIdentifierÍ	bÍ	o­requestSourceÂÂ¡+V§LiteralÍ	rÍ	u¡,£','¡+R°MemberExpressionÍ	‰Í	¡LªIdentifierÍ	‰Í	§requestLªIdentifierÍ	‘Í	¡°componentVersionÂÂ¡+V§LiteralÍ	¤Í	®¨,buffer:ª',buffer:'¡+R°MemberExpressionÍ	±Í	ÂLªIdentifierÍ	±Í	·¦resBufLªIdentifierÍ	¸Í	ÂªbyteLengthÂÂ¡+V§LiteralÍ	ÅÍ	Î§,unit8:©',unit8:'¡+Q®CallExpressionÍ	ÑÍ	÷R°MemberExpressionÍ	ÑÍ	ïLªIdentifierÍ	ÑÍ	á°ImageKnifeLoaderLªIdentifierÍ	âÍ	ï­getUnit8ArrayÂÂ‘LªIdentifierÍ	ğÍ	ö¦resBufÂ¡+V§LiteralÍ
+Í
+¨,header:ª',header:'¡+Q®CallExpressionÍ
+Í
+1R°MemberExpressionÍ
+Í
+&LªIdentifierÍ
+Í
+¤JSONLªIdentifierÍ
+Í
+&©stringifyÂÂ‘LªIdentifierÍ
+'Í
+0©headerObjÂQ®CallExpressionÍ
+3Í
+¬R°MemberExpressionÍ
+3Í
+QLªIdentifierÍ
+3Í
+C°ImageKnifeLoaderLªIdentifierÍ
+DÍ
+Q­assembleErrorÂÂ“LªIdentifierÍ
+RÍ
+^¬callBackDataR°MemberExpressionÍ
+`Í
+zLªIdentifierÍ
+`Í
+i©LoadPhaseLªIdentifierÍ
+jÍ
+z°PHASE_GET_FORMATÂÂR°MemberExpressionÍ
+|Í
+«LªIdentifierÍ
+|Í
+Œ°LoadPixelMapCodeLªIdentifierÍ
+Í
+«¾IMAGE_PARSE_FORMAT_FAILED_CODEÂÂÂÂZ¯ReturnStatementÍ
+¼Í
+ÃÀÀP³ExpressionStatementÍ
+ØÍ
+öY´AssignmentExpressionÍ
+ØÍ
+õ¡=R°MemberExpressionÍ
+ØÍ
+éLªIdentifierÍ
+ØÍ
+ä¬callBackDataLªIdentifierÍ
+åÍ
+é¤typeÂÂLªIdentifierÍ
+ìÍ
+õ©typeValueS³VariableDeclarationÍ ÍL‘T²VariableDeclaratorÍÍKLªIdentifierÍÍ¬parseFactoryQ®CallExpressionÍÍKR°MemberExpressionÍÍ7LªIdentifierÍÍ&±ParseImageFactoryLªIdentifierÍ'Í7°getParseStrategyÂÂ’LªIdentifierÍ8Í?§requestLªIdentifierÍAÍJ©typeValueÂ¥constS³VariableDeclarationÍVÍ¹‘T²VariableDeclaratorÍZÍ¸LªIdentifierÍZÍe«parseResultZ¯AwaitExpressionÍhÍ¸Q®CallExpressionÍnÍ¸R°MemberExpressionÍnÍ…LªIdentifierÍnÍz¬parseFactoryLªIdentifierÍ{Í…ªparseImageÂÂ•LªIdentifierÍ†ÍŒ¦resBufLªIdentifierÍÍ—©typeValueLªIdentifierÍ™Í §fileKeyLªIdentifierÍ¢Í©§requestLªIdentifierÍ«Í·¬callBackDataÂ£letZ¯ReturnStatementÍÃÍÖLªIdentifierÍÊÍÕ«parseResultN°MethodDefinitionÍãÍ4ÃÂLªIdentifierÍêÍù¯makeEmptyResult¦methodO²FunctionExpressionÍùÍ4ÀÂÂÂ“LªIdentifierÍúÍ§requestLªIdentifierÍÍ¥errorLªIdentifierÍ
+Í¤dataM®BlockStatementÍÍ4’S³VariableDeclarationÍÍÊ‘T²VariableDeclaratorÍÍÉLªIdentifierÍÍ"£resÔr[”¤type¥start£endªproperties°ObjectExpressionÍ%ÍÉ•Ôr\™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍ4ÍGÂÂÂLªIdentifierÍ4Í<¨pixelMapLªIdentifierÍ>ÍG©undefined¤init\¨PropertyÍVÍcÂÂÂLªIdentifierÍVÍ`ªbufferSizeV§LiteralÍbÍc ¡0¤init\¨PropertyÍrÍ}ÂÂÂLªIdentifierÍrÍy§fileKeyV§LiteralÍ{Í} ¢''¤init\¨PropertyÍŒÍ›ÂÂÂLªIdentifierÍŒÍ”¨loadFailLªIdentifierÍ–Í›¥error¤init\¨PropertyÍªÍ¾ÂÂÂLªIdentifierÍªÍ¸®imageKnifeDataLªIdentifierÍºÍ¾¤data¤init£letP³ExpressionStatementÍÔÍ-Q®CallExpressionÍÔÍ,R°MemberExpressionÍÔÍàLªIdentifierÍÔÍÛ§emitterLªIdentifierÍÜÍà¤emitÂÂ’X°BinaryExpressionÍáÍR°MemberExpressionÍáÍûLªIdentifierÍáÍê©ConstantsLªIdentifierÍëÍû°CALLBACK_EMITTERÂÂ¡+R°MemberExpressionÍşÍLªIdentifierÍşÍ§requestLªIdentifierÍÍ©memoryKeyÂÂ[°ObjectExpressionÍÍ+‘\¨PropertyÍÍ)ÂÂÂLªIdentifierÍÍ¤data[°ObjectExpressionÍÍ)‘\¨PropertyÍÍ'ÂÂÂV§LiteralÍÍ"¥value§'value'LªIdentifierÍ$Í'£res¤init¤initÂN°MethodDefinitionÍ:ÍWÃÂLªIdentifierÍAÍN­assembleError¦methodO²FunctionExpressionÍNÍWÀÂÂÂ“LªIdentifierÍOÍS¤dataLªIdentifierÍUÍZ¥phaseLªIdentifierÍ\Í`¤codeM®BlockStatementÍbÍW•S³VariableDeclarationÍmÍ•‘T²VariableDeclaratorÍqÍ”LªIdentifierÍqÍ‚±errorCallBackDataP¯ChainExpressionÍ…Í”R°MemberExpressionÍ…Í”LªIdentifierÍ…Í‰¤dataLªIdentifierÍ‹Í”©errorInfoÂÃ£letW«IfStatementÍŸÍİÔr]–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍ£Íµ¡!ÃLªIdentifierÍ¤Íµ±errorCallBackDataM®BlockStatementÍ·Íİ‘Z¯ReturnStatementÍÆÍÒLªIdentifierÍÍÍÑ¤dataÀP³ExpressionStatementÍçÍY´AssignmentExpressionÍçÍ¡=R°MemberExpressionÍçÍşLªIdentifierÍçÍø±errorCallBackDataLªIdentifierÍùÍş¥phaseÂÂLªIdentifierÍÍ¥phaseP³ExpressionStatementÍÍ:Y´AssignmentExpressionÍÍ9¡=R°MemberExpressionÍÍ'LªIdentifierÍÍ"±errorCallBackDataLªIdentifierÍ#Í'¤codeÂÂWµConditionalExpressionÍ*Í9LªIdentifierÍ*Í.¤codeLªIdentifierÍ1Í5¤codeV§LiteralÍ8Í9 ¡0Z¯ReturnStatementÍDÍPLªIdentifierÍKÍO¤dataN°MethodDefinitionÍ]Í}ÃÂLªIdentifierÍdÍo«getTimeInfo¦methodO²FunctionExpressionÍoÍ}ÀÂÂÂ‘LªIdentifierÍpÍ|¬callBackDataM®BlockStatementÍ~Í}“S³VariableDeclarationÍ‰Í–‘T²VariableDeclaratorÍÍ•LªIdentifierÍÍ•¨timeInfoÀ£letW«IfStatementÍ Í\R°MemberExpressionÍ¤Í¹LªIdentifierÍ¤Í°¬callBackDataLªIdentifierÍ±Í¹¨timeInfoÂÂM®BlockStatementÍ»Íö‘P³ExpressionStatementÍÊÍëY´AssignmentExpressionÍÊÍê¡=LªIdentifierÍÊÍÒ¨timeInfoR°MemberExpressionÍÕÍêLªIdentifierÍÕÍá¬callBackDataLªIdentifierÍâÍê¨timeInfoÂÂM®BlockStatementÍÍ\’P³ExpressionStatementÍÍ"Y´AssignmentExpressionÍÍ!¡=LªIdentifierÍÍ¨timeInfo[°ObjectExpressionÍÍ!P³ExpressionStatementÍ0ÍQY´AssignmentExpressionÍ0ÍP¡=R°MemberExpressionÍ0ÍELªIdentifierÍ0Í<¬callBackDataLªIdentifierÍ=ÍE¨timeInfoÂÂLªIdentifierÍHÍP¨timeInfoZ¯ReturnStatementÍfÍvLªIdentifierÍmÍu¨timeInfoN°MethodDefinitionÍƒÍ‡ÃÂLªIdentifierÍÍ™©parseFile¦methodO²FunctionExpressionÍ™Í‡ÀÂÂÃ–LªIdentifierÍšÍ ¦resBufLªIdentifierÍ¢Í©§fileKeyLªIdentifierÍ«Í²§requestLªIdentifierÍ´ÍÀ¬callBackDataLªIdentifierÍÂÍÊ¨saveFileLªIdentifierÍÌÍÕ©headerObjM®BlockStatementÍ×Í‡“S³VariableDeclarationÍâÍA‘T²VariableDeclaratorÍæÍ@LªIdentifierÍæÍé£resZ¯AwaitExpressionÍìÍ@Q®CallExpressionÍòÍ@R°MemberExpressionÍòÍLªIdentifierÍòÍ°ImageKnifeLoaderLªIdentifierÍÍªparseImageÂÂ•LªIdentifierÍÍ¦resBufLªIdentifierÍÍ§fileKeyLªIdentifierÍÍ&§requestLªIdentifierÍ(Í4¬callBackDataLªIdentifierÍ6Í?©headerObjÂ£letW«IfStatementÍ^ÍúX±LogicalExpressionÍbÍ¨X±LogicalExpressionÍbÍqLªIdentifierÍbÍe£res¢&&LªIdentifierÍiÍq¨saveFile¢&&X°BinaryExpressionÍuÍ¨R°MemberExpressionÍuÍLªIdentifierÍuÍ|§requestLªIdentifierÍ}Í²writeCacheStrategyÂÂ£!==R°MemberExpressionÍ”Í¨LªIdentifierÍ”Í¡­CacheStrategyLªIdentifierÍ¢Í¨¦MemoryÂÂM®BlockStatementÍªÍú•P³ExpressionStatementÍ¹ÍMQ®CallExpressionÍ¹ÍLR°MemberExpressionÍ¹ÍÄLªIdentifierÍ¹ÍÀ§LogUtilLªIdentifierÍÁÍÄ£logÂÂ‘X°BinaryExpressionÍÅÍKX°BinaryExpressionÍÅÍ0X°BinaryExpressionÍÅÍ*X°BinaryExpressionÍÅÍX°BinaryExpressionÍÅÍV§LiteralÍÅÍîÙ'requestJob_saveFileCacheOnlyFile.start:Ù)'requestJob_saveFileCacheOnlyFile.start:'¡+R°MemberExpressionÍñÍLªIdentifierÍñÍø§requestLªIdentifierÍùÍ«componentIdÂÂ¡+V§LiteralÍÍ©,srcType:«',srcType:'¡+R°MemberExpressionÍÍ*LªIdentifierÍÍ§requestLªIdentifierÍÍ*­requestSourceÂÂ¡+V§LiteralÍ-Í0¡,£','¡+R°MemberExpressionÍ3ÍKLªIdentifierÍ3Í:§requestLªIdentifierÍ;ÍK°componentVersionÂÂÂP³ExpressionStatementÍ[Í™Q®CallExpressionÍ[Í˜R°MemberExpressionÍ[ÍrLªIdentifierÍ[Íg¬hiTraceMeterLªIdentifierÍhÍrªstartTraceÂÂ’V§LiteralÍsÍ‚­saveFileCache¯'saveFileCache'R°MemberExpressionÍ„Í—LªIdentifierÍ„Í‹§requestLªIdentifierÍŒÍ—«componentIdÂÂÂP³ExpressionStatementÍ§ÍQ®CallExpressionÍ§ÍR°MemberExpressionÍ§ÍÆLªIdentifierÍ§Í°©FileCacheLªIdentifierÍ±ÍÆµsaveFileCacheOnlyFileÂÂ”R°MemberExpressionÍÇÍÖLªIdentifierÍÇÍÎ§requestLªIdentifierÍÏÍÖ§contextÂÂLªIdentifierÍØÍß§fileKeyLªIdentifierÍáÍç¦resBufR°MemberExpressionÍéÍ LªIdentifierÍéÍğ§requestLªIdentifierÍñÍ ¯fileCacheFolderÂÂÂP³ExpressionStatementÍÍOQ®CallExpressionÍÍNR°MemberExpressionÍÍ(LªIdentifierÍÍ¬hiTraceMeterLªIdentifierÍÍ(«finishTraceÂÂ’V§LiteralÍ)Í8­saveFileCache¯'saveFileCache'R°MemberExpressionÍ:ÍMLªIdentifierÍ:ÍA§requestLªIdentifierÍBÍM«componentIdÂÂÂP³ExpressionStatementÍ]ÍïQ®CallExpressionÍ]ÍîR°MemberExpressionÍ]ÍhLªIdentifierÍ]Íd§LogUtilLªIdentifierÍeÍh£logÂÂ‘X°BinaryExpressionÍiÍíX°BinaryExpressionÍiÍÒX°BinaryExpressionÍiÍÌX°BinaryExpressionÍiÍ´X°BinaryExpressionÍiÍ¦V§LiteralÍiÍÙ%requestJob_saveFileCacheOnlyFile.end:Ù''requestJob_saveFileCacheOnlyFile.end:'¡+R°MemberExpressionÍ“Í¦LªIdentifierÍ“Íš§requestLªIdentifierÍ›Í¦«componentIdÂÂ¡+V§LiteralÍ©Í´©,srcType:«',srcType:'¡+R°MemberExpressionÍ·ÍÌLªIdentifierÍ·Í¾§requestLªIdentifierÍ¿ÍÌ­requestSourceÂÂ¡+V§LiteralÍÏÍÒ¡,£','¡+R°MemberExpressionÍÕÍíLªIdentifierÍÕÍÜ§requestLªIdentifierÍİÍí°componentVersionÂÂÂÀW«IfStatementÍÍ€LªIdentifierÍÍ£resM®BlockStatementÍÍ€‘P³ExpressionStatementÍÍuQ®CallExpressionÍÍtR°MemberExpressionÍÍ(LªIdentifierÍÍ#§emitterLªIdentifierÍ$Í(¤emitÂÂ’X°BinaryExpressionÍ)ÍWR°MemberExpressionÍ)ÍCLªIdentifierÍ)Í2©ConstantsLªIdentifierÍ3ÍC°CALLBACK_EMITTERÂÂ¡+R°MemberExpressionÍFÍWLªIdentifierÍFÍM§requestLªIdentifierÍNÍW©memoryKeyÂÂ[°ObjectExpressionÍYÍs‘\¨PropertyÍ[ÍqÂÂÂLªIdentifierÍ[Í_¤data[°ObjectExpressionÍaÍq‘\¨PropertyÍcÍoÂÂÂV§LiteralÍcÍj¥value§'value'LªIdentifierÍlÍo£res¤init¤initÂÀN°MethodDefinitionÍÍ¿ÃÂLªIdentifierÍ”Í ¬getHeaderObj¦methodO²FunctionExpressionÍ Í¿ÀÂÂÂ‘LªIdentifierÍ¡Í¨§requestM®BlockStatementÍªÍ¿“S³VariableDeclarationÍµÍÈ‘T²VariableDeclaratorÍ¹ÍÇLªIdentifierÍ¹ÍÂ©headerObj[°ObjectExpressionÍÅÍÇ£letW«IfStatementÍÒÍX±LogicalExpressionÍÖÍX°BinaryExpressionÍÖÍòR°MemberExpressionÍÖÍåLªIdentifierÍÖÍİ§requestLªIdentifierÍŞÍå§headersÂÂ¢!=LªIdentifierÍéÍò©undefined¢&&X°BinaryExpressionÍöÍLªIdentifierÍöÍÿ©headerObj£!==LªIdentifierÍÍ©undefinedM®BlockStatementÍÍ“‘P³ExpressionStatementÍÍˆQ®CallExpressionÍÍ‡R°MemberExpressionÍÍ5R°MemberExpressionÍÍ-LªIdentifierÍÍ%§requestLªIdentifierÍ&Í-§headersÂÂLªIdentifierÍ.Í5§forEachÂÂ‘O·ArrowFunctionExpressionÍ6Í†ÀÂÂÂ‘LªIdentifierÍ7Í<¥valueM®BlockStatementÍAÍ†‘P³ExpressionStatementÍTÍwY´AssignmentExpressionÍTÍv¡=R°MemberExpressionÍTÍhLªIdentifierÍTÍ]©headerObjR°MemberExpressionÍ^ÍgLªIdentifierÍ^Íc¥valueLªIdentifierÍdÍg£keyÂÂÃÂR°MemberExpressionÍkÍvLªIdentifierÍkÍp¥valueLªIdentifierÍqÍv¥valueÂÂÂW«IfStatementÍ¢ÍX±LogicalExpressionÍ¦ÍÜX°BinaryExpressionÍ¦ÍÁR°MemberExpressionÍ¦Í½R°MemberExpressionÍ¦Í¸LªIdentifierÍ¦Í­§requestLªIdentifierÍ®Í¸ªallHeadersÂÂLªIdentifierÍ¹Í½¤sizeÂÂ¡>V§LiteralÍÀÍÁ ¡0¢&&X°BinaryExpressionÍÅÍÜLªIdentifierÍÅÍÎ©headerObj£!==LªIdentifierÍÓÍÜ©undefinedM®BlockStatementÍŞÍ^‘P³ExpressionStatementÍíÍSQ®CallExpressionÍíÍRR°MemberExpressionÍíÍR°MemberExpressionÍíÍÿLªIdentifierÍíÍô§requestLªIdentifierÍõÍÿªallHeadersÂÂLªIdentifierÍ Í§forEachÂÂ‘O·ArrowFunctionExpressionÍÍQÀÂÂÂ’LªIdentifierÍ	Í¥valueLªIdentifierÍÍ£keyM®BlockStatementÍÍQ‘P³ExpressionStatementÍ+ÍBY´AssignmentExpressionÍ+ÍA¡=R°MemberExpressionÍ+Í9LªIdentifierÍ+Í4©headerObjLªIdentifierÍ5Í8£keyÃÂLªIdentifierÍ<ÍA¥valueÂM®BlockStatementÍmÍ‘P³ExpressionStatementÍ|Í’Y´AssignmentExpressionÍ|Í‘¡=LªIdentifierÍ|Í…©headerObjLªIdentifierÍˆÍ‘©undefinedZ¯ReturnStatementÍ§Í¸LªIdentifierÍ®Í·©headerObjN°MethodDefinitionÍÔÍ†ÃÂLªIdentifierÍáÍô³getImageArrayBuffer¦methodO²FunctionExpressionÍôÍ†ÀÂÂÃ“LªIdentifierÍõÍü§requestLªIdentifierÍşÍ	«requestListLªIdentifierÍÍ§fileKeyM®BlockStatementÍÍ†—S³VariableDeclarationÍÍ*‘T²VariableDeclaratorÍ#Í)LªIdentifierÍ#Í)¦resBufÀ£letS³VariableDeclarationÍ4ÍG‘T²VariableDeclaratorÍ8ÍFLªIdentifierÍ8ÍA©loadErrorV§LiteralÍDÍF ¢''£letS³VariableDeclarationÍiÍ‘T²VariableDeclaratorÍmÍLªIdentifierÍmÍr¥error[°ObjectExpressionÍuÍ’\¨PropertyÍwÍ~ÂÂÂLªIdentifierÍwÍ{¤codeV§LiteralÍ}Í~ ¡0¤init\¨PropertyÍ€Í›ÂÂÂLªIdentifierÍ€Í…¥phaseR°MemberExpressionÍ‡Í›LªIdentifierÍ‡Í©LoadPhaseLªIdentifierÍ‘Í›ªPHASE_LOADÂÂ¤init£letS³VariableDeclarationÍ»ÍÕ‘T²VariableDeclaratorÍ¿ÍÔLªIdentifierÍ¿ÍÏ°callBackTimeInfo[°ObjectExpressionÍÒÍÔ£letS³VariableDeclarationÍõÍ®‘T²VariableDeclaratorÍùÍ­LªIdentifierÍùÍ¬callBackData[°ObjectExpressionÍÍ­•\¨PropertyÍÍ!ÂÂÂLªIdentifierÍÍ¦sourceV§LiteralÍÍ! ¢''¤init\¨PropertyÍ0Í=ÂÂÂLªIdentifierÍ0Í:ªimageWidthV§LiteralÍ<Í= ¡0¤init\¨PropertyÍLÍZÂÂÂLªIdentifierÍLÍW«imageHeightV§LiteralÍYÍZ ¡0¤init\¨PropertyÍiÍƒÂÂÂLªIdentifierÍiÍq¨timeInfoLªIdentifierÍsÍƒ°callBackTimeInfo¤init\¨PropertyÍ’Í¢ÂÂÂLªIdentifierÍ’Í›©errorInfoLªIdentifierÍÍ¢¥error¤init£letS³VariableDeclarationÍ¸Íı‘T²VariableDeclaratorÍ¾ÍüLªIdentifierÍ¾ÍÌ®loaderStrategyQ®CallExpressionÍÏÍüR°MemberExpressionÍÏÍóLªIdentifierÍÏÍá²ImageLoaderFactoryLªIdentifierÍâÍó±getLoaderStrategyÂÂ‘LªIdentifierÍôÍû§requestÂ¥constW«IfStatementÍÍLªIdentifierÍÍ®loaderStrategyM®BlockStatementÍÍ“‘P³ExpressionStatementÍ*ÍˆZ¯AwaitExpressionÍ*Í‡Q®CallExpressionÍ0Í‡R°MemberExpressionÍ0ÍHLªIdentifierÍ0Í>®loaderStrategyLªIdentifierÍ?ÍH©loadImageÂÂ•LªIdentifierÍIÍP§requestLªIdentifierÍRÍ]«requestListLªIdentifierÍ_Íf§fileKeyLªIdentifierÍhÍt¬callBackDataLªIdentifierÍvÍ†°callBackTimeInfoÂM®BlockStatementÍ¢Í“P³ExpressionStatementÍ±ÍèY´AssignmentExpressionÍ±Íç¡=LªIdentifierÍ±Íº©loadErrorÔr^•¤type¥start£end«expressions¦quasis¯TemplateLiteralÍ½Íç‘R°MemberExpressionÍÚÍåLªIdentifierÍÚÍá§requestLªIdentifierÍâÍå£srcÂÂ’Ôr_•¤type¥start£end¥value¤tail¯TemplateElementÍ¾ÍØÔr`’£raw¦cookedºUnsupported request type: ºUnsupported request type: Â_¯TemplateElementÍæÍæ`  ÃP³ExpressionStatementÍöÍ#Y´AssignmentExpressionÍöÍ"¡=R°MemberExpressionÍöÍLªIdentifierÍöÍ°callBackTimeInfoLªIdentifierÍÍ®requestEndTimeÂÂQ®CallExpressionÍÍ"R°MemberExpressionÍÍ LªIdentifierÍÍ¤DateLªIdentifierÍÍ £nowÂÂÂP³ExpressionStatementÍ1ÍtQ®CallExpressionÍ1ÍsR°MemberExpressionÍ1ÍQLªIdentifierÍ1ÍA°ImageKnifeLoaderLªIdentifierÍBÍQ¯makeEmptyResultÂÂ“LªIdentifierÍRÍY§requestLªIdentifierÍ[Íd©loadErrorLªIdentifierÍfÍr¬callBackDataÂN°MethodDefinitionÍŒÍÛÃÂLªIdentifierÍ“Í¡®isLocalLoadSrc¦methodO²FunctionExpressionÍ¡ÍÛÀÂÂÂ’LªIdentifierÍ¢Í©§contextLªIdentifierÍ«Í²§loadSrcM®BlockStatementÍ´ÍÛ’W«IfStatementÍ¿Í½X°BinaryExpressionÍÃÍ×LªIdentifierÍÃÍÊ§context¢!=LªIdentifierÍÎÍ×©undefinedM®BlockStatementÍÙÍ½“S³VariableDeclarationÍèÍ‘T²VariableDeclaratorÍìÍLªIdentifierÍìÍó§fileDirR°MemberExpressionÍöÍLªIdentifierÍöÍı§contextLªIdentifierÍşÍ¨filesDirÂÂ£letS³VariableDeclarationÍÍ5‘T²VariableDeclaratorÍÍ4LªIdentifierÍÍ!¨cacheDirR°MemberExpressionÍ$Í4LªIdentifierÍ$Í+§contextLªIdentifierÍ,Í4¨cacheDirÂÂ£letW«IfStatementÍCÍ²X±LogicalExpressionÍGÍ‚Q®CallExpressionÍGÍbR°MemberExpressionÍGÍYLªIdentifierÍGÍN§loadSrcLªIdentifierÍOÍYªstartsWithÂÂ‘LªIdentifierÍZÍa§fileDirÂ¢||Q®CallExpressionÍfÍ‚R°MemberExpressionÍfÍxLªIdentifierÍfÍm§loadSrcLªIdentifierÍnÍxªstartsWithÂÂ‘LªIdentifierÍyÍ¨cacheDirÂM®BlockStatementÍ„Í²‘Z¯ReturnStatementÍ—Í£V§LiteralÍÍ¢Ã¤trueÀÀZ¯ReturnStatementÍÇÍÔV§LiteralÍÎÍÓÂ¥falseN°MethodDefinitionÍáÍ ÃÂLªIdentifierÍèÍ½getDownsamplerDecodingOptions¦methodO²FunctionExpressionÍÍ ÀÂÂÂ”LªIdentifierÍÍ©typeValueLªIdentifierÍÍ§requestLªIdentifierÍÍ¤sizeLªIdentifierÍ Í#£SRCM®BlockStatementÍ%Í ’S³VariableDeclarationÍ0ÍÆ‘T²VariableDeclaratorÍ4ÍÅLªIdentifierÍ4Í;§reqSizeQ®CallExpressionÍ>ÍÅR°MemberExpressionÍ>Í`U­NewExpressionÍ>ÍOLªIdentifierÍBÍM«DownsamplerLªIdentifierÍPÍ`°calculateScalingÂÂ–LªIdentifierÍaÍj©typeValueR°MemberExpressionÍlÍvLªIdentifierÍlÍp¤sizeLªIdentifierÍqÍv¥widthÂÂR°MemberExpressionÍxÍƒLªIdentifierÍxÍ|¤sizeLªIdentifierÍ}Íƒ¦heightÂÂR°MemberExpressionÍ…Í˜LªIdentifierÍ…ÍŒ§requestLªIdentifierÍÍ˜«targetWidthÂÂR°MemberExpressionÍšÍ®LªIdentifierÍšÍ¡§requestLªIdentifierÍ¢Í®¬targetHeightÂÂR°MemberExpressionÍ°ÍÄLªIdentifierÍ°Í·§requestLªIdentifierÍ¸ÍÄ¬downsampTypeÂÂÂ£letW«IfStatementÍĞÍùX°BinaryExpressionÍÔÍæLªIdentifierÍÔÍİ©typeValue¢==V§LiteralÍáÍæ£svg¥'svg'M®BlockStatementÍèÍi‘Z¯ReturnStatementÍ÷Í^[°ObjectExpressionÍşÍ]’\¨PropertyÍÍ'ÂÂÂLªIdentifierÍÍ¦heightR°MemberExpressionÍÍ'LªIdentifierÍÍ §reqSizeLªIdentifierÍ!Í'¦heightÂÂ¤init\¨PropertyÍ:ÍNÂÂÂLªIdentifierÍ:Í?¥widthR°MemberExpressionÍAÍNLªIdentifierÍAÍH§reqSizeLªIdentifierÍIÍN¥widthÂÂ¤initM®BlockStatementÍxÍù‘Z¯ReturnStatementÍ‡Íî[°ObjectExpressionÍÍí’\¨PropertyÍ¡ÍµÂÂÂLªIdentifierÍ¡Í¦¥widthR°MemberExpressionÍ¨ÍµLªIdentifierÍ¨Í¯§reqSizeLªIdentifierÍ°Íµ¥widthÂÂ¤init\¨PropertyÍÈÍŞÂÂÂLªIdentifierÍÈÍÎ¦heightR°MemberExpressionÍĞÍŞLªIdentifierÍĞÍ×§reqSizeLªIdentifierÍØÍŞ¦heightÂÂ¤initN°MethodDefinitionÍÍ õÃÂLªIdentifierÍÍ®getOrientation¦methodO²FunctionExpressionÍÍ õÀÂÂÂ‘LªIdentifierÍÍ'«orientationM®BlockStatementÍ)Í õ–S³VariableDeclarationÍ4ÍK‘T²VariableDeclaratorÍ8ÍJLªIdentifierÍ8ÍBªhorizontalV§LiteralÍEÍJÂ¥false£letS³VariableDeclarationÍUÍj‘T²VariableDeclaratorÍYÍiLªIdentifierÍYÍa¨verticalV§LiteralÍdÍiÂ¥false£letS³VariableDeclarationÍtÍƒ‘T²VariableDeclaratorÍxÍ‚LªIdentifierÍxÍ~¦rotateV§LiteralÍÍ‚ ¡0£letÔra•¤type¥start£end¬discriminant¥cases¯SwitchStatementÍÍ „LªIdentifierÍ•Í «orientation˜Ôrb•¤type¥start£endªconsequent¤testªSwitchCaseÍ±ÍÈ‘Ôrc”¤type¥start£end¥label®BreakStatementÍÂÍÈÀV§LiteralÍ¶ÍÀ¨Top-leftª'Top-left'bªSwitchCaseÍÖÍ#’P³ExpressionStatementÍùÍY´AssignmentExpressionÍùÍ
+¡=LªIdentifierÍùÍªhorizontalV§LiteralÍÍ
+Ã¤truec®BreakStatementÍÍ#ÀV§LiteralÍÛÍæ©Top-right«'Top-right'bªSwitchCaseÍ1Í~’P³ExpressionStatementÍVÍfY´AssignmentExpressionÍVÍe¡=LªIdentifierÍVÍ^¨verticalV§LiteralÍaÍeÃ¤truec®BreakStatementÍxÍ~ÀV§LiteralÍ6ÍC«Bottom-left­'Bottom-left'bªSwitchCaseÍŒÍ×’P³ExpressionStatementÍ²Í¿Y´AssignmentExpressionÍ²Í¾¡=LªIdentifierÍ²Í¸¦rotateV§LiteralÍ»Í¾Ì´£180c®BreakStatementÍÑÍ×ÀV§LiteralÍ‘ÍŸ¬Bottom-right®'Bottom-right'bªSwitchCaseÍåÍP“P³ExpressionStatementÍÍY´AssignmentExpressionÍÍ¡=LªIdentifierÍÍªhorizontalV§LiteralÍÍÃ¤trueP³ExpressionStatementÍ+Í8Y´AssignmentExpressionÍ+Í7¡=LªIdentifierÍ+Í1¦rotateV§LiteralÍ4Í7Í£270c®BreakStatementÍJÍPÀV§LiteralÍêÍô¨Left-topª'Left-top'bªSwitchCaseÍ^Í¥’P³ExpressionStatementÍÍY´AssignmentExpressionÍÍŒ¡=LªIdentifierÍÍ‡¦rotateV§LiteralÍŠÍŒÌZ¢90c®BreakStatementÍŸÍ¥ÀV§LiteralÍcÍn©Right-top«'Right-top'bªSwitchCaseÍ³Íı’P³ExpressionStatementÍØÍåY´AssignmentExpressionÍØÍä¡=LªIdentifierÍØÍŞ¦rotateV§LiteralÍáÍäÍ£270c®BreakStatementÍ÷ÍıÀV§LiteralÍ¸ÍÅ«Left-bottom­'Left-bottom'bªSwitchCaseÍ Í y“P³ExpressionStatementÍ 1Í CY´AssignmentExpressionÍ 1Í B¡=LªIdentifierÍ 1Í ;ªhorizontalV§LiteralÍ >Í BÃ¤trueP³ExpressionStatementÍ UÍ aY´AssignmentExpressionÍ UÍ `¡=LªIdentifierÍ UÍ [¦rotateV§LiteralÍ ^Í `ÌZ¢90c®BreakStatementÍ sÍ yÀV§LiteralÍ Í ¬Right-bottom®'Right-bottom'S³VariableDeclarationÍ Í Ø‘T²VariableDeclaratorÍ ’Í ×LªIdentifierÍ ’Í –¤data[°ObjectExpressionÍ ™Í ×“\¨PropertyÍ ›Í ±ÂÂÂLªIdentifierÍ ›Í ¥ªhorizontalLªIdentifierÍ §Í ±ªhorizontal¤init\¨PropertyÍ ³Í ÅÂÂÂLªIdentifierÍ ³Í »¨verticalLªIdentifierÍ ½Í Å¨vertical¤init\¨PropertyÍ ÇÍ ÕÂÂÂLªIdentifierÍ ÇÍ Í¦rotateLªIdentifierÍ ÏÍ Õ¦rotate¤init£letZ¯ReturnStatementÍ âÍ îLªIdentifierÍ éÍ í¤dataÀšÔrd•¤type¥start£endªspecifiers¦source±ImportDeclarationÍnÍ¥‘Ôre•¤type¥start£end¨imported¥local¯ImportSpecifierÍwÍ„LªIdentifierÍwÍ„­CacheStrategyLªIdentifierÍwÍ„­CacheStrategyV§LiteralÍŒÍ¤¶./model/ImageKnifeData¸'./model/ImageKnifeData'd±ImportDeclarationÍ§ÍÕ‘e¯ImportSpecifierÍ°Í¹LªIdentifierÍ°Í¹©FileCacheLªIdentifierÍ°Í¹©FileCacheV§LiteralÍÁÍÔ±./cache/FileCache³'./cache/FileCache'd±ImportDeclarationÍ×Í‘e¯ImportSpecifierÍàÍçLªIdentifierÍàÍç§LogUtilLªIdentifierÍàÍç§LogUtilV§LiteralÍïÍ ¯./utils/LogUtil±'./utils/LogUtil'd±ImportDeclarationÍÍN“e¯ImportSpecifierÍÍLªIdentifierÍÍ©ConstantsLªIdentifierÍÍ©Constantse¯ImportSpecifierÍÍ LªIdentifierÍÍ ©LoadPhaseLªIdentifierÍÍ ©LoadPhasee¯ImportSpecifierÍ"Í2LªIdentifierÍ"Í2°LoadPixelMapCodeLªIdentifierÍ"Í2°LoadPixelMapCodeV§LiteralÍ:ÍM±./utils/Constants³'./utils/Constants'd±ImportDeclarationÍPÍ{‘Ôrf”¤type¥start£end¥local¶ImportDefaultSpecifierÍWÍ^LªIdentifierÍWÍ^§emitterV§LiteralÍdÍz´@ohos.events.emitter¶'@ohos.events.emitter'd±ImportDeclarationÍ}Í±‘e¯ImportSpecifierÍ†Í’LªIdentifierÍ†Í’¬FileTypeUtilLªIdentifierÍ†Í’¬FileTypeUtilV§LiteralÍšÍ°´./utils/FileTypeUtil¶'./utils/FileTypeUtil'd±ImportDeclarationÍ³Íì‘e¯ImportSpecifierÍ¼ÍÇLªIdentifierÍ¼ÍÇ«DownsamplerLªIdentifierÍ¼ÍÇ«DownsamplerV§LiteralÍÏÍëº./downsampling/Downsampler¼'./downsampling/Downsampler'd±ImportDeclarationÍîÍ7‘e¯ImportSpecifierÍ÷Í	LªIdentifierÍ÷Í	²ImageLoaderFactoryLªIdentifierÍ÷Í	²ImageLoaderFactoryV§LiteralÍÍ6Ù#./loaderStrategy/ImageLoaderFactoryÙ%'./loaderStrategy/ImageLoaderFactory'd±ImportDeclarationÍ9Íg‘f¶ImportDefaultSpecifierÍ@ÍLLªIdentifierÍ@ÍL¬hiTraceMeterV§LiteralÍRÍf²@ohos.hiTraceMeter´"@ohos.hiTraceMeter"d±ImportDeclarationÍiÍ¯‘e¯ImportSpecifierÍrÍƒLªIdentifierÍrÍƒ±ParseImageFactoryLªIdentifierÍrÍƒ±ParseImageFactoryV§LiteralÍ‹Í®Ù!./parseStrategy/ParseImageFactoryÙ#'./parseStrategy/ParseImageFactory'

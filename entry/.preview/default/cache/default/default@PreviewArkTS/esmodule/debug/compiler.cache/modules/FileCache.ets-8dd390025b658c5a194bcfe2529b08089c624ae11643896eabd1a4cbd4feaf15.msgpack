@@ -1,0 +1,687 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚ&¼/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import util from '@ohos.util';
+import { FileUtils } from '../utils/FileUtils';
+import { LogUtil } from '../utils/LogUtil';
+const INT_MAX = 2147483647;
+/**
+ * äºŒçº§æ–‡ä»¶ç¼“å­˜
+ * ä¸»çº¿ç¨‹é€šè¿‡lruCacheç®¡ç†ç¼“å­˜å¤§å°
+ * å­çº¿ç¨‹ç›´æ¥è¯»å†™æ–‡ä»¶
+ */
+export class FileCache {
+    constructor(context, size, memory) {
+        this.maxMemory = 0;
+        this.currentMemory = 0;
+        this.maxSize = 0;
+        this.path = '';
+        this.isInited = false;
+        this.defaultMaxMemorySize = 10 * 1024 * 1024 * 1024;
+        this.defaultMemorySize = 1024 * 1024 * 1024;
+        if (size <= 0 || size > INT_MAX) {
+            size = INT_MAX;
+        }
+        if (memory <= 0 || memory > this.defaultMaxMemorySize) {
+            memory = this.defaultMemorySize;
+        }
+        this.lruCache = new util.LRUCache(size);
+        this.maxMemory = memory;
+        this.currentMemory = 0;
+        this.maxSize = size;
+        this.context = context;
+    }
+    /**
+     * éå†ç¼“å­˜æ–‡ä»¶ç›®å½•ï¼Œåˆå§‹åŒ–ç¼“å­˜
+     */
+    async initFileCache(path = FileCache.CACHE_FOLDER) {
+        if (this.isInited) {
+            return;
+        }
+        let startTime = Date.now();
+        if (this.context && path.startsWith(this.context.cacheDir) === true) {
+            this.path = path;
+        }
+        else {
+            FileCache.CACHE_FOLDER = path;
+            this.path = this.context?.cacheDir + FileUtils.SEPARATOR + FileCache.CACHE_FOLDER + FileUtils.SEPARATOR;
+        }
+        await FileUtils.getInstance().createFolder(this.path);
+        // éå†ç¼“å­˜ç›®å½•ä¸‹çš„æ–‡ä»¶ï¼ŒæŒ‰ç…§æ—¶é—´é¡ºåºåŠ å…¥ç¼“å­˜
+        let filenames = await FileUtils.getInstance().ListFile(this.path);
+        // æŒ‰ç…§ä¸Šæ¬¡è®¿é—®è¯¥æ–‡ä»¶çš„æ—¶é—´æ’åº
+        let cachefiles = [];
+        for (let i = 0; i < filenames.length; i++) {
+            let stat = await FileUtils.getInstance().Stat(this.path + filenames[i]);
+            cachefiles.push({
+                file: filenames[i],
+                ctime: stat === undefined ? 0 : stat.ctime,
+                size: stat?.size ?? 0
+            });
+        }
+        let sortedCachefiles = cachefiles.sort((a, b) => a.ctime - b.ctime);
+        for (let i = 0; i < sortedCachefiles.length; i++) {
+            const fileSize = sortedCachefiles[i].size;
+            // å¤„ç†æ•°é‡è¶…è¿‡sizeçš„åœºæ™¯ï¼Œç§»é™¤å³å°†æ’é™¤çš„æ–‡ä»¶
+            if (this.lruCache.length == this.maxSize && !this.lruCache.contains(sortedCachefiles[i].file)) {
+                let remove = this.lruCache.remove(this.lruCache.keys()[0]);
+                if (remove !== undefined) {
+                    FileUtils.getInstance().deleteFile(this.path + this.lruCache.keys()[0]);
+                    this.removeMemorySize(fileSize);
+                }
+            }
+            this.lruCache.put(sortedCachefiles[i].file, fileSize);
+            this.addMemorySize(fileSize);
+        }
+        this.trimToSize();
+        LogUtil.info('image init initFileCache:' + (Date.now() - startTime) + ',num:' + filenames.length + ',nums:' + this.lruCache.length + ',size:' + this.currentMemory);
+        this.isInited = true;
+    }
+    isFileCacheInit() {
+        return this.isInited;
+    }
+    getCacheFolder() {
+        return FileCache.CACHE_FOLDER;
+    }
+    // æ·»åŠ ç¼“å­˜é”®å€¼å¯¹,åŒæ—¶å†™æ–‡ä»¶
+    put(key, value) {
+        if (key == null || value == null) {
+            throw new Error('key or value is invalid ');
+        }
+        if (!this.isInited) {
+            return;
+        }
+        // å¦‚æœsizeæ»¡äº†çš„è¯ï¼Œéœ€è¦æŒ‰ç…§LRUçš„æ–¹å¼åˆ é™¤ç¬¬ä¸€ä¸ª
+        if (this.lruCache.length == this.maxSize && !this.lruCache.contains(key)) {
+            this.remove(this.lruCache.keys()[0]);
+        }
+        else if (this.lruCache.contains(key)) {
+            this.remove(key);
+        }
+        let pre = this.lruCache.put(key, value.byteLength);
+        FileUtils.getInstance().writeDataSync(this.path + key, value);
+        if (pre !== undefined) {
+            this.addMemorySize(value);
+        }
+        this.trimToSize();
+    }
+    // æ·»åŠ ç¼“å­˜é”®å€¼å¯¹ï¼Œä½†ä¸å†™æ–‡ä»¶ï¼ˆç”¨äºå­çº¿ç¨‹å·²ç»å†™æ–‡ä»¶çš„åœºæ™¯ï¼‰
+    putWithoutWriteFile(key, value) {
+        if (key == null || value == null) {
+            throw new Error('key or value is invalid ');
+        }
+        if (!this.isInited) {
+            return;
+        }
+        // å¦‚æœsizeæ»¡äº†çš„è¯ï¼Œéœ€è¦æŒ‰ç…§LRUçš„æ–¹å¼åˆ é™¤ç¬¬ä¸€ä¸ª
+        if (this.lruCache.length == this.maxSize && !this.lruCache.contains(key)) {
+            this.remove(this.lruCache.keys()[0]);
+        }
+        else if (this.lruCache.contains(key)) {
+            this.lruCache.remove(key);
+            this.lruCache.put(key, typeof value == 'number' ? value : value.byteLength);
+            return;
+        }
+        this.lruCache.put(key, typeof value == 'number' ? value : value.byteLength);
+        this.addMemorySize(value);
+        this.trimToSize();
+    }
+    get(key) {
+        if (!this.isInited) {
+            return;
+        }
+        if (this.lruCache.get(key) !== undefined) {
+            // TODO å¦‚ä½•æ‰èƒ½ä¿®æ”¹æ–‡ä»¶è®¿é—®æ—¶é—´å‘¢
+            return FileUtils.getInstance().readFileSync(this.path + key);
+        }
+        return undefined;
+    }
+    // ç§»é™¤é”®ä¸ºkeyçš„ç¼“å­˜
+    remove(key) {
+        if (key == null) {
+            throw new Error('key is null,checking the parameter');
+        }
+        if (!this.isInited) {
+            return;
+        }
+        let remove = this.lruCache.remove(key);
+        if (remove !== undefined) {
+            FileUtils.getInstance().deleteFile(this.path + key);
+            this.removeMemorySize(remove);
+        }
+    }
+    async removeAll() {
+        if (!this.isInited) {
+            return;
+        }
+        this.lruCache.clear();
+        this.currentMemory = 0;
+        let filenames = await FileUtils.getInstance().ListFile(this.path);
+        for (let i = 0; i < filenames.length; i++) {
+            await FileUtils.getInstance().deleteFile(this.path + filenames[i]);
+        }
+    }
+    size() {
+        return this.lruCache.length;
+    }
+    // ç§»é™¤è¾ƒå°‘ä½¿ç”¨çš„ç¼“å­˜æ•°æ®
+    trimToSize() {
+        while (true) {
+            if (this.currentMemory <= this.maxMemory || this.lruCache.isEmpty()) {
+                break;
+            }
+            let delkey = this.lruCache.keys()[0];
+            let remove = this.lruCache.remove(delkey);
+            if (remove !== undefined) {
+                FileUtils.getInstance().deleteFile(this.path + delkey);
+                this.removeMemorySize(remove);
+            }
+            this.lruCache.remove(delkey);
+        }
+    }
+    removeMemorySize(value) {
+        if (typeof value == 'number') {
+            this.currentMemory -= value;
+        }
+        else if (value != undefined) {
+            this.currentMemory -= value.byteLength;
+            LogUtil.debug('FileCache removeMemorySize: ' + value.byteLength + ' currentMemoryï¼š' + this.currentMemory);
+        }
+    }
+    addMemorySize(value) {
+        if (typeof value == 'number') {
+            this.currentMemory += value;
+            LogUtil.debug('FileCache addMemorySize: ' + value + ' currentMemoryï¼š' + this.currentMemory);
+        }
+        else if (value != undefined) {
+            this.currentMemory += value.byteLength;
+            LogUtil.debug('FileCache addMemorySize: ' + value.byteLength + ' currentMemoryï¼š' + this.currentMemory);
+        }
+    }
+    /**
+     * å­çº¿ç¨‹é‡Œåªå†™å…¥ç¼“å­˜æ–‡ä»¶
+     * @param context
+     * @param key
+     * @param value
+     */
+    static saveFileCacheOnlyFile(context, key, value, folder = FileCache.CACHE_FOLDER) {
+        // å†™æ–‡ä»¶
+        if (!FileUtils.getInstance()
+            .writeFileSync(context.cacheDir + FileUtils.SEPARATOR + folder + FileUtils.SEPARATOR + key, value)) {
+            FileUtils.getInstance().createFolderSync(context.cacheDir + FileUtils.SEPARATOR + folder + FileUtils.SEPARATOR);
+            FileUtils.getInstance()
+                .writeFileSync(context.cacheDir + FileUtils.SEPARATOR + folder + FileUtils.SEPARATOR + key, value);
+        }
+        return true;
+    }
+    /**
+     * å­çº¿ç¨‹ä¸­ï¼Œé€šè¿‡æ–‡ä»¶åï¼Œç›´æ¥æŸ¥æ‰¾æ˜¯å¦æœ‰æ–‡ä»¶ç¼“å­˜
+     * @param context
+     * @param key
+     * @returns
+     */
+    static getFileCacheByFile(context, key, folder = FileCache.CACHE_FOLDER) {
+        // ä»æ–‡ä»¶è·å–æŸ¥çœ‹æ˜¯å¦æœ‰ç¼“å­˜
+        return FileUtils.getInstance()
+            .readFileSync(context.cacheDir + FileUtils.SEPARATOR + folder + FileUtils.SEPARATOR + key);
+    }
+    /**
+     * è·å–keyç¼“å­˜æ•°æ®ç»å¯¹è·¯å¾„
+     *
+     * @params key æ•°å€¼
+     */
+    getFileToPath(key) {
+        if (!!!key) {
+            throw new Error('key is null,checking the parameter');
+        }
+        let path = this.path + key;
+        if (FileUtils.getInstance().exist(path)) {
+            return path;
+        }
+        else {
+            return '';
+        }
+    }
+}
+FileCache.CACHE_FOLDER = 'ImageKnife'; // context cacheDir çš„ç¼“å­˜æ–‡ä»¶ç›®å½•
+//# sourceMappingURL=FileCache.js.mapÂ“ÙV hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.util.d.tsÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\FileUtils.etsÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\FileCache.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚ%¿/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import util from '@ohos.util';
+import { FileUtils } from '../utils/FileUtils';
+import fs from '@ohos.file.fs';
+import { LogUtil } from '../utils/LogUtil';
+
+const INT_MAX = 2147483647
+/**
+ * äºŒçº§æ–‡ä»¶ç¼“å­˜
+ * ä¸»çº¿ç¨‹é€šè¿‡lruCacheç®¡ç†ç¼“å­˜å¤§å°
+ * å­çº¿ç¨‹ç›´æ¥è¯»å†™æ–‡ä»¶
+ */
+export class FileCache {
+  static CACHE_FOLDER: string = 'ImageKnife' // context cacheDir çš„ç¼“å­˜æ–‡ä»¶ç›®å½•
+  maxMemory: number = 0
+  currentMemory: number = 0
+  maxSize: number = 0
+  path: string = ''
+  private lruCache: util.LRUCache<string, number>
+  private isInited: boolean = false
+  public context?: Context
+  readonly defaultMaxMemorySize: number = 10 * 1024 * 1024 * 1024;
+  readonly defaultMemorySize: number = 1024 * 1024 * 1024;
+
+  constructor(context: Context, size: number, memory: number) {
+    if (size <= 0 || size > INT_MAX) {
+      size = INT_MAX;
+    }
+    if (memory <= 0 || memory > this.defaultMaxMemorySize) {
+      memory = this.defaultMemorySize;
+    }
+    this.lruCache = new util.LRUCache(size);
+    this.maxMemory = memory;
+    this.currentMemory = 0;
+    this.maxSize = size;
+    this.context = context;
+  }
+
+  /**
+   * éå†ç¼“å­˜æ–‡ä»¶ç›®å½•ï¼Œåˆå§‹åŒ–ç¼“å­˜
+   */
+  public async initFileCache(path: string = FileCache.CACHE_FOLDER) {
+    if (this.isInited) {
+      return
+    }
+    let startTime = Date.now()
+    if (this.context && path.startsWith(this.context.cacheDir) === true) {
+      this.path = path
+    } else {
+      FileCache.CACHE_FOLDER = path
+      this.path = this.context?.cacheDir + FileUtils.SEPARATOR + FileCache.CACHE_FOLDER + FileUtils.SEPARATOR
+    }
+    await FileUtils.getInstance().createFolder(this.path)
+    // éå†ç¼“å­˜ç›®å½•ä¸‹çš„æ–‡ä»¶ï¼ŒæŒ‰ç…§æ—¶é—´é¡ºåºåŠ å…¥ç¼“å­˜
+    let filenames: string[] = await FileUtils.getInstance().ListFile(this.path)
+
+    interface CacheFileInfo {
+      file: string;
+      ctime: number;
+      size: number;
+    }
+
+    // æŒ‰ç…§ä¸Šæ¬¡è®¿é—®è¯¥æ–‡ä»¶çš„æ—¶é—´æ’åº
+    let cachefiles: CacheFileInfo[] = []
+    for (let i = 0; i < filenames.length; i++) {
+      let stat: fs.Stat | undefined = await FileUtils.getInstance().Stat(this.path + filenames[i])
+      cachefiles.push({
+        file: filenames[i],
+        ctime: stat === undefined ? 0 : stat.ctime,
+        size: stat?.size ?? 0
+      })
+    }
+    let sortedCachefiles: CacheFileInfo[] = cachefiles.sort((a, b) => a.ctime - b.ctime)
+
+    for (let i = 0; i < sortedCachefiles.length; i++) {
+      const fileSize: number = sortedCachefiles[i].size;
+      // å¤„ç†æ•°é‡è¶…è¿‡sizeçš„åœºæ™¯ï¼Œç§»é™¤å³å°†æ’é™¤çš„æ–‡ä»¶
+      if (this.lruCache.length == this.maxSize && !this.lruCache.contains(sortedCachefiles[i].file)) {
+        let remove: number | undefined = this.lruCache.remove(this.lruCache.keys()[0])
+        if (remove !== undefined) {
+          FileUtils.getInstance().deleteFile(this.path + this.lruCache.keys()[0])
+          this.removeMemorySize(fileSize)
+        }
+      }
+
+      this.lruCache.put(sortedCachefiles[i].file, fileSize)
+      this.addMemorySize(fileSize)
+    }
+
+    this.trimToSize();
+    LogUtil.info('image init initFileCache:' + (Date.now() - startTime) + ',num:' + filenames.length + ',nums:' + this.lruCache.length + ',size:' + this.currentMemory)
+    this.isInited = true
+  }
+
+  public isFileCacheInit():boolean {
+    return this.isInited
+  }
+
+  public getCacheFolder(): string {
+    return FileCache.CACHE_FOLDER
+  }
+
+  // æ·»åŠ ç¼“å­˜é”®å€¼å¯¹,åŒæ—¶å†™æ–‡ä»¶
+  put(key: string, value: ArrayBuffer): void {
+    if (key == null || value == null) {
+      throw new Error('key or value is invalid ');
+    }
+    if (!this.isInited) {
+      return
+    }
+
+    // å¦‚æœsizeæ»¡äº†çš„è¯ï¼Œéœ€è¦æŒ‰ç…§LRUçš„æ–¹å¼åˆ é™¤ç¬¬ä¸€ä¸ª
+    if (this.lruCache.length == this.maxSize && !this.lruCache.contains(key)) {
+      this.remove(this.lruCache.keys()[0])
+    } else if (this.lruCache.contains(key)) {
+      this.remove(key)
+    }
+
+    let pre = this.lruCache.put(key, value.byteLength)
+    FileUtils.getInstance().writeDataSync(this.path + key, value)
+    if (pre !== undefined) {
+      this.addMemorySize(value)
+    }
+    this.trimToSize()
+  }
+
+  // æ·»åŠ ç¼“å­˜é”®å€¼å¯¹ï¼Œä½†ä¸å†™æ–‡ä»¶ï¼ˆç”¨äºå­çº¿ç¨‹å·²ç»å†™æ–‡ä»¶çš„åœºæ™¯ï¼‰
+  putWithoutWriteFile(key: string, value: ArrayBuffer | number): void {
+    if (key == null || value == null) {
+      throw new Error('key or value is invalid ');
+    }
+    if (!this.isInited) {
+      return
+    }
+
+    // å¦‚æœsizeæ»¡äº†çš„è¯ï¼Œéœ€è¦æŒ‰ç…§LRUçš„æ–¹å¼åˆ é™¤ç¬¬ä¸€ä¸ª
+    if (this.lruCache.length == this.maxSize && !this.lruCache.contains(key)) {
+      this.remove(this.lruCache.keys()[0])
+    } else if (this.lruCache.contains(key)) {
+      this.lruCache.remove(key)
+      this.lruCache.put(key, typeof value == 'number' ? value : value.byteLength)
+      return
+    }
+
+    this.lruCache.put(key, typeof value == 'number' ? value : value.byteLength)
+    this.addMemorySize(value)
+    this.trimToSize()
+  }
+
+  get(key: string): ArrayBuffer | undefined {
+    if (!this.isInited) {
+      return
+    }
+
+    if (this.lruCache.get(key) !== undefined) {
+      // TODO å¦‚ä½•æ‰èƒ½ä¿®æ”¹æ–‡ä»¶è®¿é—®æ—¶é—´å‘¢
+      return FileUtils.getInstance().readFileSync(this.path + key)
+    }
+    return undefined
+  }
+
+  // ç§»é™¤é”®ä¸ºkeyçš„ç¼“å­˜
+  remove(key: string): void {
+    if (key == null) {
+      throw new Error('key is null,checking the parameter');
+    }
+    if (!this.isInited) {
+      return
+    }
+
+    let remove: number | undefined = this.lruCache.remove(key)
+    if (remove !== undefined) {
+      FileUtils.getInstance().deleteFile(this.path + key)
+      this.removeMemorySize(remove)
+    }
+  }
+
+  async removeAll(): Promise<void> {
+    if (!this.isInited) {
+      return
+    }
+    this.lruCache.clear()
+    this.currentMemory = 0;
+
+    let filenames: string[] = await FileUtils.getInstance().ListFile(this.path)
+    for (let i = 0; i < filenames.length; i++) {
+      await FileUtils.getInstance().deleteFile(this.path + filenames[i])
+    }
+  }
+
+  size(): number {
+    return this.lruCache.length
+  }
+
+  // ç§»é™¤è¾ƒå°‘ä½¿ç”¨çš„ç¼“å­˜æ•°æ®
+  private trimToSize(): void {
+    while (true) {
+      if (this.currentMemory <= this.maxMemory || this.lruCache.isEmpty()) {
+        break
+      }
+      let delkey = this.lruCache.keys()[0]
+      let remove: number | undefined = this.lruCache.remove(delkey)
+      if (remove !== undefined) {
+        FileUtils.getInstance().deleteFile(this.path + delkey)
+        this.removeMemorySize(remove)
+      }
+      this.lruCache.remove(delkey)
+    }
+  }
+
+  private removeMemorySize(value: ArrayBuffer | number): void {
+    if (typeof value == 'number') {
+      this.currentMemory -= value
+    }
+    else if (value != undefined) {
+      this.currentMemory -= value.byteLength
+      LogUtil.debug('FileCache removeMemorySize: ' + value.byteLength + ' currentMemoryï¼š' + this.currentMemory)
+    }
+  }
+
+  private addMemorySize(value: ArrayBuffer | number): void {
+    if (typeof value == 'number') {
+      this.currentMemory += value
+      LogUtil.debug('FileCache addMemorySize: ' +  value + ' currentMemoryï¼š' + this.currentMemory)
+    }
+    else if (value != undefined) {
+      this.currentMemory += value.byteLength
+      LogUtil.debug('FileCache addMemorySize: ' + value.byteLength + ' currentMemoryï¼š' + this.currentMemory)
+    }
+  }
+
+  /**
+   * å­çº¿ç¨‹é‡Œåªå†™å…¥ç¼“å­˜æ–‡ä»¶
+   * @param context
+   * @param key
+   * @param value
+   */
+  static saveFileCacheOnlyFile(context: Context, key: string, value: ArrayBuffer, folder: string = FileCache.CACHE_FOLDER): boolean {
+    // å†™æ–‡ä»¶
+    if (!FileUtils.getInstance()
+      .writeFileSync(context.cacheDir + FileUtils.SEPARATOR + folder + FileUtils.SEPARATOR + key, value)) {
+      FileUtils.getInstance().createFolderSync(context.cacheDir + FileUtils.SEPARATOR + folder + FileUtils.SEPARATOR)
+      FileUtils.getInstance()
+        .writeFileSync(context.cacheDir + FileUtils.SEPARATOR + folder + FileUtils.SEPARATOR + key, value)
+    }
+    return true
+  }
+
+  /**
+   * å­çº¿ç¨‹ä¸­ï¼Œé€šè¿‡æ–‡ä»¶åï¼Œç›´æ¥æŸ¥æ‰¾æ˜¯å¦æœ‰æ–‡ä»¶ç¼“å­˜
+   * @param context
+   * @param key
+   * @returns
+   */
+  static getFileCacheByFile(context: Context, key: string, folder: string = FileCache.CACHE_FOLDER): ArrayBuffer | undefined {
+    // ä»æ–‡ä»¶è·å–æŸ¥çœ‹æ˜¯å¦æœ‰ç¼“å­˜
+    return FileUtils.getInstance()
+      .readFileSync(context.cacheDir + FileUtils.SEPARATOR + folder + FileUtils.SEPARATOR + key)
+  }
+
+  /**
+   * è·å–keyç¼“å­˜æ•°æ®ç»å¯¹è·¯å¾„
+   *
+   * @params key æ•°å€¼
+   */
+  getFileToPath(key: string): string {
+    if(!!!key) {
+      throw new Error('key is null,checking the parameter')
+    }
+    let path = this.path + key
+    if(FileUtils.getInstance().exist(path)) {
+      return path
+    } else {
+      return ''
+    }
+  }
+}ÀÔrD“ª@ohos.util²../utils/FileUtils°../utils/LogUtilÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÃÙV hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.util.d.tsAÃªoh-resolveÂEAÂÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\FileUtils.etsAÃªoh-resolveÂEAÂÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappings¬FileCache.js ‘­FileCache.etsÜ‘”    ‘” –”   ” ” ” ” ” ˜”   ” ”	 	” ” ” ”. .”/ /˜”   ” ”	 	” ” ” ”* *”+ +–”   ” ” ” ” ” ‘”   ‘” ””   ” ” ” —” %” %” %” % ” %,” %.”% %<•” ” ” ” ” •” ” ” ” ” •” ” 	” ” ” •” ” ” ” ” •”  
+”  ”  ”  #”  #›” "”! "”$ "*”& ",”) "/”- "3”0 "6”4 ":”7 "=”; "ÌA”< "ÌB™” #” #”! #'”% #+”( #.”, #2”/ #5”3 #9”4 #:š” &” &” &” &” &” &” &”  &”' &#”) &%•” '” '
+” '” '” '‘”	 (œ” )” )” )” )” )” )”! )”$ ) ”( )$”) )%”= )9”? );—” *” *” *” *” *”+ *%”, *&‘”	 +” ,” ,” ,	” ,” ,” ,”  ,”! ,”) ,%”* ,&”. ,*”/ ,+”0 ,,—” -” -” -	” -” -” -”  -—” .” .” .	” .” .” .” .—” /” /” /	” /” /” /” /—” 0” 0” 0	” 0” 0” 0” 0’” 1” 1‘” 3‘” 5™” 6	”	 6”
+ 6” 6” 6” 6,”( 65”) 66”5 6ÌB–” 7” 7” 7” 7” 7” 7’” 8” 8‘”	 9™” :” :” :” :” :” :”  :”" :”# :Ü ” ;” ;” ;” ;” ;” ;”  ;”! ;”+ ;'”, ;(”0 ;,”1 ;-”8 ;4”9 ;5”ÌA ;=”ÌB ;>”ÌG ;ÌC”ÌK ;ÌG”ÌM ;ÌI—” <” <
+” <” <” <” <” <‘”	 =‘” =—” >” >” >”" >”% >”) >#”* >#Ü ” ?” ?
+” ?” ?” ?” ?” ?”$ ?”& ? ”. ?(”1 ?+”: ?4”; ?5”ÌD ?>”ÌG ?ÌA”ÌP ?ÌJ”ÌQ ?ÌK”Ì] ?ÌW”Ì` ?ÌZ”Ìi ?Ìc”Ìj ?Ìd”Ìs ?Ìm”Ìt ?Ìm‘”	 Ì@” ÌA” ÌA
+” ÌA” ÌA”# ÌA”% ÌA!”& ÌA"”2 ÌA.”3 ÌA/”7 ÌA3”8 ÌA4”< ÌA8”= ÌA9”> ÌA9’” ÌB”  ÌBÜ ” ÌC” ÌC” ÌC” ÌC” ÌC$”' ÌC-”( ÌC.”3 ÌC9”5 ÌC;”6 ÌC<”> ÌCÌD”? ÌCÌE”ÌC ÌCÌI”ÌD ÌCÌJ”ÌH ÌCÌN”ÌI ÌCÌO”ÌJ ÌCÌO’” ÌK” ÌK–” ÌL” ÌL” ÌL” ÌL&” ÌL(” ÌL(Ü ” ÌM” ÌM	” ÌM” ÌM” ÌM” ÌM” ÌM” ÌM” ÌM”% ÌM!”& ÌM"”, ÌM(”. ÌM*”/ ÌM+”1 ÌM-”3 ÌM/Ü ” ÌN” ÌN
+” ÌN” ÌN&” ÌN,”& ÌN5”' ÌN6”2 ÌNÌA”4 ÌNÌC”5 ÌNÌD”9 ÌNÌH”: ÌNÌI”> ÌNÌM”? ÌNÌN”ÌC ÌNÌR”ÌF ÌNÌU”ÌO ÌNÌ^”ÌP ÌNÌ_”ÌQ ÌNÌ`”ÌR ÌNÌa”ÌS ÌNÌb”ÌT ÌNÌb•” ÌO” ÌO” ÌO” ÌO” ÌO—” ÌP” ÌP” ÌP” ÌP”  ÌP”! ÌP”" ÌPÜ ” ÌQ” ÌQ” ÌQ” ÌQ”  ÌQ”) ÌQ!”* ÌQ"”+ ÌQ#”, ÌQ$”- ÌQ%”. ÌQ&”/ ÌQ'”0 ÌQ(”4 ÌQ,”5 ÌQ-”: ÌQ2˜” ÌR” ÌR” ÌR” ÌR” ÌR”  ÌR”$ ÌR”% ÌR“” ÌS” ÌS” ÌS‘”	 ÌTÜ ” ÌU” ÌU” ÌU” ÌU,”) ÌU6”* ÌU7”. ÌU;”/ ÌU<”0 ÌU=”1 ÌU>”3 ÌUÌ@”4 ÌUÌA”6 ÌUÌC”8 ÌUÌE”9 ÌUÌF”: ÌUÌG”; ÌUÌH”Ì@ ÌUÌM”ÌC ÌUÌP”ÌD ÌUÌQ”ÌE ÌUÌR”ÌJ ÌUÌW”ÌK ÌUÌX”ÌL ÌUÌXÜ ” ÌW” ÌW	” ÌW” ÌW” ÌW” ÌW” ÌW” ÌW” ÌW”, ÌW(”- ÌW)”3 ÌW/”5 ÌW1”6 ÌW2”8 ÌW4”: ÌW6›” ÌX” ÌX” ÌX” ÌX”- ÌX/”. ÌX0”/ ÌX1”0 ÌX2”1 ÌX3”5 ÌX7”6 ÌX8’” ÌY”& ÌY Ü ” ÌZ” ÌZ
+” ÌZ” ÌZ” ÌZ” ÌZ”$ ÌZ”( ÌZ"”, ÌZ&”- ÌZ'”4 ÌZ.”8 ÌZ2”9 ÌZ3”= ÌZ7”> ÌZ8”ÌF ÌZÌ@”ÌG ÌZÌA”ÌO ÌZÌI”ÌP ÌZÌJ”Ì` ÌZÌZ”Ìa ÌZÌ[”Ìb ÌZÌ\”Ìc ÌZÌ]”Ìd ÌZÌ^”Ìh ÌZÌb”Ìi ÌZÌc”Ìk ÌZÌeÜ ” Ì[” Ì[” Ì[” Ì[)”! Ì[-”" Ì[.”* Ì[6”+ Ì[7”1 Ì[=”2 Ì[>”6 Ì[ÌB”7 Ì[ÌC”? Ì[ÌK”Ì@ Ì[ÌL”ÌD Ì[ÌP”ÌF Ì[ÌR”ÌG Ì[ÌS”ÌH Ì[ÌT”ÌI Ì[ÌU”ÌJ Ì[ÌV”ÌK Ì[ÌV–” Ì\” Ì\” Ì\” Ì\”( Ì\ ”* Ì\"Ü ” Ì]
+” Ì]” Ì]”) Ì]”+ Ì]!”, Ì]"”6 Ì],”7 Ì]-”; Ì]1”< Ì]2”Ì@ Ì]6”ÌC Ì]9”ÌG Ì]=”ÌH Ì]>”ÌP Ì]ÌF”ÌQ Ì]ÌG”ÌU Ì]ÌK”ÌW Ì]ÌM”ÌX Ì]ÌN”ÌY Ì]ÌO”ÌZ Ì]ÌP”Ì[ Ì]ÌQ”Ì\ Ì]ÌQ˜” Ì^
+” Ì^” Ì^”) Ì^”* Ì^ ”2 Ì^(”3 Ì^)”4 Ì^)‘” Ì_	‘” Ì`Ü ” Ìb” Ìb
+” Ìb” Ìb” Ìb” Ìb” Ìb”. Ìb(”/ Ìb)”0 Ìb*”1 Ìb+”2 Ìb,”6 Ìb0”8 Ìb2”Ì@ Ìb:”ÌA Ìb;”ÌB Ìb;˜” Ìc” Ìc
+” Ìc” Ìc” Ìc”' Ìc!”( Ìc"”) Ìc"‘”	 Ìd–” Ìf” Ìf” Ìf	” Ìf” Ìf” ÌfÜ %” Ìg” Ìg” Ìg” Ìg” Ìg”0 Ìg,”3 Ìg/”4 Ìg0”8 Ìg4”9 Ìg5”< Ìg8”> Ìg:”ÌA Ìg=”ÌJ ÌgÌF”ÌK ÌgÌG”ÌN ÌgÌJ”ÌU ÌgÌQ”ÌX ÌgÌT”Ìa ÌgÌ]”Ìb ÌgÌ^”Ìh ÌgÌd”Ìk ÌgÌg”Ìs ÌgÌo”Ìv ÌgÌr”Ìz ÌgÌv”Ì{ ÌgÌw”Ìƒ ÌgÌ”Ì„ ÌgÌ€”ÌŠ ÌgÌ†”Ì ÌgÌ‰”Ì• ÌgÌ‘”Ì˜ ÌgÌ””Ìœ ÌgÌ˜”Ì ÌgÌ™”Ìª ÌgÌ¦”Ì« ÌgÌ§”Ì¬ ÌgÌ§—” Ìh” Ìh” Ìh	” Ìh” Ìh” Ìh” Ìh’” Ìi” Ìi’” Ìk	” Ìk–” Ìl” Ìl” Ìl” Ìl” Ìl” Ìl’” Ìm” Ìm’” Ìo	” Ìo–” Ìp” Ìp” Ìp” Ìp”% Ìp!”& Ìp!’” Ìq” Ìq’” Ìs” Ìs–” Ìt” Ìt” Ìt” Ìt” Ìt” Ìt%š” Ìu” Ìu” Ìu” Ìu” Ìu” Ìu”  Ìu”$ Ìu ”( Ìu$”* Ìu&˜” Ìv” Ìv” Ìv” Ìv” Ìv”6 Ìv0”7 Ìv1”8 Ìv2‘”	 Ìw—” Ìx” Ìx” Ìx	” Ìx” Ìx” Ìx” Ìx’” Ìy” Ìy‘”	 Ìz’” Ì|”% Ì|!Ü ” Ì}” Ì}” Ì}” Ì}” Ì}” Ì}”  Ì}”$ Ì} ”( Ì}$”) Ì}%”0 Ì},”4 Ì}0”5 Ì}1”9 Ì}5”: Ì}6”ÌB Ì}>”ÌC Ì}?”ÌK Ì}ÌG”ÌL Ì}ÌH”ÌO Ì}ÌK”ÌP Ì}ÌL”ÌR Ì}ÌNÜ ” Ì~” Ì~
+” Ì~” Ì~” Ì~” Ì~” Ì~”% Ì~”& Ì~ ”* Ì~$”, Ì~&”- Ì~'”. Ì~(”/ Ì~)”0 Ì~*”1 Ì~*‘”	 Ì›” Ì” Ì” Ì” Ì” Ì” Ì”' Ì%”( Ì&”+ Ì)”, Ì*”. Ì,˜” Ì€” Ì€
+” Ì€” Ì€” Ì€” Ì€” Ì€” Ì€‘”	 ÌÜ ” Ìƒ” Ìƒ” Ìƒ” Ìƒ” Ìƒ” Ìƒ” Ìƒ”  Ìƒ”# Ìƒ”$ Ìƒ ”' Ìƒ#”) Ìƒ%”. Ìƒ*”/ Ìƒ+”9 Ìƒ5”: Ìƒ6”; Ìƒ6Ü ” Ì„” Ì„” Ì„” Ì„” Ì„”  Ì„”- Ì„)”. Ì„*”2 Ì„.”3 Ì„/”7 Ì„3”: Ì„6”= Ì„9”? Ì„;”ÌD Ì„Ì@”ÌE Ì„ÌA”ÌF Ì„ÌA–” Ì…” Ì…” Ì…” Ì…” Ì…” Ì…˜” Ì†” Ì†
+” Ì†” Ì†” Ì†”$ Ì†”% Ì†”& Ì†‘”	 Ì‡–” Ìˆ” Ìˆ” Ìˆ	” Ìˆ” Ìˆ” Ìˆ’” Ì‰” Ì‰’” Ì‹”# Ì‹!–” ÌŒ” ÌŒ” ÌŒ” ÌŒ!” ÌŒ#”" ÌŒ>š” Ì” Ì” Ì” Ì” Ì” Ì”  Ì”$ Ì ”( Ì$”* Ì&˜” Ì” Ì” Ì” Ì” Ì”6 Ì0”7 Ì1”8 Ì2‘”	 Ì—” Ì” Ì” Ì	” Ì” Ì” Ì” Ì’” Ì‘” Ì‘‘”	 Ì’’” Ì””% Ì”!Ü ” Ì•” Ì•” Ì•” Ì•” Ì•” Ì•”  Ì•”$ Ì• ”( Ì•$”) Ì•%”0 Ì•,”4 Ì•0”5 Ì•1”9 Ì•5”: Ì•6”ÌB Ì•>”ÌC Ì•?”ÌK Ì•ÌG”ÌL Ì•ÌH”ÌO Ì•ÌK”ÌP Ì•ÌL”ÌR Ì•ÌNÜ ” Ì–” Ì–
+” Ì–” Ì–” Ì–” Ì–” Ì–”% Ì–”& Ì– ”* Ì–$”, Ì–&”- Ì–'”. Ì–(”/ Ì–)”0 Ì–*”1 Ì–*‘”	 Ì—›” Ì—” Ì—” Ì—” Ì—” Ì—” Ì—”' Ì—%”( Ì—&”+ Ì—)”, Ì—*”. Ì—,š” Ì˜” Ì˜
+” Ì˜” Ì˜” Ì˜”  Ì˜”! Ì˜”$ Ì˜”% Ì˜”& Ì˜Ü ” Ì™” Ì™
+” Ì™” Ì™” Ì™” Ì™” Ì™”! Ì™”# Ì™”* Ì™$”/ Ì™)”3 Ì™-”; Ì™5”< Ì™6”= Ì™7”> Ì™8”ÌC Ì™=”ÌD Ì™>”ÌE Ì™?”ÌF Ì™Ì@”ÌK Ì™ÌE”ÌL Ì™ÌF”ÌV Ì™ÌP”ÌW Ì™ÌQ”ÌX Ì™ÌQ’” Ìš” Ìš‘”	 Ì›Ü ” Ì” Ì” Ì	” Ì” Ì” Ì” Ì” Ì” Ì”& Ì"”+ Ì'”/ Ì+”7 Ì3”8 Ì4”9 Ì5”: Ì6”? Ì;”Ì@ Ì<”ÌA Ì=”ÌB Ì>”ÌG ÌÌC”ÌH ÌÌD”ÌR ÌÌN”ÌS ÌÌO”ÌT ÌÌO˜” Ì” Ì” Ì	” Ì” Ì”  Ì”! Ì”" Ì–” ÌŸ” ÌŸ” ÌŸ	” ÌŸ” ÌŸ” ÌŸ’” Ì ” Ì ”” Ì¢” Ì¢” Ì¢” Ì¢—” Ì£” Ì£” Ì£	” Ì£” Ì£” Ì£” Ì£’” Ì¤” Ì¤‘”	 Ì¥” Ì§” Ì§” Ì§” Ì§” Ì§” Ì§” Ì§” Ì§”! Ì§”" Ì§”' Ì§#”0 Ì§,”2 Ì§.’” Ì¨”! Ì¨Ü ” Ì©” Ì©” Ì©” Ì©”( Ì©"”* Ì©$”+ Ì©%”7 Ì©1”8 Ì©2”< Ì©6”= Ì©7”ÌA Ì©;”ÌD Ì©>”ÌG Ì©ÌA”ÌH Ì©ÌB”ÌI Ì©ÌB‘”	 Ìª”” Ì«” Ì«” Ì«” Ì«’” Ì¬” Ì¬’” Ì®” Ì®”” Ì¯”
+ Ì¯” Ì¯	” Ì¯–” Ì°” Ì°” Ì°” Ì°” Ì°” Ì°˜” Ì±” Ì±” Ì±” Ì±” Ì±”Ì@ Ì±:”ÌA Ì±;”ÌB Ì±<‘”	 Ì²—” Ì³” Ì³” Ì³	” Ì³” Ì³” Ì³” Ì³’” Ì´” Ì´‘”	 Ìµ” Ì·” Ì·” Ì·” Ì·%” Ì·)” Ì·*”" Ì·2”# Ì·3”) Ì·9”* Ì·:”- Ì·=”. Ì·>”/ Ì·>–” Ì¸” Ì¸” Ì¸” Ì¸”  Ì¸”" Ì¸Ÿ” Ì¹” Ì¹” Ì¹”! Ì¹”# Ì¹”$ Ì¹”. Ì¹(”/ Ì¹)”3 Ì¹-”4 Ì¹.”8 Ì¹2”; Ì¹5”> Ì¹8”? Ì¹9”Ì@ Ì¹9˜” Ìº” Ìº
+” Ìº”! Ìº”" Ìº”( Ìº"”) Ìº#”* Ìº#‘”	 Ì»’” Ì¼” Ì¼”” Ì¾”	 Ì¾”
+ Ì¾” Ì¾—” Ì¿” Ì¿” Ì¿	” Ì¿” Ì¿” Ì¿” Ì¿’” ÌÀ” ÌÀ‘”	 ÌÁ˜” ÌÂ” ÌÂ” ÌÂ	” ÌÂ” ÌÂ” ÌÂ” ÌÂ” ÌÂ—” ÌÃ” ÌÃ” ÌÃ	” ÌÃ” ÌÃ” ÌÃ” ÌÃÜ ” ÌÅ” ÌÅ” ÌÅ” ÌÅ” ÌÅ$”' ÌÅ-”( ÌÅ.”3 ÌÅ9”5 ÌÅ;”6 ÌÅ<”> ÌÅÌD”? ÌÅÌE”ÌC ÌÅÌI”ÌD ÌÅÌJ”ÌH ÌÅÌN”ÌI ÌÅÌO”ÌJ ÌÅÌOÜ ” ÌÆ” ÌÆ	” ÌÆ” ÌÆ” ÌÆ” ÌÆ” ÌÆ” ÌÆ” ÌÆ”% ÌÆ!”& ÌÆ"”, ÌÆ(”. ÌÆ*”/ ÌÆ+”1 ÌÆ-”3 ÌÆ/Ü ” ÌÇ” ÌÇ” ÌÇ” ÌÇ”' ÌÇ!”) ÌÇ#”* ÌÇ$”4 ÌÇ.”5 ÌÇ/”9 ÌÇ3”: ÌÇ4”> ÌÇ8”ÌA ÌÇ;”ÌJ ÌÇÌD”ÌK ÌÇÌE”ÌL ÌÇÌF”ÌM ÌÇÌG”ÌN ÌÇÌH”ÌO ÌÇÌH‘”	 ÌÈ’” ÌÉ” ÌÉ’” ÌË” ÌË˜” ÌÌ” ÌÌ” ÌÌ” ÌÌ” ÌÌ” ÌÌ”# ÌÌ”$ ÌÌ’” ÌÍ” ÌÍ’” ÌÏ” ÌÏ’” ÌĞ
+” ÌĞ”” ÌÑ” ÌÑ” ÌÑ” ÌÑÜ ” ÌÒ” ÌÒ
+” ÌÒ” ÌÒ”" ÌÒ”& ÌÒ ”* ÌÒ$”+ ÌÒ%”4 ÌÒ.”8 ÌÒ2”< ÌÒ6”= ÌÒ7”ÌE ÌÒ?”ÌF ÌÒÌ@”ÌM ÌÒÌG”ÌO ÌÒÌI”ÌQ ÌÒÌK’” ÌÓ” ÌÓ‘” ÌÔ” ÌÕ” ÌÕ
+” ÌÕ” ÌÕ” ÌÕ” ÌÕ”& ÌÕ ”' ÌÕ!”+ ÌÕ%”- ÌÕ'”. ÌÕ(”/ ÌÕ)”0 ÌÕ*”1 ÌÕ*” ÌÖ” ÌÖ
+” ÌÖ” ÌÖ'” ÌÖ+” ÌÖ,”& ÌÖ4”' ÌÖ5”- ÌÖ;”. ÌÖ<”4 ÌÖÌB”5 ÌÖÌC”6 ÌÖÌC–” Ì×” Ì×
+” Ì×” Ì×”$ Ì×”& Ì× Ÿ” ÌØ” ÌØ” ÌØ”% ÌØ”' ÌØ”( ÌØ ”2 ÌØ*”3 ÌØ+”7 ÌØ/”8 ÌØ0”< ÌØ4”? ÌØ7”ÌE ÌØ=”ÌF ÌØ>”ÌG ÌØ>˜” ÌÙ” ÌÙ” ÌÙ”% ÌÙ”& ÌÙ”, ÌÙ$”- ÌÙ%”. ÌÙ%‘” ÌÚš” ÌÛ” ÌÛ
+” ÌÛ” ÌÛ” ÌÛ”  ÌÛ”! ÌÛ”' ÌÛ!”( ÌÛ"”) ÌÛ"‘”	 ÌÜ’” Ìİ” Ìİ”” Ìß
+” Ìß” Ìß” Ìß6—” Ìà” Ìà” Ìà” Ìà” Ìà”$ Ìà ”& Ìà"—” Ìá” Ìá
+” Ìá” Ìá”" Ìá”' Ìá!”( Ìá!‘”	 Ìâ–” Ìã	” Ìã” Ìã” Ìã”# Ìã”% Ìã!™” Ìä” Ìä
+” Ìä” Ìä”" Ìä”' Ìä!”( Ìä"”2 Ìä,”3 Ìä,Ü ” Ìå” Ìå” Ìå” Ìå” Ìå”8 Ìå2”; Ìå5”Ì@ Ìå:”ÌA Ìå;”ÌK ÌåÌE”ÌN ÌåÌH”Ì_ ÌåÌY”Ìb ÌåÌ\”Ìf ÌåÌ`”Ìg ÌåÌa”Ìt ÌåÌn”Ìu ÌåÌo”Ìv ÌåÌo‘”	 Ìæ’” Ìç” Ìç”” Ìé
+” Ìé” Ìé” Ìé3—” Ìê” Ìê” Ìê” Ìê” Ìê”$ Ìê ”& Ìê"—” Ìë” Ìë
+” Ìë” Ìë”" Ìë”' Ìë!”( Ìë!Ü ” Ìì” Ìì” Ìì” Ìì” Ìì”5 Ìì/”8 Ìì3”= Ìì8”Ì@ Ìì;”ÌQ ÌìÌL”ÌT ÌìÌO”ÌX ÌìÌS”ÌY ÌìÌT”Ìf ÌìÌa”Ìg ÌìÌb”Ìh ÌìÌb‘”	 Ìí–” Ìî	” Ìî” Ìî” Ìî”# Ìî”% Ìî!™” Ìï” Ìï
+” Ìï” Ìï”" Ìï”' Ìï!”( Ìï"”2 Ìï,”3 Ìï,Ü ” Ìğ” Ìğ” Ìğ” Ìğ” Ìğ”5 Ìğ/”8 Ìğ2”= Ìğ7”> Ìğ8”ÌH ÌğÌB”ÌK ÌğÌE”Ì\ ÌğÌV”Ì_ ÌğÌY”Ìc ÌğÌ]”Ìd ÌğÌ^”Ìq ÌğÌk”Ìr ÌğÌl”Ìs ÌğÌl‘”	 Ìñ’” Ìò” Ìò‘” Ìô‘” ÌùŸ” Ìú”
+ Ìú” Ìú	”  Ìú”! Ìú”( Ìú/”* Ìú1”- Ìú<”/ Ìú>”4 ÌúÌP”6 ÌúÌR”? ÌúÌc”ÌH ÌúÌl”ÌI ÌúÌm”ÌU ÌúÌy’” Ìû” Ìû
+—” Ìü” Ìü” Ìü	” Ìü” Ìü”" Ìü”$ Ìü Ü ” Ìı” Ìı” Ìı”" Ìı”# Ìı”+ Ìı%”. Ìı(”7 Ìı1”8 Ìı2”ÌA Ìı;”ÌD Ìı>”ÌJ ÌıÌD”ÌM ÌıÌG”ÌV ÌıÌP”ÌW ÌıÌQ”Ì` ÌıÌZ”Ìc ÌıÌ]”Ìf ÌıÌ`”Ìh ÌıÌb”Ìm ÌıÌg”Ìn ÌıÌh”Ìp ÌıÌjÜ ” Ìş” Ìş” Ìş”! Ìş”# Ìş”$ Ìş”4 Ìş.”5 Ìş/”< Ìş6”= Ìş7”ÌE Ìş?”ÌH ÌşÌB”ÌQ ÌşÌK”ÌR ÌşÌL”Ì[ ÌşÌU”Ì^ ÌşÌX”Ìd ÌşÌ^”Ìg ÌşÌa”Ìp ÌşÌj”Ìq ÌşÌk”Ìz ÌşÌt”Ì{ ÌşÌu”Ì| ÌşÌu•” Ìÿ” Ìÿ” Ìÿ”! Ìÿ”# ÌÿÜ ” Í 	” Í ” Í ”& Í ”' Í ”/ Í '”2 Í *”; Í 3”< Í 4”ÌE Í =”ÌH Í Ì@”ÌN Í ÌF”ÌQ Í ÌI”ÌZ Í ÌR”Ì[ Í ÌS”Ìd Í Ì\”Ìg Í Ì_”Ìj Í Ìb”Ìl Í Ìd”Ìq Í Ìi”Ìr Í Ìj”Ìs Í Ìj‘”	 Í”” Í” Í” Í” Í’” Í” Í‘” Í‘” Í
+” Í”
+ Í” Í	” Í” Í”% Í,”' Í.”* Í9”, Í;”5 ÍÌL”> ÍÌU”? ÍÌV”ÌK ÍÌb’” Í” Í–” Í” Í” Í” Í”$ Í ”& Í"Ü ” Í” Í” Í”! Í”" Í”* Í$”- Í'”6 Í0”7 Í1”Ì@ Í:”ÌC Í=”ÌI ÍÌC”ÌL ÍÌF”ÌU ÍÌO”ÌV ÍÌP”Ì_ ÍÌY”Ìb ÍÌ\”Ìe ÍÌ_”Ìf ÍÌ`”Ìg ÍÌ`’” Í” Í‘” Í‘” Í”” Í” Í” Í” Í—” Í” Í” Í” Í	” Í
+” Í” Í˜” Í” Í” Í” Í” Í”Ì@ Í:”ÌA Í;”ÌB Í;‘”	 Íš” Í” Í” Í” Í” Í” Í” Í” Í”" Í”# Íœ” Í” Í” Í” Í”! Í”# Í”$ Í”) Í$”* Í%”. Í)”/ Í*”1 Í,”” Í” Í” Í” Í‘”	 Í‘” Í”” Í” Í” Í” Í‘”	 Í’” Í ” Í —”  	” ”  ”% ,”& ,”' -”ÌB ÌHÔrG–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜ‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ‘”  Ìs ‘”  Ìt ‘”  Ìu ‘”  Ìv ‘”  Ìw ‘”  Ìx ‘”  Ìy ‘”  Ìz ‘”  Ì{ ‘”  Ì| ‘”  Ì} ‘”  Ì~ ‘”  Ì ‘”  Ì€ ‘”  Ì ‘”  Ì‚ ‘”  Ìƒ ‘”  Ì„ ‘”  Ì… ‘”  Ì† ‘”  Ì‡ ‘”  Ìˆ ‘”  Ì‰ ‘”  ÌŠ ‘”  Ì‹ ‘”  ÌŒ ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì‘ ‘”  Ì’ ‘”  Ì“ ‘”  Ì” ‘”  Ì• ‘”  Ì– ‘”  Ì— ‘”  Ì˜ ‘”  Ì™ ‘”  Ìš ‘”  Ì› ‘”  Ìœ ‘”  Ì ‘”  Ì ‘”  ÌŸ ‘”  Ì  ‘”  Ì¡ ‘”  Ì¢ ‘”  Ì£ ‘”  Ì¤ ‘”  Ì¥ ‘”  Ì¦ ‘”  Ì§ ‘”  Ì¨ ‘”  Ì© ‘”  Ìª ‘”  Ì« ‘”  Ì¬ ‘”  Ì­ ‘”  Ì® ‘”  Ì¯ ‘”  Ì° ‘”  Ì± ‘”  Ì² ‘”  Ì³ ‘”  Ì´ ‘”  Ìµ ‘”  Ì¶ ‘”  Ì· ‘”  Ì¸ ‘”  Ì¹ ‘”  Ìº ‘”  Ì» ‘”  Ì¼ ‘”  Ì½ ‘”  Ì¾ ‘”  Ì¿ ‘”  ÌÀ ‘”  ÌÁ ‘”  ÌÂ ‘”  ÌÃ ‘”  ÌÄ ‘”  ÌÅ ‘”  ÌÆ ‘”  ÌÇ ‘”  ÌÈ ‘”  ÌÉ ‘”  ÌÊ ‘”  ÌË ‘”  ÌÌ ‘”  ÌÍ ‘”  ÌÎ ‘”  ÌÏ ‘”  ÌĞ ‘”  ÌÑ ‘”  ÌÒ ‘”  ÌÓ ‘”  ÌÔ ‘”  ÌÕ ‘”  ÌÖ ‘”  Ì× ‘”  ÌØ ‘”  ÌÙ ‘”  ÌÚ ‘”  ÌÛ ‘”  ÌÜ ‘”  Ìİ ‘”  ÌŞ ‘”  Ìß ‘”  Ìà ‘”  Ìá ‘”  Ìâ ‘”  Ìã ‘”  Ìä ‘”  Ìå ‘”  Ìæ ‘”  Ìç ‘”  Ìè ‘”  Ìé ‘”  Ìê ‘”  Ìë ‘”  Ìì ‘”  Ìí ‘”  Ìî ‘”  Ìï ‘”  Ìğ ‘”  Ìñ ‘”  Ìò ‘”  Ìó ‘”  Ìô ‘”  Ìõ ‘”  Ìö ‘”  Ì÷ ‘”  Ìø ‘”  Ìù ‘”  Ìú ‘”  Ìû ‘”  Ìü ‘”  Ìı ‘”  Ìş ‘”  Ìÿ ‘”  Í  ‘”  Í ÔrH’§missing¦pluginÃ¦genAbcÂÔ  ÔrI”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrJ–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍDÍ$/ÔrK–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍKÍ$/ÔrL”¤type¥start£end¤nameªIdentifierÍQÍZ©FileCacheÀÔrM”¤type¥start£end¤body©ClassBodyÍ[Í$/Ü ÔrN˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍbÍÂÂLªIdentifierÍbÍm«constructor«constructorÔrO™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍmÍÀÂÂÂ“LªIdentifierÍnÍu§contextLªIdentifierÍwÍ{¤sizeLªIdentifierÍ}Íƒ¦memoryM®BlockStatementÍ…ÍÔrP”¤type¥start£endªexpression³ExpressionStatementÍÍ£ÔrQ–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍÍ¢¡=ÔrR—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍÍÔrS“¤type¥start£end®ThisExpressionÍÍ”LªIdentifierÍ•Í©maxMemoryÂÂÔrT•¤type¥start£end¥value£raw§LiteralÍ¡Í¢ ¡0P³ExpressionStatementÍ­ÍÄQ´AssignmentExpressionÍ­ÍÃ¡=R°MemberExpressionÍ­Í¿S®ThisExpressionÍ­Í±LªIdentifierÍ²Í¿­currentMemoryÂÂT§LiteralÍÂÍÃ ¡0P³ExpressionStatementÍÎÍßQ´AssignmentExpressionÍÎÍŞ¡=R°MemberExpressionÍÎÍÚS®ThisExpressionÍÎÍÒLªIdentifierÍÓÍÚ§maxSizeÂÂT§LiteralÍİÍŞ ¡0P³ExpressionStatementÍéÍøQ´AssignmentExpressionÍéÍ÷¡=R°MemberExpressionÍéÍòS®ThisExpressionÍéÍíLªIdentifierÍîÍò¤pathÂÂT§LiteralÍõÍ÷ ¢''P³ExpressionStatementÍÍQ´AssignmentExpressionÍÍ¡=R°MemberExpressionÍÍS®ThisExpressionÍÍLªIdentifierÍÍ¨isInitedÂÂT§LiteralÍÍÂ¥falseP³ExpressionStatementÍ"ÍVQ´AssignmentExpressionÍ"ÍU¡=R°MemberExpressionÍ"Í;S®ThisExpressionÍ"Í&LªIdentifierÍ'Í;´defaultMaxMemorySizeÂÂÔrU–¤type¥start£end¤left¨operator¥right°BinaryExpressionÍ>ÍUU°BinaryExpressionÍ>ÍNU°BinaryExpressionÍ>ÍGT§LiteralÍ>Í@
+¢10¡*T§LiteralÍCÍGÍ ¤1024¡*T§LiteralÍJÍNÍ ¤1024¡*T§LiteralÍQÍUÍ ¤1024P³ExpressionStatementÍ`ÍŒQ´AssignmentExpressionÍ`Í‹¡=R°MemberExpressionÍ`ÍvS®ThisExpressionÍ`ÍdLªIdentifierÍeÍv±defaultMemorySizeÂÂU°BinaryExpressionÍyÍ‹U°BinaryExpressionÍyÍ„T§LiteralÍyÍ}Í ¤1024¡*T§LiteralÍ€Í„Í ¤1024¡*T§LiteralÍ‡Í‹Í ¤1024ÔrV–¤type¥start£end¤testªconsequent©alternate«IfStatementÍ–ÍàU±LogicalExpressionÍšÍµU°BinaryExpressionÍšÍ£LªIdentifierÍšÍ¤size¢<=T§LiteralÍ¢Í£ ¡0¢||U°BinaryExpressionÍ§ÍµLªIdentifierÍ§Í«¤size¡>LªIdentifierÍ®Íµ§INT_MAXM®BlockStatementÍ·Íà‘P³ExpressionStatementÍÆÍÕQ´AssignmentExpressionÍÆÍÔ¡=LªIdentifierÍÆÍÊ¤sizeLªIdentifierÍÍÍÔ§INT_MAXÀV«IfStatementÍêÍ[U±LogicalExpressionÍîÍU°BinaryExpressionÍîÍùLªIdentifierÍîÍô¦memory¢<=T§LiteralÍøÍù ¡0¢||U°BinaryExpressionÍıÍLªIdentifierÍıÍ¦memory¡>R°MemberExpressionÍÍS®ThisExpressionÍÍ
+LªIdentifierÍÍ´defaultMaxMemorySizeÂÂM®BlockStatementÍ!Í[‘P³ExpressionStatementÍ0ÍPQ´AssignmentExpressionÍ0ÍO¡=LªIdentifierÍ0Í6¦memoryR°MemberExpressionÍ9ÍOS®ThisExpressionÍ9Í=LªIdentifierÍ>ÍO±defaultMemorySizeÂÂÀP³ExpressionStatementÍeÍQ´AssignmentExpressionÍeÍŒ¡=R°MemberExpressionÍeÍrS®ThisExpressionÍeÍiLªIdentifierÍjÍr¨lruCacheÂÂÔrW•¤type¥start£end¦callee©arguments­NewExpressionÍuÍŒR°MemberExpressionÍyÍ†LªIdentifierÍyÍ}¤utilLªIdentifierÍ~Í†¨LRUCacheÂÂ‘LªIdentifierÍ‡Í‹¤sizeP³ExpressionStatementÍ—Í¯Q´AssignmentExpressionÍ—Í®¡=R°MemberExpressionÍ—Í¥S®ThisExpressionÍ—Í›LªIdentifierÍœÍ¥©maxMemoryÂÂLªIdentifierÍ¨Í®¦memoryP³ExpressionStatementÍ¹ÍĞQ´AssignmentExpressionÍ¹ÍÏ¡=R°MemberExpressionÍ¹ÍËS®ThisExpressionÍ¹Í½LªIdentifierÍ¾ÍË­currentMemoryÂÂT§LiteralÍÎÍÏ ¡0P³ExpressionStatementÍÚÍîQ´AssignmentExpressionÍÚÍí¡=R°MemberExpressionÍÚÍæS®ThisExpressionÍÚÍŞLªIdentifierÍßÍæ§maxSizeÂÂLªIdentifierÍéÍí¤sizeP³ExpressionStatementÍøÍQ´AssignmentExpressionÍøÍ¡=R°MemberExpressionÍøÍS®ThisExpressionÍøÍüLªIdentifierÍıÍ§contextÂÂLªIdentifierÍÍ§contextN°MethodDefinitionÍEÍ=ÂÂLªIdentifierÍKÍX­initFileCache¦methodO²FunctionExpressionÍXÍ=ÀÂÂÃ‘ÔrX•¤type¥start£end¤left¥right±AssignmentPatternÍYÍvLªIdentifierÍYÍ]¤pathR°MemberExpressionÍ`ÍvLªIdentifierÍ`Íi©FileCacheLªIdentifierÍjÍv¬CACHE_FOLDERÂÂM®BlockStatementÍxÍ=œV«IfStatementÍƒÍ·R°MemberExpressionÍ‡Í”S®ThisExpressionÍ‡Í‹LªIdentifierÍŒÍ”¨isInitedÂÂM®BlockStatementÍ–Í·‘ÔrY”¤type¥start£end¨argument¯ReturnStatementÍ¥Í¬ÀÀÔrZ•¤type¥start£end¬declarations¤kind³VariableDeclarationÍÁÍÜ‘Ôr[•¤type¥start£end¢id¤init²VariableDeclaratorÍÅÍÛLªIdentifierÍÅÍÎ©startTimeÔr\–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍÑÍÛR°MemberExpressionÍÑÍÙLªIdentifierÍÑÍÕ¤DateLªIdentifierÍÖÍÙ£nowÂÂÂ£letV«IfStatementÍæÍU±LogicalExpressionÍêÍ)R°MemberExpressionÍêÍöS®ThisExpressionÍêÍîLªIdentifierÍïÍö§contextÂÂ¢&&U°BinaryExpressionÍúÍ)\®CallExpressionÍúÍ R°MemberExpressionÍúÍ	LªIdentifierÍúÍş¤pathLªIdentifierÍÿÍ	ªstartsWithÂÂ‘R°MemberExpressionÍ
+ÍR°MemberExpressionÍ
+ÍS®ThisExpressionÍ
+ÍLªIdentifierÍÍ§contextÂÂLªIdentifierÍÍ¨cacheDirÂÂÂ£===T§LiteralÍ%Í)Ã¤trueM®BlockStatementÍ+ÍV‘P³ExpressionStatementÍ:ÍKQ´AssignmentExpressionÍ:ÍJ¡=R°MemberExpressionÍ:ÍCS®ThisExpressionÍ:Í>LªIdentifierÍ?ÍC¤pathÂÂLªIdentifierÍFÍJ¤pathM®BlockStatementÍeÍ’P³ExpressionStatementÍtÍ’Q´AssignmentExpressionÍtÍ‘¡=R°MemberExpressionÍtÍŠLªIdentifierÍtÍ}©FileCacheLªIdentifierÍ~ÍŠ¬CACHE_FOLDERÂÂLªIdentifierÍÍ‘¤pathP³ExpressionStatementÍ ÍQ´AssignmentExpressionÍ Í¡=R°MemberExpressionÍ Í©S®ThisExpressionÍ Í¤LªIdentifierÍ¥Í©¤pathÂÂU°BinaryExpressionÍ¬ÍU°BinaryExpressionÍ¬ÍñU°BinaryExpressionÍ¬ÍØP¯ChainExpressionÍ¬ÍÂR°MemberExpressionÍ¬ÍÂR°MemberExpressionÍ¬Í¸S®ThisExpressionÍ¬Í°LªIdentifierÍ±Í¸§contextÂÂLªIdentifierÍºÍÂ¨cacheDirÂÃ¡+R°MemberExpressionÍÅÍØLªIdentifierÍÅÍÎ©FileUtilsLªIdentifierÍÏÍØ©SEPARATORÂÂ¡+R°MemberExpressionÍÛÍñLªIdentifierÍÛÍä©FileCacheLªIdentifierÍåÍñ¬CACHE_FOLDERÂÂ¡+R°MemberExpressionÍôÍLªIdentifierÍôÍı©FileUtilsLªIdentifierÍşÍ©SEPARATORÂÂP³ExpressionStatementÍÍSY¯AwaitExpressionÍÍR\®CallExpressionÍ#ÍRR°MemberExpressionÍ#ÍG\®CallExpressionÍ#Í:R°MemberExpressionÍ#Í8LªIdentifierÍ#Í,©FileUtilsLªIdentifierÍ-Í8«getInstanceÂÂÂLªIdentifierÍ;ÍG¬createFolderÂÂ‘R°MemberExpressionÍHÍQS®ThisExpressionÍHÍLLªIdentifierÍMÍQ¤pathÂÂÂZ³VariableDeclarationÍÍÁ‘[²VariableDeclaratorÍƒÍÀLªIdentifierÍƒÍŒ©filenamesY¯AwaitExpressionÍÍÀ\®CallExpressionÍ•ÍÀR°MemberExpressionÍ•Íµ\®CallExpressionÍ•Í¬R°MemberExpressionÍ•ÍªLªIdentifierÍ•Í©FileUtilsLªIdentifierÍŸÍª«getInstanceÂÂÂLªIdentifierÍ­Íµ¨ListFileÂÂ‘R°MemberExpressionÍ¶Í¿S®ThisExpressionÍ¶ÍºLªIdentifierÍ»Í¿¤pathÂÂÂ£letZ³VariableDeclarationÍæÍú‘[²VariableDeclaratorÍêÍùLªIdentifierÍêÍôªcachefilesÔr]”¤type¥start£end¨elements¯ArrayExpressionÍ÷Íù£letÔr^—¤type¥start£end¤init¤test¦update¤body¬ForStatementÍ	Í
+JZ³VariableDeclarationÍ		Í	‘[²VariableDeclaratorÍ	Í	LªIdentifierÍ	Í	¡iT§LiteralÍ	Í	 ¡0£letU°BinaryExpressionÍ	Í	(LªIdentifierÍ	Í	¡i¡<R°MemberExpressionÍ	Í	(LªIdentifierÍ	Í	!©filenamesLªIdentifierÍ	"Í	(¦lengthÂÂÔr_–¤type¥start£end¨operator¦prefix¨argument°UpdateExpressionÍ	*Í	-¢++ÂLªIdentifierÍ	*Í	+¡iM®BlockStatementÍ	/Í
+J’Z³VariableDeclarationÍ	>Í	†‘[²VariableDeclaratorÍ	BÍ	…LªIdentifierÍ	BÍ	F¤statY¯AwaitExpressionÍ	IÍ	…\®CallExpressionÍ	OÍ	…R°MemberExpressionÍ	OÍ	k\®CallExpressionÍ	OÍ	fR°MemberExpressionÍ	OÍ	dLªIdentifierÍ	OÍ	X©FileUtilsLªIdentifierÍ	YÍ	d«getInstanceÂÂÂLªIdentifierÍ	gÍ	k¤StatÂÂ‘U°BinaryExpressionÍ	lÍ	„R°MemberExpressionÍ	lÍ	uS®ThisExpressionÍ	lÍ	pLªIdentifierÍ	qÍ	u¤pathÂÂ¡+R°MemberExpressionÍ	xÍ	„LªIdentifierÍ	xÍ	©filenamesLªIdentifierÍ	‚Í	ƒ¡iÃÂÂ£letP³ExpressionStatementÍ	”Í
+?\®CallExpressionÍ	”Í
+>R°MemberExpressionÍ	”Í	£LªIdentifierÍ	”Í	ªcachefilesLªIdentifierÍ	ŸÍ	£¤pushÂÂ‘Ôr`”¤type¥start£endªproperties°ObjectExpressionÍ	¤Í
+=“Ôra™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍ	·Í	ÉÂÂÂLªIdentifierÍ	·Í	»¤fileR°MemberExpressionÍ	½Í	ÉLªIdentifierÍ	½Í	Æ©filenamesLªIdentifierÍ	ÇÍ	È¡iÃÂ¤inita¨PropertyÍ	ÜÍ
+ÂÂÂLªIdentifierÍ	ÜÍ	á¥ctimeVµConditionalExpressionÍ	ãÍ
+U°BinaryExpressionÍ	ãÍ	õLªIdentifierÍ	ãÍ	ç¤stat£===LªIdentifierÍ	ìÍ	õ©undefinedT§LiteralÍ	øÍ	ù ¡0R°MemberExpressionÍ	üÍ
+LªIdentifierÍ	üÍ
+ ¤statLªIdentifierÍ
+Í
+¥ctimeÂÂ¤inita¨PropertyÍ
+Í
+.ÂÂÂLªIdentifierÍ
+Í
+¤sizeU±LogicalExpressionÍ
+Í
+.P¯ChainExpressionÍ
+Í
+)R°MemberExpressionÍ
+Í
+)LªIdentifierÍ
+Í
+#¤statLªIdentifierÍ
+%Í
+)¤sizeÂÃ¢??T§LiteralÍ
+-Í
+. ¡0¤initÂZ³VariableDeclarationÍ
+TÍ
+˜‘[²VariableDeclaratorÍ
+XÍ
+—LªIdentifierÍ
+XÍ
+h°sortedCachefiles\®CallExpressionÍ
+kÍ
+—R°MemberExpressionÍ
+kÍ
+zLªIdentifierÍ
+kÍ
+uªcachefilesLªIdentifierÍ
+vÍ
+z¤sortÂÂ‘O·ArrowFunctionExpressionÍ
+{Í
+–ÀÃÂÂ’LªIdentifierÍ
+|Í
+}¡aLªIdentifierÍ
+Í
+€¡bU°BinaryExpressionÍ
+…Í
+–R°MemberExpressionÍ
+…Í
+ŒLªIdentifierÍ
+…Í
+†¡aLªIdentifierÍ
+‡Í
+Œ¥ctimeÂÂ¡-R°MemberExpressionÍ
+Í
+–LªIdentifierÍ
+Í
+¡bLªIdentifierÍ
+‘Í
+–¥ctimeÂÂÂ£let^¬ForStatementÍ
+¢ÍMZ³VariableDeclarationÍ
+§Í
+°‘[²VariableDeclaratorÍ
+«Í
+°LªIdentifierÍ
+«Í
+¬¡iT§LiteralÍ
+¯Í
+° ¡0£letU°BinaryExpressionÍ
+²Í
+ÍLªIdentifierÍ
+²Í
+³¡i¡<R°MemberExpressionÍ
+¶Í
+ÍLªIdentifierÍ
+¶Í
+Æ°sortedCachefilesLªIdentifierÍ
+ÇÍ
+Í¦lengthÂÂ_°UpdateExpressionÍ
+ÏÍ
+Ò¢++ÂLªIdentifierÍ
+ÏÍ
+Ğ¡iM®BlockStatementÍ
+ÔÍM”Z³VariableDeclarationÍ
+ãÍ‘[²VariableDeclaratorÍ
+éÍLªIdentifierÍ
+éÍ
+ñ¨fileSizeR°MemberExpressionÍ
+ôÍR°MemberExpressionÍ
+ôÍLªIdentifierÍ
+ôÍ°sortedCachefilesLªIdentifierÍÍ¡iÃÂLªIdentifierÍÍ¤sizeÂÂ¥constV«IfStatementÍCÍÓU±LogicalExpressionÍGÍ U°BinaryExpressionÍGÍkR°MemberExpressionÍGÍ[R°MemberExpressionÍGÍTS®ThisExpressionÍGÍKLªIdentifierÍLÍT¨lruCacheÂÂLªIdentifierÍUÍ[¦lengthÂÂ¢==R°MemberExpressionÍ_ÍkS®ThisExpressionÍ_ÍcLªIdentifierÍdÍk§maxSizeÂÂ¢&&_¯UnaryExpressionÍoÍ ¡!Ã\®CallExpressionÍpÍ R°MemberExpressionÍpÍ†R°MemberExpressionÍpÍ}S®ThisExpressionÍpÍtLªIdentifierÍuÍ}¨lruCacheÂÂLªIdentifierÍ~Í†¨containsÂÂ‘R°MemberExpressionÍ‡ÍŸR°MemberExpressionÍ‡ÍšLªIdentifierÍ‡Í—°sortedCachefilesLªIdentifierÍ˜Í™¡iÃÂLªIdentifierÍ›ÍŸ¤fileÂÂÂM®BlockStatementÍ¢ÍÓ’Z³VariableDeclarationÍµÍğ‘[²VariableDeclaratorÍ¹ÍïLªIdentifierÍ¹Í¿¦remove\®CallExpressionÍÂÍïR°MemberExpressionÍÂÍÖR°MemberExpressionÍÂÍÏS®ThisExpressionÍÂÍÆLªIdentifierÍÇÍÏ¨lruCacheÂÂLªIdentifierÍĞÍÖ¦removeÂÂ‘R°MemberExpressionÍ×Íî\®CallExpressionÍ×ÍëR°MemberExpressionÍ×ÍéR°MemberExpressionÍ×ÍäS®ThisExpressionÍ×ÍÛLªIdentifierÍÜÍä¨lruCacheÂÂLªIdentifierÍåÍé¤keysÂÂÂT§LiteralÍìÍí ¡0ÃÂÂ£letV«IfStatementÍÍÄU°BinaryExpressionÍÍLªIdentifierÍÍ¦remove£!==LªIdentifierÍÍ©undefinedM®BlockStatementÍÍÄ’P³ExpressionStatementÍ3Í{\®CallExpressionÍ3ÍzR°MemberExpressionÍ3ÍU\®CallExpressionÍ3ÍJR°MemberExpressionÍ3ÍHLªIdentifierÍ3Í<©FileUtilsLªIdentifierÍ=ÍH«getInstanceÂÂÂLªIdentifierÍKÍUªdeleteFileÂÂ‘U°BinaryExpressionÍVÍyR°MemberExpressionÍVÍ_S®ThisExpressionÍVÍZLªIdentifierÍ[Í_¤pathÂÂ¡+R°MemberExpressionÍbÍy\®CallExpressionÍbÍvR°MemberExpressionÍbÍtR°MemberExpressionÍbÍoS®ThisExpressionÍbÍfLªIdentifierÍgÍo¨lruCacheÂÂLªIdentifierÍpÍt¤keysÂÂÂT§LiteralÍwÍx ¡0ÃÂÂP³ExpressionStatementÍ‘Í±\®CallExpressionÍ‘Í°R°MemberExpressionÍ‘Í¦S®ThisExpressionÍ‘Í•LªIdentifierÍ–Í¦°removeMemorySizeÂÂ‘LªIdentifierÍ§Í¯¨fileSizeÂÀÀP³ExpressionStatementÍáÍ\®CallExpressionÍáÍR°MemberExpressionÍáÍòR°MemberExpressionÍáÍîS®ThisExpressionÍáÍåLªIdentifierÍæÍî¨lruCacheÂÂLªIdentifierÍïÍò£putÂÂ’R°MemberExpressionÍóÍR°MemberExpressionÍóÍLªIdentifierÍóÍ°sortedCachefilesLªIdentifierÍÍ¡iÃÂLªIdentifierÍÍ¤fileÂÂLªIdentifierÍÍ¨fileSizeÂP³ExpressionStatementÍ%ÍB\®CallExpressionÍ%ÍAR°MemberExpressionÍ%Í7S®ThisExpressionÍ%Í)LªIdentifierÍ*Í7­addMemorySizeÂÂ‘LªIdentifierÍ8Í@¨fileSizeÂP³ExpressionStatementÍWÍi\®CallExpressionÍWÍhR°MemberExpressionÍWÍfS®ThisExpressionÍWÍ[LªIdentifierÍ\ÍfªtrimToSizeÂÂÂP³ExpressionStatementÍsÍ\®CallExpressionÍsÍR°MemberExpressionÍsÍLªIdentifierÍsÍz§LogUtilLªIdentifierÍ{Í¤infoÂÂ‘U°BinaryExpressionÍ€ÍU°BinaryExpressionÍ€Í U°BinaryExpressionÍ€ÍõU°BinaryExpressionÍ€ÍŞU°BinaryExpressionÍ€ÍÓU°BinaryExpressionÍ€ÍÀU°BinaryExpressionÍ€Í¶T§LiteralÍ€Í›¹image init initFileCache:»'image init initFileCache:'¡+U°BinaryExpressionÍŸÍµ\®CallExpressionÍŸÍ©R°MemberExpressionÍŸÍ§LªIdentifierÍŸÍ£¤DateLªIdentifierÍ¤Í§£nowÂÂÂ¡-LªIdentifierÍ¬Íµ©startTime¡+T§LiteralÍ¹ÍÀ¥,num:§',num:'¡+R°MemberExpressionÍÃÍÓLªIdentifierÍÃÍÌ©filenamesLªIdentifierÍÍÍÓ¦lengthÂÂ¡+T§LiteralÍÖÍŞ¦,nums:¨',nums:'¡+R°MemberExpressionÍáÍõR°MemberExpressionÍáÍîS®ThisExpressionÍáÍåLªIdentifierÍæÍî¨lruCacheÂÂLªIdentifierÍïÍõ¦lengthÂÂ¡+T§LiteralÍøÍ ¦,size:¨',size:'¡+R°MemberExpressionÍÍS®ThisExpressionÍÍLªIdentifierÍÍ­currentMemoryÂÂÂP³ExpressionStatementÍ!Í6Q´AssignmentExpressionÍ!Í5¡=R°MemberExpressionÍ!Í.S®ThisExpressionÍ!Í%LªIdentifierÍ&Í.¨isInitedÂÂT§LiteralÍ1Í5Ã¤trueN°MethodDefinitionÍCÍ|ÂÂLªIdentifierÍCÍR¯isFileCacheInit¦methodO²FunctionExpressionÍRÍ|ÀÂÂÂM®BlockStatementÍUÍ|‘Y¯ReturnStatementÍ`ÍuR°MemberExpressionÍgÍtS®ThisExpressionÍgÍkLªIdentifierÍlÍt¨isInitedÂÂN°MethodDefinitionÍ‚ÍÃÂÂLªIdentifierÍ‚Í®getCacheFolder¦methodO²FunctionExpressionÍÍÃÀÂÂÂM®BlockStatementÍ“ÍÃ‘Y¯ReturnStatementÍÍ¼R°MemberExpressionÍ¥Í»LªIdentifierÍ¥Í®©FileCacheLªIdentifierÍ¯Í»¬CACHE_FOLDERÂÂN°MethodDefinitionÍßÍ³ÂÂLªIdentifierÍßÍâ£put¦methodO²FunctionExpressionÍâÍ³ÀÂÂÂ’LªIdentifierÍãÍæ£keyLªIdentifierÍèÍí¥valueM®BlockStatementÍïÍ³—V«IfStatementÍúÍbU±LogicalExpressionÍşÍU°BinaryExpressionÍşÍ	LªIdentifierÍşÍ£key¢==T§LiteralÍÍ	À¤null¢||U°BinaryExpressionÍÍLªIdentifierÍÍ¥value¢==T§LiteralÍÍÀ¤nullM®BlockStatementÍÍb‘Y®ThrowStatementÍ+ÍWW­NewExpressionÍ1ÍVLªIdentifierÍ5Í:¥Error‘T§LiteralÍ;ÍU¸key or value is invalid º'key or value is invalid 'ÀV«IfStatementÍlÍ¡_¯UnaryExpressionÍpÍ~¡!ÃR°MemberExpressionÍqÍ~S®ThisExpressionÍqÍuLªIdentifierÍvÍ~¨isInitedÂÂM®BlockStatementÍ€Í¡‘Y¯ReturnStatementÍÍ–ÀÀV«IfStatementÍÒÍ¶U±LogicalExpressionÍÖÍU°BinaryExpressionÍÖÍúR°MemberExpressionÍÖÍêR°MemberExpressionÍÖÍãS®ThisExpressionÍÖÍÚLªIdentifierÍÛÍã¨lruCacheÂÂLªIdentifierÍäÍê¦lengthÂÂ¢==R°MemberExpressionÍîÍúS®ThisExpressionÍîÍòLªIdentifierÍóÍú§maxSizeÂÂ¢&&_¯UnaryExpressionÍşÍ¡!Ã\®CallExpressionÍÿÍR°MemberExpressionÍÿÍR°MemberExpressionÍÿÍS®ThisExpressionÍÿÍLªIdentifierÍÍ¨lruCacheÂÂLªIdentifierÍÍ¨containsÂÂ‘LªIdentifierÍÍ£keyÂM®BlockStatementÍÍ[‘P³ExpressionStatementÍ+ÍP\®CallExpressionÍ+ÍOR°MemberExpressionÍ+Í6S®ThisExpressionÍ+Í/LªIdentifierÍ0Í6¦removeÂÂ‘R°MemberExpressionÍ7ÍN\®CallExpressionÍ7ÍKR°MemberExpressionÍ7ÍIR°MemberExpressionÍ7ÍDS®ThisExpressionÍ7Í;LªIdentifierÍ<ÍD¨lruCacheÂÂLªIdentifierÍEÍI¤keysÂÂÂT§LiteralÍLÍM ¡0ÃÂÂV«IfStatementÍjÍ¶\®CallExpressionÍnÍ‰R°MemberExpressionÍnÍ„R°MemberExpressionÍnÍ{S®ThisExpressionÍnÍrLªIdentifierÍsÍ{¨lruCacheÂÂLªIdentifierÍ|Í„¨containsÂÂ‘LªIdentifierÍ…Íˆ£keyÂM®BlockStatementÍ‹Í¶‘P³ExpressionStatementÍšÍ«\®CallExpressionÍšÍªR°MemberExpressionÍšÍ¥S®ThisExpressionÍšÍLªIdentifierÍŸÍ¥¦removeÂÂ‘LªIdentifierÍ¦Í©£keyÂÀZ³VariableDeclarationÍÀÍó‘[²VariableDeclaratorÍÄÍòLªIdentifierÍÄÍÇ£pre\®CallExpressionÍÊÍòR°MemberExpressionÍÊÍÛR°MemberExpressionÍÊÍ×S®ThisExpressionÍÊÍÎLªIdentifierÍÏÍ×¨lruCacheÂÂLªIdentifierÍØÍÛ£putÂÂ’LªIdentifierÍÜÍß£keyR°MemberExpressionÍáÍñLªIdentifierÍáÍæ¥valueLªIdentifierÍçÍñªbyteLengthÂÂÂ£letP³ExpressionStatementÍıÍ;\®CallExpressionÍıÍ:R°MemberExpressionÍıÍ"\®CallExpressionÍıÍR°MemberExpressionÍıÍLªIdentifierÍıÍ©FileUtilsLªIdentifierÍÍ«getInstanceÂÂÂLªIdentifierÍÍ"­writeDataSyncÂÂ’U°BinaryExpressionÍ#Í2R°MemberExpressionÍ#Í,S®ThisExpressionÍ#Í'LªIdentifierÍ(Í,¤pathÂÂ¡+LªIdentifierÍ/Í2£keyLªIdentifierÍ4Í9¥valueÂV«IfStatementÍEÍU°BinaryExpressionÍIÍZLªIdentifierÍIÍL£pre£!==LªIdentifierÍQÍZ©undefinedM®BlockStatementÍ\Í‘P³ExpressionStatementÍkÍ…\®CallExpressionÍkÍ„R°MemberExpressionÍkÍ}S®ThisExpressionÍkÍoLªIdentifierÍpÍ}­addMemorySizeÂÂ‘LªIdentifierÍ~Íƒ¥valueÂÀP³ExpressionStatementÍšÍ¬\®CallExpressionÍšÍ«R°MemberExpressionÍšÍ©S®ThisExpressionÍšÍLªIdentifierÍŸÍ©ªtrimToSizeÂÂÂN°MethodDefinitionÍŞÍÚÂÂLªIdentifierÍŞÍñ³putWithoutWriteFile¦methodO²FunctionExpressionÍñÍÚÀÂÂÂ’LªIdentifierÍòÍõ£keyLªIdentifierÍ÷Íü¥valueM®BlockStatementÍşÍÚ–V«IfStatementÍ	ÍqU±LogicalExpressionÍÍ)U°BinaryExpressionÍÍLªIdentifierÍÍ£key¢==T§LiteralÍÍÀ¤null¢||U°BinaryExpressionÍÍ)LªIdentifierÍÍ!¥value¢==T§LiteralÍ%Í)À¤nullM®BlockStatementÍ+Íq‘Y®ThrowStatementÍ:ÍfW­NewExpressionÍ@ÍeLªIdentifierÍDÍI¥Error‘T§LiteralÍJÍd¸key or value is invalid º'key or value is invalid 'ÀV«IfStatementÍ{Í°_¯UnaryExpressionÍÍ¡!ÃR°MemberExpressionÍ€ÍS®ThisExpressionÍ€Í„LªIdentifierÍ…Í¨isInitedÂÂM®BlockStatementÍÍ°‘Y¯ReturnStatementÍÍ¥ÀÀV«IfStatementÍáÍ=U±LogicalExpressionÍåÍ)U°BinaryExpressionÍåÍ	R°MemberExpressionÍåÍùR°MemberExpressionÍåÍòS®ThisExpressionÍåÍéLªIdentifierÍêÍò¨lruCacheÂÂLªIdentifierÍóÍù¦lengthÂÂ¢==R°MemberExpressionÍıÍ	S®ThisExpressionÍıÍLªIdentifierÍÍ	§maxSizeÂÂ¢&&_¯UnaryExpressionÍÍ)¡!Ã\®CallExpressionÍÍ)R°MemberExpressionÍÍ$R°MemberExpressionÍÍS®ThisExpressionÍÍLªIdentifierÍÍ¨lruCacheÂÂLªIdentifierÍÍ$¨containsÂÂ‘LªIdentifierÍ%Í(£keyÂM®BlockStatementÍ+Íj‘P³ExpressionStatementÍ:Í_\®CallExpressionÍ:Í^R°MemberExpressionÍ:ÍES®ThisExpressionÍ:Í>LªIdentifierÍ?ÍE¦removeÂÂ‘R°MemberExpressionÍFÍ]\®CallExpressionÍFÍZR°MemberExpressionÍFÍXR°MemberExpressionÍFÍSS®ThisExpressionÍFÍJLªIdentifierÍKÍS¨lruCacheÂÂLªIdentifierÍTÍX¤keysÂÂÂT§LiteralÍ[Í\ ¡0ÃÂÂV«IfStatementÍyÍ=\®CallExpressionÍ}Í˜R°MemberExpressionÍ}Í“R°MemberExpressionÍ}ÍŠS®ThisExpressionÍ}ÍLªIdentifierÍ‚ÍŠ¨lruCacheÂÂLªIdentifierÍ‹Í“¨containsÂÂ‘LªIdentifierÍ”Í—£keyÂM®BlockStatementÍšÍ=“P³ExpressionStatementÍ©ÍÃ\®CallExpressionÍ©ÍÂR°MemberExpressionÍ©Í½R°MemberExpressionÍ©Í¶S®ThisExpressionÍ©Í­LªIdentifierÍ®Í¶¨lruCacheÂÂLªIdentifierÍ·Í½¦removeÂÂ‘LªIdentifierÍ¾ÍÁ£keyÂP³ExpressionStatementÍÑÍ\®CallExpressionÍÑÍR°MemberExpressionÍÑÍâR°MemberExpressionÍÑÍŞS®ThisExpressionÍÑÍÕLªIdentifierÍÖÍŞ¨lruCacheÂÂLªIdentifierÍßÍâ£putÂÂ’LªIdentifierÍãÍæ£keyVµConditionalExpressionÍèÍU°BinaryExpressionÍèÍ _¯UnaryExpressionÍèÍô¦typeofÃLªIdentifierÍïÍô¥value¢==T§LiteralÍøÍ ¦number¨'number'LªIdentifierÍÍ¥valueR°MemberExpressionÍÍLªIdentifierÍÍ¥valueLªIdentifierÍÍªbyteLengthÂÂÂY¯ReturnStatementÍ+Í2ÀÀP³ExpressionStatementÍGÍ“\®CallExpressionÍGÍ’R°MemberExpressionÍGÍXR°MemberExpressionÍGÍTS®ThisExpressionÍGÍKLªIdentifierÍLÍT¨lruCacheÂÂLªIdentifierÍUÍX£putÂÂ’LªIdentifierÍYÍ\£keyVµConditionalExpressionÍ^Í‘U°BinaryExpressionÍ^Ív_¯UnaryExpressionÍ^Íj¦typeofÃLªIdentifierÍeÍj¥value¢==T§LiteralÍnÍv¦number¨'number'LªIdentifierÍyÍ~¥valueR°MemberExpressionÍÍ‘LªIdentifierÍÍ†¥valueLªIdentifierÍ‡Í‘ªbyteLengthÂÂÂP³ExpressionStatementÍÍ·\®CallExpressionÍÍ¶R°MemberExpressionÍÍ¯S®ThisExpressionÍÍ¡LªIdentifierÍ¢Í¯­addMemorySizeÂÂ‘LªIdentifierÍ°Íµ¥valueÂP³ExpressionStatementÍÁÍÓ\®CallExpressionÍÁÍÒR°MemberExpressionÍÁÍĞS®ThisExpressionÍÁÍÅLªIdentifierÍÆÍĞªtrimToSizeÂÂÂN°MethodDefinitionÍàÍùÂÂLªIdentifierÍàÍã£get¦methodO²FunctionExpressionÍãÍùÀÂÂÂ‘LªIdentifierÍäÍç£keyM®BlockStatementÍéÍù“V«IfStatementÍôÍ)_¯UnaryExpressionÍøÍ¡!ÃR°MemberExpressionÍùÍS®ThisExpressionÍùÍıLªIdentifierÍşÍ¨isInitedÂÂM®BlockStatementÍÍ)‘Y¯ReturnStatementÍÍÀÀV«IfStatementÍ3Í×U°BinaryExpressionÍ7Í[\®CallExpressionÍ7ÍMR°MemberExpressionÍ7ÍHR°MemberExpressionÍ7ÍDS®ThisExpressionÍ7Í;LªIdentifierÍ<ÍD¨lruCacheÂÂLªIdentifierÍEÍH£getÂÂ‘LªIdentifierÍIÍL£keyÂ£!==LªIdentifierÍRÍ[©undefinedM®BlockStatementÍ]Í×‘Y¯ReturnStatementÍÍÌ\®CallExpressionÍ–ÍËR°MemberExpressionÍ–Íº\®CallExpressionÍ–Í­R°MemberExpressionÍ–Í«LªIdentifierÍ–ÍŸ©FileUtilsLªIdentifierÍ Í««getInstanceÂÂÂLªIdentifierÍ®Íº¬readFileSyncÂÂ‘U°BinaryExpressionÍ»ÍÊR°MemberExpressionÍ»ÍÄS®ThisExpressionÍ»Í¿LªIdentifierÍÀÍÄ¤pathÂÂ¡+LªIdentifierÍÇÍÊ£keyÂÀY¯ReturnStatementÍáÍòLªIdentifierÍèÍñ©undefinedN°MethodDefinitionÍÍŸÂÂLªIdentifierÍÍ¦remove¦methodO²FunctionExpressionÍÍŸÀÂÂÂ‘LªIdentifierÍÍ£keyM®BlockStatementÍÍŸ”V«IfStatementÍ)ÍŠU°BinaryExpressionÍ-Í8LªIdentifierÍ-Í0£key¢==T§LiteralÍ4Í8À¤nullM®BlockStatementÍ:ÍŠ‘Y®ThrowStatementÍIÍW­NewExpressionÍOÍ~LªIdentifierÍSÍX¥Error‘T§LiteralÍYÍ}Ù"key is null,checking the parameterÙ$'key is null,checking the parameter'ÀV«IfStatementÍ”ÍÉ_¯UnaryExpressionÍ˜Í¦¡!ÃR°MemberExpressionÍ™Í¦S®ThisExpressionÍ™ÍLªIdentifierÍÍ¦¨isInitedÂÂM®BlockStatementÍ¨ÍÉ‘Y¯ReturnStatementÍ·Í¾ÀÀZ³VariableDeclarationÍÓÍú‘[²VariableDeclaratorÍ×ÍùLªIdentifierÍ×Íİ¦remove\®CallExpressionÍàÍùR°MemberExpressionÍàÍôR°MemberExpressionÍàÍíS®ThisExpressionÍàÍäLªIdentifierÍåÍí¨lruCacheÂÂLªIdentifierÍîÍô¦removeÂÂ‘LªIdentifierÍõÍø£keyÂ£letV«IfStatementÍÍ˜U°BinaryExpressionÍÍLªIdentifierÍÍ¦remove£!==LªIdentifierÍÍ©undefinedM®BlockStatementÍÍ˜’P³ExpressionStatementÍ-Ía\®CallExpressionÍ-Í`R°MemberExpressionÍ-ÍO\®CallExpressionÍ-ÍDR°MemberExpressionÍ-ÍBLªIdentifierÍ-Í6©FileUtilsLªIdentifierÍ7ÍB«getInstanceÂÂÂLªIdentifierÍEÍOªdeleteFileÂÂ‘U°BinaryExpressionÍPÍ_R°MemberExpressionÍPÍYS®ThisExpressionÍPÍTLªIdentifierÍUÍY¤pathÂÂ¡+LªIdentifierÍ\Í_£keyÂP³ExpressionStatementÍoÍ\®CallExpressionÍoÍŒR°MemberExpressionÍoÍ„S®ThisExpressionÍoÍsLªIdentifierÍtÍ„°removeMemorySizeÂÂ‘LªIdentifierÍ…Í‹¦removeÂÀN°MethodDefinitionÍ¥ÍÂÂLªIdentifierÍ«Í´©removeAll¦methodO²FunctionExpressionÍ´ÍÀÂÂÃM®BlockStatementÍ·Í•V«IfStatementÍÂÍ÷_¯UnaryExpressionÍÆÍÔ¡!ÃR°MemberExpressionÍÇÍÔS®ThisExpressionÍÇÍËLªIdentifierÍÌÍÔ¨isInitedÂÂM®BlockStatementÍÖÍ÷‘Y¯ReturnStatementÍåÍìÀÀP³ExpressionStatementÍÍ\®CallExpressionÍÍR°MemberExpressionÍÍR°MemberExpressionÍÍS®ThisExpressionÍÍLªIdentifierÍÍ¨lruCacheÂÂLªIdentifierÍÍ¥clearÂÂÂP³ExpressionStatementÍ!Í8Q´AssignmentExpressionÍ!Í7¡=R°MemberExpressionÍ!Í3S®ThisExpressionÍ!Í%LªIdentifierÍ&Í3­currentMemoryÂÂT§LiteralÍ6Í7 ¡0Z³VariableDeclarationÍBÍ„‘[²VariableDeclaratorÍFÍƒLªIdentifierÍFÍO©filenamesY¯AwaitExpressionÍRÍƒ\®CallExpressionÍXÍƒR°MemberExpressionÍXÍx\®CallExpressionÍXÍoR°MemberExpressionÍXÍmLªIdentifierÍXÍa©FileUtilsLªIdentifierÍbÍm«getInstanceÂÂÂLªIdentifierÍpÍx¨ListFileÂÂ‘R°MemberExpressionÍyÍ‚S®ThisExpressionÍyÍ}LªIdentifierÍ~Í‚¤pathÂÂÂ£let^¬ForStatementÍÍZ³VariableDeclarationÍ“Íœ‘[²VariableDeclaratorÍ—ÍœLªIdentifierÍ—Í˜¡iT§LiteralÍ›Íœ ¡0£letU°BinaryExpressionÍÍ²LªIdentifierÍÍŸ¡i¡<R°MemberExpressionÍ¢Í²LªIdentifierÍ¢Í«©filenamesLªIdentifierÍ¬Í²¦lengthÂÂ_°UpdateExpressionÍ´Í·¢++ÂLªIdentifierÍ´Íµ¡iM®BlockStatementÍ¹Í‘P³ExpressionStatementÍÈÍY¯AwaitExpressionÍÈÍ
+\®CallExpressionÍÎÍ
+R°MemberExpressionÍÎÍğ\®CallExpressionÍÎÍåR°MemberExpressionÍÎÍãLªIdentifierÍÎÍ×©FileUtilsLªIdentifierÍØÍã«getInstanceÂÂÂLªIdentifierÍæÍğªdeleteFileÂÂ‘U°BinaryExpressionÍñÍ	R°MemberExpressionÍñÍúS®ThisExpressionÍñÍõLªIdentifierÍöÍú¤pathÂÂ¡+R°MemberExpressionÍıÍ	LªIdentifierÍıÍ©filenamesLªIdentifierÍÍ¡iÃÂÂN°MethodDefinitionÍ#ÍXÂÂLªIdentifierÍ#Í'¤size¦methodO²FunctionExpressionÍ'ÍXÀÂÂÂM®BlockStatementÍ*ÍX‘Y¯ReturnStatementÍ5ÍQR°MemberExpressionÍ<ÍPR°MemberExpressionÍ<ÍIS®ThisExpressionÍ<Í@LªIdentifierÍAÍI¨lruCacheÂÂLªIdentifierÍJÍP¦lengthÂÂN°MethodDefinitionÍrÍlÂÂLªIdentifierÍrÍ|ªtrimToSize¦methodO²FunctionExpressionÍ|ÍlÀÂÂÂM®BlockStatementÍÍl‘Ôrb•¤type¥start£end¤test¤body®WhileStatementÍŠÍeT§LiteralÍ‘Í•Ã¤trueM®BlockStatementÍ—Íe•V«IfStatementÍ¦ÍU±LogicalExpressionÍªÍéU°BinaryExpressionÍªÍÎR°MemberExpressionÍªÍ¼S®ThisExpressionÍªÍ®LªIdentifierÍ¯Í¼­currentMemoryÂÂ¢<=R°MemberExpressionÍÀÍÎS®ThisExpressionÍÀÍÄLªIdentifierÍÅÍÎ©maxMemoryÂÂ¢||\®CallExpressionÍÒÍéR°MemberExpressionÍÒÍçR°MemberExpressionÍÒÍßS®ThisExpressionÍÒÍÖLªIdentifierÍ×Íß¨lruCacheÂÂLªIdentifierÍàÍç§isEmptyÂÂÂM®BlockStatementÍëÍ‘Ôrc”¤type¥start£end¥label®BreakStatementÍşÍÀÀZ³VariableDeclarationÍ!ÍF‘[²VariableDeclaratorÍ%ÍELªIdentifierÍ%Í+¦delkeyR°MemberExpressionÍ.ÍE\®CallExpressionÍ.ÍBR°MemberExpressionÍ.Í@R°MemberExpressionÍ.Í;S®ThisExpressionÍ.Í2LªIdentifierÍ3Í;¨lruCacheÂÂLªIdentifierÍ<Í@¤keysÂÂÂT§LiteralÍCÍD ¡0ÃÂ£letZ³VariableDeclarationÍTÍ~‘[²VariableDeclaratorÍXÍ}LªIdentifierÍXÍ^¦remove\®CallExpressionÍaÍ}R°MemberExpressionÍaÍuR°MemberExpressionÍaÍnS®ThisExpressionÍaÍeLªIdentifierÍfÍn¨lruCacheÂÂLªIdentifierÍoÍu¦removeÂÂ‘LªIdentifierÍvÍ|¦delkeyÂ£letV«IfStatementÍŒÍ/U°BinaryExpressionÍÍ¤LªIdentifierÍÍ–¦remove£!==LªIdentifierÍ›Í¤©undefinedM®BlockStatementÍ¦Í/’P³ExpressionStatementÍ¹Íğ\®CallExpressionÍ¹ÍïR°MemberExpressionÍ¹ÍÛ\®CallExpressionÍ¹ÍĞR°MemberExpressionÍ¹ÍÎLªIdentifierÍ¹ÍÂ©FileUtilsLªIdentifierÍÃÍÎ«getInstanceÂÂÂLªIdentifierÍÑÍÛªdeleteFileÂÂ‘U°BinaryExpressionÍÜÍîR°MemberExpressionÍÜÍåS®ThisExpressionÍÜÍàLªIdentifierÍáÍå¤pathÂÂ¡+LªIdentifierÍèÍî¦delkeyÂP³ExpressionStatementÍÍ \®CallExpressionÍÍR°MemberExpressionÍÍS®ThisExpressionÍÍLªIdentifierÍÍ°removeMemorySizeÂÂ‘LªIdentifierÍÍ¦removeÂÀP³ExpressionStatementÍ=ÍZ\®CallExpressionÍ=ÍYR°MemberExpressionÍ=ÍQR°MemberExpressionÍ=ÍJS®ThisExpressionÍ=ÍALªIdentifierÍBÍJ¨lruCacheÂÂLªIdentifierÍKÍQ¦removeÂÂ‘LªIdentifierÍRÍX¦delkeyÂN°MethodDefinitionÍrÍĞÂÂLªIdentifierÍrÍ‚°removeMemorySize¦methodO²FunctionExpressionÍ‚ÍĞÀÂÂÂ‘LªIdentifierÍƒÍˆ¥valueM®BlockStatementÍŠÍĞ‘V«IfStatementÍ•ÍÉU°BinaryExpressionÍ™Í±_¯UnaryExpressionÍ™Í¥¦typeofÃLªIdentifierÍ Í¥¥value¢==T§LiteralÍ©Í±¦number¨'number'M®BlockStatementÍ³Íé‘P³ExpressionStatementÍÂÍŞQ´AssignmentExpressionÍÂÍİ¢-=R°MemberExpressionÍÂÍÔS®ThisExpressionÍÂÍÆLªIdentifierÍÇÍÔ­currentMemoryÂÂLªIdentifierÍØÍİ¥valueV«IfStatementÍøÍÉU°BinaryExpressionÍüÍLªIdentifierÍüÍ¥value¢!=LªIdentifierÍÍ©undefinedM®BlockStatementÍÍÉ’P³ExpressionStatementÍÍFQ´AssignmentExpressionÍÍE¢-=R°MemberExpressionÍÍ1S®ThisExpressionÍÍ#LªIdentifierÍ$Í1­currentMemoryÂÂR°MemberExpressionÍ5ÍELªIdentifierÍ5Í:¥valueLªIdentifierÍ;ÍEªbyteLengthÂÂP³ExpressionStatementÍTÍ¾\®CallExpressionÍTÍ½R°MemberExpressionÍTÍaLªIdentifierÍTÍ[§LogUtilLªIdentifierÍ\Ía¥debugÂÂ‘U°BinaryExpressionÍbÍ¼U°BinaryExpressionÍbÍ§U°BinaryExpressionÍbÍ“T§LiteralÍbÍ€¼FileCache removeMemorySize: ¾'FileCache removeMemorySize: '¡+R°MemberExpressionÍƒÍ“LªIdentifierÍƒÍˆ¥valueLªIdentifierÍ‰Í“ªbyteLengthÂÂ¡+T§LiteralÍ–Í§± currentMemoryï¼š³' currentMemoryï¼š'¡+R°MemberExpressionÍªÍ¼S®ThisExpressionÍªÍ®LªIdentifierÍ¯Í¼­currentMemoryÂÂÂÀN°MethodDefinitionÍÖÍ˜ÂÂLªIdentifierÍÖÍã­addMemorySize¦methodO²FunctionExpressionÍãÍ˜ÀÂÂÂ‘LªIdentifierÍäÍé¥valueM®BlockStatementÍëÍ˜‘V«IfStatementÍöÍ‘U°BinaryExpressionÍúÍ_¯UnaryExpressionÍúÍ¦typeofÃLªIdentifierÍÍ¥value¢==T§LiteralÍ
+Í¦number¨'number'M®BlockStatementÍÍ´’P³ExpressionStatementÍ#Í?Q´AssignmentExpressionÍ#Í>¢+=R°MemberExpressionÍ#Í5S®ThisExpressionÍ#Í'LªIdentifierÍ(Í5­currentMemoryÂÂLªIdentifierÍ9Í>¥valueP³ExpressionStatementÍMÍ©\®CallExpressionÍMÍ¨R°MemberExpressionÍMÍZLªIdentifierÍMÍT§LogUtilLªIdentifierÍUÍZ¥debugÂÂ‘U°BinaryExpressionÍ[Í§U°BinaryExpressionÍ[Í’U°BinaryExpressionÍ[Í~T§LiteralÍ[Ív¹FileCache addMemorySize: »'FileCache addMemorySize: '¡+LªIdentifierÍyÍ~¥value¡+T§LiteralÍÍ’± currentMemoryï¼š³' currentMemoryï¼š'¡+R°MemberExpressionÍ•Í§S®ThisExpressionÍ•Í™LªIdentifierÍšÍ§­currentMemoryÂÂÂV«IfStatementÍÃÍ‘U°BinaryExpressionÍÇÍÙLªIdentifierÍÇÍÌ¥value¢!=LªIdentifierÍĞÍÙ©undefinedM®BlockStatementÍÛÍ‘’P³ExpressionStatementÍêÍQ´AssignmentExpressionÍêÍ¢+=R°MemberExpressionÍêÍüS®ThisExpressionÍêÍîLªIdentifierÍïÍü­currentMemoryÂÂR°MemberExpressionÍ ÍLªIdentifierÍ Í¥valueLªIdentifierÍÍªbyteLengthÂÂP³ExpressionStatementÍÍ†\®CallExpressionÍÍ…R°MemberExpressionÍÍ,LªIdentifierÍÍ&§LogUtilLªIdentifierÍ'Í,¥debugÂÂ‘U°BinaryExpressionÍ-Í„U°BinaryExpressionÍ-ÍoU°BinaryExpressionÍ-Í[T§LiteralÍ-ÍH¹FileCache addMemorySize: »'FileCache addMemorySize: '¡+R°MemberExpressionÍKÍ[LªIdentifierÍKÍP¥valueLªIdentifierÍQÍ[ªbyteLengthÂÂ¡+T§LiteralÍ^Ío± currentMemoryï¼š³' currentMemoryï¼š'¡+R°MemberExpressionÍrÍ„S®ThisExpressionÍrÍvLªIdentifierÍwÍ„­currentMemoryÂÂÂÀN°MethodDefinitionÍÍ!@ÃÂLªIdentifierÍ
+ÍµsaveFileCacheOnlyFile¦methodO²FunctionExpressionÍÍ!@ÀÂÂÂ”LªIdentifierÍ Í'§contextLªIdentifierÍ)Í,£keyLªIdentifierÍ.Í3¥valueX±AssignmentPatternÍ5ÍTLªIdentifierÍ5Í;¦folderR°MemberExpressionÍ>ÍTLªIdentifierÍ>ÍG©FileCacheLªIdentifierÍHÍT¬CACHE_FOLDERÂÂM®BlockStatementÍVÍ!@’V«IfStatementÍqÍ!#_¯UnaryExpressionÍuÍı¡!Ã\®CallExpressionÍvÍıR°MemberExpressionÍvÍ©\®CallExpressionÍvÍR°MemberExpressionÍvÍ‹LªIdentifierÍvÍ©FileUtilsLªIdentifierÍ€Í‹«getInstanceÂÂÂLªIdentifierÍœÍ©­writeFileSyncÂÂ’U°BinaryExpressionÍªÍõU°BinaryExpressionÍªÍïU°BinaryExpressionÍªÍÙU°BinaryExpressionÍªÍĞR°MemberExpressionÍªÍºLªIdentifierÍªÍ±§contextLªIdentifierÍ²Íº¨cacheDirÂÂ¡+R°MemberExpressionÍ½ÍĞLªIdentifierÍ½ÍÆ©FileUtilsLªIdentifierÍÇÍĞ©SEPARATORÂÂ¡+LªIdentifierÍÓÍÙ¦folder¡+R°MemberExpressionÍÜÍïLªIdentifierÍÜÍå©FileUtilsLªIdentifierÍæÍï©SEPARATORÂÂ¡+LªIdentifierÍòÍõ£keyLªIdentifierÍ÷Íü¥valueÂM®BlockStatementÍÿÍ!#’P³ExpressionStatementÍ Í ~\®CallExpressionÍ Í }R°MemberExpressionÍ Í 6\®CallExpressionÍ Í %R°MemberExpressionÍ Í #LªIdentifierÍ Í ©FileUtilsLªIdentifierÍ Í #«getInstanceÂÂÂLªIdentifierÍ &Í 6°createFolderSyncÂÂ‘U°BinaryExpressionÍ 7Í |U°BinaryExpressionÍ 7Í fU°BinaryExpressionÍ 7Í ]R°MemberExpressionÍ 7Í GLªIdentifierÍ 7Í >§contextLªIdentifierÍ ?Í G¨cacheDirÂÂ¡+R°MemberExpressionÍ JÍ ]LªIdentifierÍ JÍ S©FileUtilsLªIdentifierÍ TÍ ]©SEPARATORÂÂ¡+LªIdentifierÍ `Í f¦folder¡+R°MemberExpressionÍ iÍ |LªIdentifierÍ iÍ r©FileUtilsLªIdentifierÍ sÍ |©SEPARATORÂÂÂP³ExpressionStatementÍ ŒÍ!\®CallExpressionÍ ŒÍ!R°MemberExpressionÍ ŒÍ Ã\®CallExpressionÍ ŒÍ £R°MemberExpressionÍ ŒÍ ¡LªIdentifierÍ ŒÍ •©FileUtilsLªIdentifierÍ –Í ¡«getInstanceÂÂÂLªIdentifierÍ ¶Í Ã­writeFileSyncÂÂ’U°BinaryExpressionÍ ÄÍ!U°BinaryExpressionÍ ÄÍ!	U°BinaryExpressionÍ ÄÍ óU°BinaryExpressionÍ ÄÍ êR°MemberExpressionÍ ÄÍ ÔLªIdentifierÍ ÄÍ Ë§contextLªIdentifierÍ ÌÍ Ô¨cacheDirÂÂ¡+R°MemberExpressionÍ ×Í êLªIdentifierÍ ×Í à©FileUtilsLªIdentifierÍ áÍ ê©SEPARATORÂÂ¡+LªIdentifierÍ íÍ ó¦folder¡+R°MemberExpressionÍ öÍ!	LªIdentifierÍ öÍ ÿ©FileUtilsLªIdentifierÍ! Í!	©SEPARATORÂÂ¡+LªIdentifierÍ!Í!£keyLªIdentifierÍ!Í!¥valueÂÀY¯ReturnStatementÍ!-Í!9T§LiteralÍ!4Í!8Ã¤trueN°MethodDefinitionÍ!²Í"­ÃÂLªIdentifierÍ!¹Í!Ë²getFileCacheByFile¦methodO²FunctionExpressionÍ!ËÍ"­ÀÂÂÂ“LªIdentifierÍ!ÌÍ!Ó§contextLªIdentifierÍ!ÕÍ!Ø£keyX±AssignmentPatternÍ!ÚÍ!ùLªIdentifierÍ!ÚÍ!à¦folderR°MemberExpressionÍ!ãÍ!ùLªIdentifierÍ!ãÍ!ì©FileCacheLªIdentifierÍ!íÍ!ù¬CACHE_FOLDERÂÂM®BlockStatementÍ!ûÍ"­‘Y¯ReturnStatementÍ"Í"¦\®CallExpressionÍ"&Í"¥R°MemberExpressionÍ"&Í"X\®CallExpressionÍ"&Í"=R°MemberExpressionÍ"&Í";LªIdentifierÍ"&Í"/©FileUtilsLªIdentifierÍ"0Í";«getInstanceÂÂÂLªIdentifierÍ"LÍ"X¬readFileSyncÂÂ‘U°BinaryExpressionÍ"YÍ"¤U°BinaryExpressionÍ"YÍ"U°BinaryExpressionÍ"YÍ"ˆU°BinaryExpressionÍ"YÍ"R°MemberExpressionÍ"YÍ"iLªIdentifierÍ"YÍ"`§contextLªIdentifierÍ"aÍ"i¨cacheDirÂÂ¡+R°MemberExpressionÍ"lÍ"LªIdentifierÍ"lÍ"u©FileUtilsLªIdentifierÍ"vÍ"©SEPARATORÂÂ¡+LªIdentifierÍ"‚Í"ˆ¦folder¡+R°MemberExpressionÍ"‹Í"LªIdentifierÍ"‹Í"”©FileUtilsLªIdentifierÍ"•Í"©SEPARATORÂÂ¡+LªIdentifierÍ"¡Í"¤£keyÂN°MethodDefinitionÍ"úÍ$,ÂÂLªIdentifierÍ"úÍ#­getFileToPath¦methodO²FunctionExpressionÍ#Í$,ÀÂÂÂ‘LªIdentifierÍ#Í#£keyM®BlockStatementÍ#Í$,“V«IfStatementÍ#Í#t_¯UnaryExpressionÍ#Í#"¡!Ã_¯UnaryExpressionÍ#Í#"¡!Ã_¯UnaryExpressionÍ#Í#"¡!ÃLªIdentifierÍ#Í#"£keyM®BlockStatementÍ#$Í#t‘Y®ThrowStatementÍ#3Í#iW­NewExpressionÍ#9Í#hLªIdentifierÍ#=Í#B¥Error‘T§LiteralÍ#CÍ#gÙ"key is null,checking the parameterÙ$'key is null,checking the parameter'ÀZ³VariableDeclarationÍ#~Í#™‘[²VariableDeclaratorÍ#‚Í#˜LªIdentifierÍ#‚Í#†¤pathU°BinaryExpressionÍ#‰Í#˜R°MemberExpressionÍ#‰Í#’S®ThisExpressionÍ#‰Í#LªIdentifierÍ#Í#’¤pathÂÂ¡+LªIdentifierÍ#•Í#˜£key£letV«IfStatementÍ#£Í$%\®CallExpressionÍ#§Í#ÊR°MemberExpressionÍ#§Í#Ä\®CallExpressionÍ#§Í#¾R°MemberExpressionÍ#§Í#¼LªIdentifierÍ#§Í#°©FileUtilsLªIdentifierÍ#±Í#¼«getInstanceÂÂÂLªIdentifierÍ#¿Í#Ä¥existÂÂ‘LªIdentifierÍ#ÅÍ#É¤pathÂM®BlockStatementÍ#ÌÍ#ò‘Y¯ReturnStatementÍ#ÛÍ#çLªIdentifierÍ#âÍ#æ¤pathM®BlockStatementÍ$Í$%‘Y¯ReturnStatementÍ$Í$T§LiteralÍ$Í$ ¢''À“Ôrd•¤type¥start£endªspecifiers¦source±ImportDeclarationÍnÍŒ‘Ôre”¤type¥start£end¥local¶ImportDefaultSpecifierÍuÍyLªIdentifierÍuÍy¤utilT§LiteralÍÍ‹ª@ohos.util¬'@ohos.util'd±ImportDeclarationÍÍ½‘Ôrf•¤type¥start£end¨imported¥local¯ImportSpecifierÍ—Í LªIdentifierÍ—Í ©FileUtilsLªIdentifierÍ—Í ©FileUtilsT§LiteralÍ¨Í¼²../utils/FileUtils´'../utils/FileUtils'd±ImportDeclarationÍ¿Íê‘f¯ImportSpecifierÍÈÍÏLªIdentifierÍÈÍÏ§LogUtilLªIdentifierÍÈÍÏ§LogUtilT§LiteralÍ×Íé°../utils/LogUtil²'../utils/LogUtil'

@@ -11,7 +11,16 @@ import { Shadows } from './Theme';
  */
 @ComponentV2
 export struct RecipeCard {
-  @Param item: RecipeListItem = {} as RecipeListItem;
+  @Param item: RecipeListItem = {
+    id: '',
+    name: '',
+    coverImage: '',
+    difficulty: 0,
+    cookTime: 0,
+    favoriteCount: 0,
+    likeCount: 0,
+    tagName: ''
+  };
   @Param imageHeight: Length = 140;
   @Event onTap: (item: RecipeListItem) => void = () => {};
 

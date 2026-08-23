@@ -1,0 +1,484 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚ¹/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { PixelMapTransformation } from './PixelMapTransformation';
+import image from "@ohos.multimedia.image";
+import { CalculatePixelUtils } from '../utils/CalculatePixelUtils';
+import { ColorUtils } from '../utils/ColorUtils';
+import { PixelEntry } from './entry/PixelEntry';
+import application from "@ohos.app.ability.application";
+/**
+ * å›¾ç‰‡å˜æ¢ï¼šé®ç½©æ•ˆæœ
+ */
+export class MaskTransformation extends PixelMapTransformation {
+    constructor(resource) {
+        "use sendable";
+        super();
+        this.mResourceId = resource.id;
+        this.mResourceModuleName = resource.moduleName;
+    }
+    getName() {
+        return this.constructor.name + ';resourceId:' + this.mResourceId + ';resourceModuleName:' + this.mResourceModuleName;
+    }
+    async transform(context, toTransform, width, height) {
+        let imageInfo = await toTransform.getImageInfo();
+        let size = {
+            width: imageInfo.size.width,
+            height: imageInfo.size.height
+        };
+        if (!size) {
+            console.error('MaskTransformation The image size does not exist.');
+            return toTransform;
+        }
+        let pixelMapWidth = size.width;
+        let pixelMapHeight = size.height;
+        let targetWidth = width;
+        let targetHeight = height;
+        if (pixelMapWidth > targetWidth && pixelMapHeight > targetHeight) {
+            let scale = Math.max(targetWidth / pixelMapWidth, targetHeight / pixelMapHeight);
+            await toTransform.scale(scale, scale);
+            return await this.openInternal(context, toTransform, scale * pixelMapWidth, scale * pixelMapHeight);
+        }
+        return await this.openInternal(context, toTransform, size.width, size.height);
+    }
+    async openInternal(context, bitmap, width, height) {
+        if (context == undefined) {
+            console.error('MaskTransformation openInternal the context is undefined.');
+            return bitmap;
+        }
+        let moduleContext = await application.createModuleContext(context, this.mResourceModuleName);
+        if (moduleContext == undefined) {
+            console.error('MaskTransformation openInternal the moduleContext is undefined.');
+            return bitmap;
+        }
+        let resourceManager = moduleContext.resourceManager;
+        if (resourceManager == undefined) {
+            console.error('MaskTransformation openInternal the resourceManager is undefined.');
+            return bitmap;
+        }
+        let array = await resourceManager.getMediaContent(this.mResourceId);
+        let buffer = array.buffer.slice(array.byteOffset, array.byteLength + array.byteOffset);
+        let imageSource = image.createImageSource(buffer);
+        let options = {
+            editable: true,
+            desiredSize: {
+                width: width,
+                height: height
+            }
+        };
+        let maskBitmap = await imageSource.createPixelMap(options);
+        imageSource.release();
+        return await this.mask(bitmap, maskBitmap);
+    }
+    async mask(bitmap, maskBitmap) {
+        let imageInfo = await bitmap.getImageInfo();
+        let size = {
+            width: imageInfo.size.width,
+            height: imageInfo.size.height
+        };
+        if (!size) {
+            console.error('MaskTransformation mask the image size does not exist.');
+            return bitmap;
+        }
+        let width = size.width;
+        let height = size.height;
+        let rgbData = CalculatePixelUtils.createInt2DArray(height, width);
+        let bufferData = new ArrayBuffer(bitmap.getPixelBytesNumber());
+        await bitmap.readPixelsToBuffer(bufferData);
+        let dataArray = new Uint8Array(bufferData);
+        let ph = 0;
+        let pw = 0;
+        for (let index = 0; index < dataArray.length; index += 4) {
+            const r = dataArray[index];
+            const g = dataArray[index + 1];
+            const b = dataArray[index + 2];
+            const f = dataArray[index + 3];
+            let entry = new PixelEntry();
+            entry.a = 0;
+            entry.b = b;
+            entry.g = g;
+            entry.r = r;
+            entry.f = f;
+            entry.pixel = ColorUtils.rgb(entry.r, entry.g, entry.b);
+            rgbData[ph][pw] = ColorUtils.rgb(entry.r, entry.g, entry.b);
+            if (pw == width - 1) {
+                pw = 0;
+                ph++;
+            }
+            else {
+                pw++;
+            }
+        }
+        let imageInfoMask = await maskBitmap.getImageInfo();
+        let sizeMask = {
+            width: imageInfoMask.size.width,
+            height: imageInfoMask.size.height
+        };
+        if (!sizeMask) {
+            console.error('MaskTransformation mask the sizeMask size does not exist.');
+            return bitmap;
+        }
+        let widthMask = sizeMask.width;
+        let heightMask = sizeMask.height;
+        let rgbDataMask = CalculatePixelUtils.createInt2DArray(heightMask, widthMask);
+        let pixEntry = new Array();
+        let bufferDataM = new ArrayBuffer(maskBitmap.getPixelBytesNumber());
+        await maskBitmap.readPixelsToBuffer(bufferDataM);
+        let dataArrayM = new Uint8Array(bufferDataM);
+        let phM = 0;
+        let pwM = 0;
+        for (let index = 0; index < dataArrayM.length; index += 4) {
+            const r = dataArrayM[index];
+            const g = dataArrayM[index + 1];
+            const b = dataArrayM[index + 2];
+            const f = dataArrayM[index + 3];
+            let entry = new PixelEntry();
+            entry.a = 0;
+            entry.b = b;
+            entry.g = g;
+            entry.r = r;
+            entry.f = f;
+            entry.pixel = ColorUtils.rgb(entry.r, entry.g, entry.b);
+            pixEntry.push(entry);
+            if (entry.r == 0 && entry.g == 0 && entry.b == 0) {
+                rgbDataMask[phM][pwM] = rgbData[phM][pwM];
+            }
+            else {
+                rgbDataMask[phM][pwM] = ColorUtils.rgb(entry.r, entry.g, entry.b);
+            }
+            if (pwM == widthMask - 1) {
+                pwM = 0;
+                phM++;
+            }
+            else {
+                pwM++;
+            }
+        }
+        let bufferNewData = new ArrayBuffer(maskBitmap.getPixelBytesNumber());
+        let dataNewArray = new Uint8Array(bufferNewData);
+        let index = 0;
+        let mh = 0;
+        let nw = 0;
+        for (let i = 0; i < dataNewArray.length; i += 4) {
+            let pixel1 = rgbDataMask[mh][nw];
+            if (nw == widthMask - 1) {
+                nw = 0;
+                mh++;
+            }
+            else {
+                nw++;
+            }
+            let pR = ColorUtils.red(pixel1);
+            let pG = ColorUtils.green(pixel1);
+            let pB = ColorUtils.blue(pixel1);
+            dataNewArray[i] = pR;
+            dataNewArray[i + 1] = pG;
+            dataNewArray[i + 2] = pB;
+            dataNewArray[i + 3] = pixEntry[index].f;
+            index++;
+        }
+        await maskBitmap.writeBufferToPixels(bufferNewData);
+        return maskBitmap;
+    }
+}
+//# sourceMappingURL=MaskTransformation.js.mapÂ–ÙœC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\PixelMapTransformation.etsÙb hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.multimedia.image.d.tsÙ•C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\CalculatePixelUtils.etsÙŒC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\ColorUtils.etsÙ–C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\entry\PixelEntry.etsÙi hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.app.ability.application.d.tsÙ˜C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\MaskTransformation.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚğ/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { PixelMapTransformation } from './PixelMapTransformation';
+import { Size } from '@kit.ArkUI';
+import { image } from '@kit.ImageKit';
+import { resourceManager } from '@kit.LocalizationKit';
+import { CalculatePixelUtils } from '../utils/CalculatePixelUtils';
+import { ColorUtils } from '../utils/ColorUtils';
+import { PixelEntry } from './entry/PixelEntry';
+import { application } from '@kit.AbilityKit';
+
+/**
+ * å›¾ç‰‡å˜æ¢ï¼šé®ç½©æ•ˆæœ
+ */
+@Sendable
+export class MaskTransformation extends PixelMapTransformation {
+  private mResourceId: number;
+  private mResourceModuleName: string;
+
+  constructor(resource: Resource) {
+    super();
+    this.mResourceId = resource.id;
+    this.mResourceModuleName = resource.moduleName;
+  }
+
+  getName(): string {
+    return this.constructor.name + ';resourceId:' + this.mResourceId + ';resourceModuleName:' + this.mResourceModuleName;
+  }
+
+  async transform(context: Context, toTransform: PixelMap, width: number, height: number): Promise<PixelMap> {
+    let imageInfo = await toTransform.getImageInfo();
+    let size: Size = {
+      width: imageInfo.size.width,
+      height: imageInfo.size.height
+    };
+    if (!size) {
+      console.error('MaskTransformation The image size does not exist.');
+      return toTransform;
+    }
+    let pixelMapWidth: number = size.width;
+    let pixelMapHeight: number = size.height;
+    let targetWidth: number = width;
+    let targetHeight: number = height;
+    if (pixelMapWidth > targetWidth && pixelMapHeight > targetHeight) {
+      let scale = Math.max(targetWidth / pixelMapWidth, targetHeight / pixelMapHeight);
+      await toTransform.scale(scale, scale);
+      return await this.openInternal(context, toTransform, scale * pixelMapWidth, scale * pixelMapHeight);
+    }
+    return await this.openInternal(context, toTransform, size.width, size.height);
+  }
+
+  private async openInternal(context: Context, bitmap: PixelMap, width: number, height: number): Promise<PixelMap> {
+    if (context == undefined) {
+      console.error('MaskTransformation openInternal the context is undefined.');
+      return bitmap;
+    }
+    let moduleContext = await application.createModuleContext(context,this.mResourceModuleName);
+    if (moduleContext == undefined) {
+      console.error('MaskTransformation openInternal the moduleContext is undefined.');
+      return bitmap;
+    }
+    let resourceManager = moduleContext.resourceManager as resourceManager.ResourceManager;
+    if (resourceManager == undefined) {
+      console.error('MaskTransformation openInternal the resourceManager is undefined.');
+      return bitmap;
+    }
+    let array: Uint8Array = await resourceManager.getMediaContent(this.mResourceId);
+    let buffer = array.buffer.slice(array.byteOffset, array.byteLength + array.byteOffset);
+    let imageSource: image.ImageSource = image.createImageSource(buffer);
+    let options: image.DecodingOptions = {
+      editable: true,
+      desiredSize: {
+        width: width,
+        height: height
+      }
+    };
+    let maskBitmap: PixelMap = await imageSource.createPixelMap(options);
+    imageSource.release()
+    return await this.mask(bitmap, maskBitmap);
+  }
+
+  async mask(bitmap: PixelMap, maskBitmap: PixelMap): Promise<PixelMap> {
+    let imageInfo = await bitmap.getImageInfo();
+    let size: Size = {
+      width: imageInfo.size.width,
+      height: imageInfo.size.height
+    };
+    if (!size) {
+      console.error('MaskTransformation mask the image size does not exist.');
+      return bitmap;
+    }
+    let width = size.width;
+    let height = size.height;
+    let rgbData = CalculatePixelUtils.createInt2DArray(height, width);
+    let bufferData = new ArrayBuffer(bitmap.getPixelBytesNumber());
+    await bitmap.readPixelsToBuffer(bufferData);
+    let dataArray = new Uint8Array(bufferData);
+    let ph = 0;
+    let pw = 0;
+    for (let index = 0; index < dataArray.length; index += 4) {
+      const r = dataArray[index];
+      const g = dataArray[index+1];
+      const b = dataArray[index+2];
+      const f = dataArray[index+3];
+      let entry = new PixelEntry();
+      entry.a = 0;
+      entry.b = b;
+      entry.g = g;
+      entry.r = r;
+      entry.f = f;
+      entry.pixel = ColorUtils.rgb(entry.r, entry.g, entry.b);
+      rgbData[ph][pw] = ColorUtils.rgb(entry.r, entry.g, entry.b);
+      if (pw == width - 1) {
+        pw = 0;
+        ph++;
+      } else {
+        pw++;
+      }
+    }
+    let imageInfoMask = await maskBitmap.getImageInfo();
+    let sizeMask: Size = {
+      width: imageInfoMask.size.width,
+      height: imageInfoMask.size.height
+    };
+    if (!sizeMask) {
+      console.error('MaskTransformation mask the sizeMask size does not exist.');
+      return bitmap;
+    }
+    let widthMask = sizeMask.width;
+    let heightMask = sizeMask.height;
+    let rgbDataMask = CalculatePixelUtils.createInt2DArray(heightMask, widthMask);
+    let pixEntry: Array<PixelEntry> = new Array();
+    let bufferDataM = new ArrayBuffer(maskBitmap.getPixelBytesNumber());
+    await maskBitmap.readPixelsToBuffer(bufferDataM);
+    let dataArrayM = new Uint8Array(bufferDataM);
+    let phM = 0;
+    let pwM = 0;
+    for (let index = 0; index < dataArrayM.length; index += 4) {
+      const r = dataArrayM[index];
+      const g = dataArrayM[index+1];
+      const b = dataArrayM[index+2];
+      const f = dataArrayM[index+3];
+      let entry = new PixelEntry();
+      entry.a = 0;
+      entry.b = b;
+      entry.g = g;
+      entry.r = r;
+      entry.f = f;
+      entry.pixel = ColorUtils.rgb(entry.r, entry.g, entry.b);
+      pixEntry.push(entry);
+      if (entry.r == 0 && entry.g == 0 && entry.b == 0) {
+        rgbDataMask[phM][pwM] = rgbData[phM][pwM];
+      } else {
+        rgbDataMask[phM][pwM] = ColorUtils.rgb(entry.r, entry.g, entry.b);
+      }
+      if (pwM == widthMask - 1) {
+        pwM = 0;
+        phM++;
+      } else {
+        pwM++;
+      }
+    }
+    let bufferNewData = new ArrayBuffer(maskBitmap.getPixelBytesNumber());
+    let dataNewArray = new Uint8Array(bufferNewData);
+    let index = 0;
+    let mh = 0;
+    let nw = 0;
+    for (let i = 0; i < dataNewArray.length; i += 4) {
+      let pixel1 = rgbDataMask[mh][nw];
+      if (nw == widthMask - 1) {
+        nw = 0;
+        mh++;
+      } else {
+        nw++;
+      }
+      let pR = ColorUtils.red(pixel1);
+      let pG = ColorUtils.green(pixel1);
+      let pB = ColorUtils.blue(pixel1);
+      dataNewArray[i] = pR;
+      dataNewArray[i+1] = pG;
+      dataNewArray[i+2] = pB;
+      dataNewArray[i+3] = pixEntry[index].f;
+      index++;
+    }
+    await maskBitmap.writeBufferToPixels(bufferNewData);
+    return maskBitmap;
+  }
+}ÀÔrD–¶@ohos.multimedia.image½@ohos.app.ability.application¸./PixelMapTransformation¼../utils/CalculatePixelUtils³../utils/ColorUtils²./entry/PixelEntryÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÃÙb hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.multimedia.image.d.tsAÃªoh-resolveÂEAÃÙi hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.app.ability.application.d.tsAÃªoh-resolveÂEAÂÙœC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\PixelMapTransformation.etsAÃªoh-resolveÂEAÂÙ•C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\CalculatePixelUtils.etsAÃªoh-resolveÂEAÂÙŒC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\ColorUtils.etsAÃªoh-resolveÂEAÂÙ–C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\entry\PixelEntry.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappingsµMaskTransformation.js ‘¶MaskTransformation.etsÜ Â‘”    ‘” ˜”   ” ”	 	” ”! !”' '”ÌA ÌA”ÌB ÌB–”   ” 	” ” ”* %”+ &˜”   ” ”	 	” ” ”$ $”ÌB ÌB”ÌC ÌC˜”   ” ”	 	” ” ” ”0 0”1 1˜”   ” ”	 	” ” ” ”/ /”0 0–”   ” 	” ” ”7 -”8 .‘”   ‘” –”   ” ” ”  ”( (”> >“” ” ”  ””  ”  	”  ”  ™” !” !” !	” !” !”# !”$ ! ”& !"”' !#™” "” "” "	”  "”# "”+ "'”, "(”6 "2”7 "3‘” #’” %” %	Ü ” &” &” &” &” &”  &”$ & ”' &#”5 &1”8 &4”< &8”= &9”ÌH &ÌD”ÌK &ÌG”Ìa &Ì]”Ìd &Ì`”Ìh &Ìd”Ìi &Ìe”Ì| &Ìx”Ì} &Ìy’” '” 'œ” )”	 )”
+ )” )” )” )"” )$”( )9”* );”/ )ÌH”1 )ÌJ”7 )ÌXš” *” *” *” *” *”) *%”* *&”6 *2”8 *4”9 *5”” +” +” +” +˜” ,” ,” ,” ,” ,”! ,”" ,”' ,!˜” -” -” -” -” -”" -”# -”) -#’”	 .”
+ .•” /” /” /	” /” /˜” 0” 0” 0” 0” 0”ÌM 0ÌG”ÌN 0ÌH”ÌO 0ÌI”” 1” 1” 1” 1‘”	 2˜” 3” 3” 3” 3 ”  3$”! 3%”& 3*”' 3+˜” 4” 4” 4” 4!”! 4%”" 4&”( 4,”) 4-–” 5” 5” 5” 5” 5#”  5$–” 6” 6” 6” 6”! 6%”" 6&š” 7” 7” 7” 7”' 7#”+ 7'”9 75”< 78”ÌH 7ÌD”ÌJ 7ÌFÜ ” 8” 8
+” 8” 8” 8” 8”  8”! 8”, 8&”/ 8)”< 86”> 88”ÌJ 8ÌD”ÌM 8ÌG”Ì[ 8ÌU”Ì\ 8ÌV”Ì] 8ÌW›” 9” 9” 9” 9”# 9”$ 9”) 9#”+ 9%”0 9*”1 9+”2 9,Ü ” :” :” :” :” :”* :$”+ :%”2 :,”4 :.”? :9”ÌA :;”ÌF :Ì@”ÌI :ÌC”ÌV :ÌP”ÌX :ÌR”Ì] :ÌW”Ì` :ÌZ”Ìn :Ìh”Ìo :Ìi”Ìp :Ìj‘”	 ;Ü ” <” <” <” <” <”& <"”' <#”. <*”0 <,”; <7”= <9”ÌA <=”ÌB <>”ÌG <ÌC”ÌI <ÌE”ÌM <ÌI”ÌN <ÌJ”ÌT <ÌP”ÌU <ÌQ”ÌV <ÌR’” =” =œ” ?
+”	 ?”
+ ?” ?” ?” ?-”  ?/”& ??”( ?ÌA”- ?ÌN”/ ?ÌP”5 ?Ì^–” Ì@” Ì@” Ì@” Ì@”  Ì@”" Ì@˜” ÌA” ÌA” ÌA” ÌA” ÌA”ÌU ÌAÌO”ÌV ÌAÌP”ÌW ÌAÌQ”” ÌB” ÌB” ÌB” ÌB‘”	 ÌCÜ ” ÌD” ÌD” ÌD” ÌD”" ÌD”- ÌD)”. ÌD*”ÌA ÌD=”ÌB ÌD>”ÌI ÌDÌE”ÌK ÌDÌF”ÌO ÌDÌJ”ÌP ÌDÌK”Ìc ÌDÌ^”Ìd ÌDÌ_”Ìe ÌDÌ`–” ÌE” ÌE” ÌE” ÌE”& ÌE"”( ÌE$˜” ÌF” ÌF” ÌF” ÌF” ÌF”Ì[ ÌFÌU”Ì\ ÌFÌV”Ì] ÌFÌW”” ÌG” ÌG” ÌG” ÌG‘”	 ÌH˜” ÌI” ÌI” ÌI” ÌI”+ ÌI'”, ÌI(”; ÌIÌZ”< ÌIÌ[–” ÌJ” ÌJ” ÌJ” ÌJ”( ÌJ$”* ÌJ&˜” ÌK” ÌK” ÌK” ÌK” ÌK”Ì] ÌKÌW”Ì^ ÌKÌX”Ì_ ÌKÌY”” ÌL” ÌL” ÌL” ÌL‘”	 ÌM” ÌN” ÌN” ÌN” ÌN” ÌN"”) ÌN1”* ÌN2”9 ÌNÌA”: ÌNÌB”> ÌNÌF”? ÌNÌG”ÌJ ÌNÌR”ÌK ÌNÌS”ÌL ÌNÌTÜ ” ÌO” ÌO” ÌO” ÌO” ÌO” ÌO”! ÌO”" ÌO”' ÌO#”( ÌO$”- ÌO)”. ÌO*”8 ÌO4”: ÌO6”? ÌO;”Ì@ ÌO<”ÌJ ÌOÌF”ÌM ÌOÌI”ÌR ÌOÌN”ÌS ÌOÌO”Ì] ÌOÌY”Ì^ ÌOÌZ”Ì_ ÌOÌ[›” ÌP” ÌP” ÌP” ÌP)” ÌP.”  ÌP/”1 ÌPÌ@”2 ÌPÌA”8 ÌPÌG”9 ÌPÌH”: ÌPÌI”” ÌQ” ÌQ” ÌQ” ÌQ)”” ÌR” ÌR” ÌR” ÌR“” ÌS” ÌS” ÌS”” ÌT” ÌT” ÌT” ÌT”” ÌU” ÌU” ÌU” ÌU‘” ÌV’”	 ÌW”
+ ÌWœ” ÌX” ÌX” ÌX” ÌX” ÌX%”* ÌX0”+ ÌX1”9 ÌX?”: ÌXÌ@”ÌA ÌXÌG”ÌB ÌXÌH”ÌC ÌXÌI–” ÌY” ÌY” ÌY” ÌY” ÌY” ÌYœ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ”% ÌZ!”' ÌZ#”1 ÌZ-”2 ÌZ.”3 ÌZ/’” Ì[” Ì[˜” Ì]”	 Ì]”
+ Ì]” Ì]” Ì]” Ì]” Ì]”! Ì]3š” Ì^” Ì^” Ì^” Ì^” Ì^”$ Ì^ ”% Ì^!”1 Ì^-”3 Ì^/”4 Ì^0”” Ì_” Ì_” Ì_” Ì_˜” Ì`” Ì`” Ì`” Ì`” Ì`”! Ì`”" Ì`”' Ì`!˜” Ìa” Ìa” Ìa” Ìa” Ìa”" Ìa”# Ìa”) Ìa#’”	 Ìb”
+ Ìb•” Ìc” Ìc” Ìc	” Ìc” Ìc˜” Ìd” Ìd” Ìd” Ìd” Ìd”ÌR ÌdÌL”ÌS ÌdÌM”ÌT ÌdÌN”” Ìe” Ìe” Ìe” Ìe‘”	 Ìf˜” Ìg” Ìg” Ìg” Ìg” Ìg” Ìg” Ìg” Ìg˜” Ìh” Ìh” Ìh” Ìh” Ìh” Ìh”  Ìh”! Ìh” Ìi” Ìi” Ìi” Ìi”) Ìi%”* Ìi&”: Ìi6”; Ìi7”ÌA Ìi=”ÌC Ìi?”ÌH ÌiÌD”ÌI ÌiÌE”ÌJ ÌiÌF” Ìj” Ìj” Ìj” Ìj” Ìj”( Ìj$”) Ìj%”/ Ìj+”0 Ìj,”ÌC Ìj?”ÌE ÌjÌA”ÌF ÌjÌB”ÌG ÌjÌC™” Ìk” Ìk
+” Ìk” Ìk”' Ìk#”( Ìk$”2 Ìk.”3 Ìk/”4 Ìk0š” Ìl” Ìl” Ìl” Ìl” Ìl”& Ìl"”' Ìl#”1 Ìl-”2 Ìl.”3 Ìl/–” Ìm” Ìm” Ìm
+” Ìm” Ìm” Ìm–” Ìn” Ìn” Ìn
+” Ìn” Ìn” ÌnÜ ” Ìo” Ìo	” Ìo” Ìo” Ìo” Ìo” Ìo”! Ìo”$ Ìo ”- Ìo)”. Ìo*”4 Ìo0”6 Ìo2”; Ìo7”? Ìo;”Ì@ Ìo<”ÌB Ìo>™” Ìp” Ìp” Ìp” Ìp” Ìp”  Ìp”% Ìp”& Ìp ”' Ìp!›” Ìq” Ìq” Ìq” Ìq” Ìq”  Ìq”% Ìq”( Ìq ”) Ìq!”* Ìq"”+ Ìq#›” Ìr” Ìr” Ìr” Ìr” Ìr”  Ìr”% Ìr”( Ìr ”) Ìr!”* Ìr"”+ Ìr#›” Ìs” Ìs” Ìs” Ìs” Ìs”  Ìs”% Ìs”( Ìs ”) Ìs!”* Ìs"”+ Ìs#˜” Ìt” Ìt
+” Ìt” Ìt” Ìt”& Ìt ”( Ìt"”) Ìt#—” Ìu” Ìu” Ìu” Ìu” Ìu” Ìu” Ìu—” Ìv” Ìv” Ìv” Ìv” Ìv” Ìv” Ìv—” Ìw” Ìw” Ìw” Ìw” Ìw” Ìw” Ìw—” Ìx” Ìx” Ìx” Ìx” Ìx” Ìx” Ìx—” Ìy” Ìy” Ìy” Ìy” Ìy” Ìy” ÌyÜ ” Ìz” Ìz” Ìz” Ìz” Ìz”$ Ìz”% Ìz”( Ìz"”) Ìz#”. Ìz(”/ Ìz)”0 Ìz*”2 Ìz,”7 Ìz1”8 Ìz2”9 Ìz3”; Ìz5”Ì@ Ìz:”ÌA Ìz;”ÌB Ìz<”ÌC Ìz=”ÌD Ìz>Ü ” Ì{” Ì{” Ì{” Ì{” Ì{” Ì{” Ì{” Ì{” Ì{”( Ì{"”) Ì{#”, Ì{&”- Ì{'”2 Ì{,”3 Ì{-”4 Ì{.”6 Ì{0”; Ì{5”< Ì{6”= Ì{7”? Ì{9”ÌD Ì{>”ÌE Ì{?”ÌF Ì{Ì@”ÌG Ì{ÌA”ÌH Ì{ÌB˜” Ì|” Ì|
+” Ì|” Ì|” Ì|” Ì|” Ì|”! Ì|•” Ì}” Ì}
+” Ì}” Ì}” Ì}”” Ì~” Ì~
+” Ì~” Ì~‘” Ì‘” Ì”” Ì€” Ì€
+” Ì€” Ì€‘” Ì‘”	 Ì‚š” Ìƒ” Ìƒ” Ìƒ” Ìƒ”" Ìƒ”, Ìƒ(”- Ìƒ)”9 Ìƒ5”; Ìƒ7”< Ìƒ8”” Ì„” Ì„” Ì„” Ì„˜” Ì…” Ì…” Ì…”  Ì…”! Ì…”% Ì…”& Ì… ”+ Ì…%˜” Ì†” Ì†” Ì†”! Ì†”" Ì†”& Ì† ”' Ì†!”- Ì†'’”	 Ì‡”
+ Ì‡•” Ìˆ” Ìˆ” Ìˆ	” Ìˆ” Ìˆ˜” Ì‰” Ì‰” Ì‰” Ì‰” Ì‰”ÌU Ì‰ÌO”ÌV Ì‰ÌP”ÌW Ì‰ÌQ”” ÌŠ” ÌŠ” ÌŠ” ÌŠ‘”	 Ì‹˜” ÌŒ” ÌŒ” ÌŒ” ÌŒ”  ÌŒ”! ÌŒ”& ÌŒ"”' ÌŒ#˜” Ì” Ì” Ì” Ì”! Ì”" Ì”( Ì$”) Ì%” Ì” Ì” Ì” Ì”- Ì)”. Ì*”> Ì:”? Ì;”ÌI ÌÌE”ÌK ÌÌG”ÌT ÌÌP”ÌU ÌÌQ”ÌV ÌÌR˜” Ì” Ì” Ì” Ì&” Ì*”  Ì/”" Ì1”# Ì2” Ì” Ì” Ì” Ì” Ì”) Ì%”* Ì&”4 Ì0”5 Ì1”ÌH ÌÌD”ÌJ ÌÌF”ÌK ÌÌG”ÌL ÌÌH™” Ì‘” Ì‘
+” Ì‘” Ì‘”+ Ì‘'”, Ì‘(”7 Ì‘3”8 Ì‘4”9 Ì‘5š” Ì’” Ì’” Ì’” Ì’” Ì’”' Ì’#”( Ì’$”3 Ì’/”4 Ì’0”5 Ì’1–” Ì“” Ì“” Ì“” Ì“” Ì“” Ì“–” Ì”” Ì”” Ì”” Ì”” Ì”” Ì”Ü ” Ì•” Ì•	” Ì•” Ì•” Ì•” Ì•” Ì•”! Ì•”$ Ì• ”. Ì•*”/ Ì•+”5 Ì•1”7 Ì•3”< Ì•8”Ì@ Ì•<”ÌA Ì•=”ÌC Ì•?™” Ì–” Ì–” Ì–” Ì–”  Ì–”! Ì–”& Ì– ”' Ì–!”( Ì–"›” Ì—” Ì—” Ì—” Ì—”  Ì—”! Ì—”& Ì— ”) Ì—!”* Ì—"”+ Ì—#”, Ì—$›” Ì˜” Ì˜” Ì˜” Ì˜”  Ì˜”! Ì˜”& Ì˜ ”) Ì˜!”* Ì˜"”+ Ì˜#”, Ì˜$›” Ì™” Ì™” Ì™” Ì™”  Ì™”! Ì™”& Ì™ ”) Ì™!”* Ì™"”+ Ì™#”, Ì™$˜” Ìš” Ìš
+” Ìš” Ìš” Ìš”& Ìš ”( Ìš"”) Ìš#—” Ì›” Ì›” Ì›” Ì›” Ì›” Ì›” Ì›—” Ìœ” Ìœ” Ìœ” Ìœ” Ìœ” Ìœ” Ìœ—” Ì” Ì” Ì” Ì” Ì” Ì” Ì—” Ì” Ì” Ì” Ì” Ì” Ì” Ì—” ÌŸ” ÌŸ” ÌŸ” ÌŸ” ÌŸ” ÌŸ” ÌŸÜ ” Ì ” Ì ” Ì ” Ì ” Ì ”$ Ì ”% Ì ”( Ì "”) Ì #”. Ì (”/ Ì )”0 Ì *”2 Ì ,”7 Ì 1”8 Ì 2”9 Ì 3”; Ì 5”Ì@ Ì :”ÌA Ì ;”ÌB Ì <”ÌC Ì =”ÌD Ì >˜” Ì¡” Ì¡” Ì¡” Ì¡” Ì¡” Ì¡”  Ì¡”! Ì¡Ü ” Ì¢” Ì¢
+” Ì¢” Ì¢” Ì¢” Ì¢” Ì¢”  Ì¢”% Ì¢”& Ì¢ ”' Ì¢!”+ Ì¢%”, Ì¢&”0 Ì¢*”5 Ì¢/”6 Ì¢0”7 Ì¢1”; Ì¢5”< Ì¢6”> Ì¢8Ü ” Ì£” Ì£” Ì£” Ì£”  Ì£”! Ì£”$ Ì£”% Ì£”( Ì£ ”/ Ì£'”0 Ì£(”3 Ì£+”4 Ì£,”5 Ì£-”8 Ì£0”9 Ì£1”: Ì£2‘” Ì¤‘” Ì¤Ü ” Ì¥” Ì¥” Ì¥” Ì¥”  Ì¥”! Ì¥”$ Ì¥”% Ì¥”( Ì¥ ”2 Ì¥*”3 Ì¥+”6 Ì¥.”7 Ì¥/”< Ì¥4”= Ì¥5”> Ì¥6”Ì@ Ì¥8”ÌE Ì¥=”ÌF Ì¥>”ÌG Ì¥?”ÌI Ì¥ÌA”ÌN Ì¥ÌF”ÌO Ì¥ÌG”ÌP Ì¥ÌH”ÌQ Ì¥ÌI”ÌR Ì¥ÌJ‘” Ì¦˜” Ì§” Ì§
+” Ì§” Ì§”  Ì§”# Ì§”$ Ì§”& Ì§ •” Ì¨” Ì¨” Ì¨” Ì¨” Ì¨”” Ì©” Ì©” Ì©” Ì©‘” Ìª‘” Ìª”” Ì«” Ì«” Ì«” Ì«‘” Ì¬‘”	 Ì­” Ì®” Ì®” Ì®” Ì®”  Ì®”+ Ì®'”, Ì®(”6 Ì®2”7 Ì®3”ÌJ Ì®ÌF”ÌL Ì®ÌH”ÌM Ì®ÌI”ÌN Ì®ÌJš” Ì¯” Ì¯” Ì¯” Ì¯” Ì¯”) Ì¯%”* Ì¯&”7 Ì¯3”8 Ì¯4”9 Ì¯5–” Ì°” Ì°” Ì°” Ì°” Ì°” Ì°–” Ì±” Ì±” Ì±
+” Ì±” Ì±” Ì±–” Ì²” Ì²” Ì²
+” Ì²” Ì²” Ì²Ü ” Ì³” Ì³	” Ì³” Ì³” Ì³” Ì³” Ì³” Ì³” Ì³”( Ì³$”) Ì³%”/ Ì³+”1 Ì³-”2 Ì³.”6 Ì³2”7 Ì³3”9 Ì³5œ” Ì´” Ì´
+” Ì´” Ì´”$ Ì´”% Ì´”' Ì´!”( Ì´"”) Ì´#”+ Ì´%”, Ì´&”- Ì´'˜” Ìµ” Ìµ
+” Ìµ” Ìµ” Ìµ”" Ìµ”# Ìµ”% Ìµ•” Ì¶” Ì¶
+” Ì¶” Ì¶” Ì¶”” Ì·” Ì·
+” Ì·” Ì·‘” Ì¸‘” Ì¸”” Ì¹” Ì¹
+” Ì¹” Ì¹‘” Ìº›” Ì»” Ì»
+” Ì»” Ì»” Ì»”  Ì»”# Ì»”$ Ì»”* Ì»$”+ Ì»%”, Ì»&›” Ì¼” Ì¼
+” Ì¼” Ì¼” Ì¼”  Ì¼”% Ì¼”& Ì¼ ”, Ì¼&”- Ì¼'”. Ì¼(›” Ì½” Ì½
+” Ì½” Ì½” Ì½”  Ì½”$ Ì½”% Ì½”+ Ì½%”, Ì½&”- Ì½'˜” Ì¾” Ì¾” Ì¾” Ì¾” Ì¾” Ì¾”  Ì¾”! Ì¾š” Ì¿” Ì¿” Ì¿” Ì¿” Ì¿” Ì¿” Ì¿”" Ì¿”$ Ì¿”% Ì¿š” ÌÀ” ÌÀ” ÌÀ” ÌÀ” ÌÀ” ÌÀ” ÌÀ”" ÌÀ”$ ÌÀ”% ÌÀŸ” ÌÁ” ÌÁ” ÌÁ” ÌÁ” ÌÁ” ÌÁ” ÌÁ”" ÌÁ”* ÌÁ"”+ ÌÁ#”0 ÌÁ(”1 ÌÁ)”2 ÌÁ*”3 ÌÁ+”4 ÌÁ,”” ÌÂ” ÌÂ” ÌÂ” ÌÂ‘”	 ÌÃ™” ÌÄ” ÌÄ
+” ÌÄ” ÌÄ”, ÌÄ(”- ÌÄ)”: ÌÄ6”; ÌÄ7”< ÌÄ8”” ÌÅ” ÌÅ” ÌÅ” ÌÅ’” ÌÆ” ÌÆ‘” ÌÇÔrG–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜ Ã‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ‘”  Ìs ‘”  Ìt ‘”  Ìu ‘”  Ìv ‘”  Ìw ‘”  Ìx ‘”  Ìy ‘”  Ìz ‘”  Ì{ ‘”  Ì| ‘”  Ì} ‘”  Ì~ ‘”  Ì ‘”  Ì€ ‘”  Ì ‘”  Ì‚ ‘”  Ìƒ ‘”  Ì„ ‘”  Ì… ‘”  Ì† ‘”  Ì‡ ‘”  Ìˆ ‘”  Ì‰ ‘”  ÌŠ ‘”  Ì‹ ‘”  ÌŒ ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì‘ ‘”  Ì’ ‘”  Ì“ ‘”  Ì” ‘”  Ì• ‘”  Ì– ‘”  Ì— ‘”  Ì˜ ‘”  Ì™ ‘”  Ìš ‘”  Ì› ‘”  Ìœ ‘”  Ì ‘”  Ì ‘”  ÌŸ ‘”  Ì  ‘”  Ì¡ ‘”  Ì¢ ‘”  Ì£ ‘”  Ì¤ ‘”  Ì¥ ‘”  Ì¦ ‘”  Ì§ ‘”  Ì¨ ‘”  Ì© ‘”  Ìª ‘”  Ì« ‘”  Ì¬ ‘”  Ì­ ‘”  Ì® ‘”  Ì¯ ‘”  Ì° ‘”  Ì± ‘”  Ì² ‘”  Ì³ ‘”  Ì´ ‘”  Ìµ ‘”  Ì¶ ‘”  Ì· ‘”  Ì¸ ‘”  Ì¹ ‘”  Ìº ‘”  Ì» ‘”  Ì¼ ‘”  Ì½ ‘”  Ì¾ ‘”  Ì¿ ‘”  ÌÀ ‘”  ÌÁ ‘”  ÌÂ ÔrH’§missing¦pluginÃ¦genAbcÂÔ  ÔrI”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrJ–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍÛÍwÔrK–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍâÍwÔrL”¤type¥start£end¤nameªIdentifierÍèÍú²MaskTransformationLªIdentifierÍÍ¶PixelMapTransformationÔrM”¤type¥start£end¤body©ClassBodyÍÍw•ÔrN˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍ!ÍÌÂÂLªIdentifierÍ!Í,«constructor«constructorÔrO™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍ,ÍÌÀÂÂÂ‘LªIdentifierÍ-Í5¨resourceM®BlockStatementÍ7ÍÌ”ÔrP•¤type¥start£endªexpression©directive³ExpressionStatementÍBÍQÔrQ•¤type¥start£end¥value£raw§LiteralÍBÍP¬use sendable®"use sendable"¬use sendableÔrR”¤type¥start£endªexpression³ExpressionStatementÍ[ÍcÔrS–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍ[ÍbÔrT“¤type¥start£end¥SuperÍ[Í`ÂR³ExpressionStatementÍmÍŒÔrU–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍmÍ‹¡=ÔrV—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍmÍ}T®ThisExpressionÍmÍqLªIdentifierÍrÍ}«mResourceIdÂÂV°MemberExpressionÍ€Í‹LªIdentifierÍ€Íˆ¨resourceLªIdentifierÍ‰Í‹¢idÂÂR³ExpressionStatementÍ–ÍÅU´AssignmentExpressionÍ–ÍÄ¡=V°MemberExpressionÍ–Í®T®ThisExpressionÍ–ÍšLªIdentifierÍ›Í®³mResourceModuleNameÂÂV°MemberExpressionÍ±ÍÄLªIdentifierÍ±Í¹¨resourceLªIdentifierÍºÍÄªmoduleNameÂÂN°MethodDefinitionÍÒÍcÂÂLªIdentifierÍÒÍÙ§getName¦methodO²FunctionExpressionÍÙÍcÀÂÂÂM®BlockStatementÍÜÍc‘ÔrW”¤type¥start£end¨argument¯ReturnStatementÍçÍ\ÔrX–¤type¥start£end¤left¨operator¥right°BinaryExpressionÍîÍ[X°BinaryExpressionÍîÍ@X°BinaryExpressionÍîÍ'X°BinaryExpressionÍîÍV°MemberExpressionÍîÍV°MemberExpressionÍîÍşT®ThisExpressionÍîÍòLªIdentifierÍóÍş«constructorÂÂLªIdentifierÍÿÍ¤nameÂÂ¡+Q§LiteralÍÍ¬;resourceId:®';resourceId:'¡+V°MemberExpressionÍÍ'T®ThisExpressionÍÍLªIdentifierÍÍ'«mResourceIdÂÂ¡+Q§LiteralÍ*Í@´;resourceModuleName:¶';resourceModuleName:'¡+V°MemberExpressionÍCÍ[T®ThisExpressionÍCÍGLªIdentifierÍHÍ[³mResourceModuleNameÂÂN°MethodDefinitionÍiÍ	:ÂÂLªIdentifierÍoÍx©transform¦methodO²FunctionExpressionÍxÍ	:ÀÂÂÃ”LªIdentifierÍyÍ€§contextLªIdentifierÍ‚Í«toTransformLªIdentifierÍÍ”¥widthLªIdentifierÍ–Íœ¦heightM®BlockStatementÍÍ	:™ÔrY•¤type¥start£end¬declarations¤kind³VariableDeclarationÍ©ÍÚ‘ÔrZ•¤type¥start£end¢id¤init²VariableDeclaratorÍ­ÍÙLªIdentifierÍ­Í¶©imageInfoW¯AwaitExpressionÍ¹ÍÙS®CallExpressionÍ¿ÍÙV°MemberExpressionÍ¿Í×LªIdentifierÍ¿ÍÊ«toTransformLªIdentifierÍËÍ×¬getImageInfoÂÂÂ£letY³VariableDeclarationÍäÍQ‘Z²VariableDeclaratorÍèÍPLªIdentifierÍèÍì¤sizeÔr[”¤type¥start£endªproperties°ObjectExpressionÍïÍP’Ôr\™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍşÍÂÂÂLªIdentifierÍşÍ¥widthV°MemberExpressionÍÍV°MemberExpressionÍÍLªIdentifierÍÍ©imageInfoLªIdentifierÍÍ¤sizeÂÂLªIdentifierÍÍ¥widthÂÂ¤init\¨PropertyÍ(ÍEÂÂÂLªIdentifierÍ(Í.¦heightV°MemberExpressionÍ0ÍEV°MemberExpressionÍ0Í>LªIdentifierÍ0Í9©imageInfoLªIdentifierÍ:Í>¤sizeÂÂLªIdentifierÍ?ÍE¦heightÂÂ¤init£letÔr]–¤type¥start£end¤testªconsequent©alternate«IfStatementÍ[ÍäÔr^–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍ_Íd¡!ÃLªIdentifierÍ`Íd¤sizeM®BlockStatementÍfÍä’R³ExpressionStatementÍuÍ¸S®CallExpressionÍuÍ·V°MemberExpressionÍuÍ‚LªIdentifierÍuÍ|§consoleLªIdentifierÍ}Í‚¥errorÂÂ‘Q§LiteralÍƒÍ¶Ù1MaskTransformation The image size does not exist.Ù3'MaskTransformation The image size does not exist.'ÂW¯ReturnStatementÍÆÍÙLªIdentifierÍÍÍØ«toTransformÀY³VariableDeclarationÍîÍ‘Z²VariableDeclaratorÍòÍLªIdentifierÍòÍÿ­pixelMapWidthV°MemberExpressionÍÍLªIdentifierÍÍ¤sizeLªIdentifierÍÍ¥widthÂÂ£letY³VariableDeclarationÍÍ8‘Z²VariableDeclaratorÍÍ7LªIdentifierÍÍ)®pixelMapHeightV°MemberExpressionÍ,Í7LªIdentifierÍ,Í0¤sizeLªIdentifierÍ1Í7¦heightÂÂ£letY³VariableDeclarationÍBÍZ‘Z²VariableDeclaratorÍFÍYLªIdentifierÍFÍQ«targetWidthLªIdentifierÍTÍY¥width£letY³VariableDeclarationÍdÍ~‘Z²VariableDeclaratorÍhÍ}LªIdentifierÍhÍt¬targetHeightLªIdentifierÍwÍ}¦height£let]«IfStatementÍˆÍÛX±LogicalExpressionÍŒÍÈX°BinaryExpressionÍŒÍ§LªIdentifierÍŒÍ™­pixelMapWidth¡>LªIdentifierÍœÍ§«targetWidth¢&&X°BinaryExpressionÍ«ÍÈLªIdentifierÍ«Í¹®pixelMapHeight¡>LªIdentifierÍ¼ÍÈ¬targetHeightM®BlockStatementÍÊÍÛ“Y³VariableDeclarationÍÙÍ*‘Z²VariableDeclaratorÍİÍ)LªIdentifierÍİÍâ¥scaleS®CallExpressionÍåÍ)V°MemberExpressionÍåÍíLªIdentifierÍåÍé¤MathLªIdentifierÍêÍí£maxÂÂ’X°BinaryExpressionÍîÍ	LªIdentifierÍîÍù«targetWidth¡/LªIdentifierÍüÍ	­pixelMapWidthX°BinaryExpressionÍÍ(LªIdentifierÍÍ¬targetHeight¡/LªIdentifierÍÍ(®pixelMapHeightÂ£letR³ExpressionStatementÍ8Í^W¯AwaitExpressionÍ8Í]S®CallExpressionÍ>Í]V°MemberExpressionÍ>ÍOLªIdentifierÍ>ÍI«toTransformLªIdentifierÍJÍO¥scaleÂÂ’LªIdentifierÍPÍU¥scaleLªIdentifierÍWÍ\¥scaleÂW¯ReturnStatementÍlÍĞW¯AwaitExpressionÍsÍÏS®CallExpressionÍyÍÏV°MemberExpressionÍyÍŠT®ThisExpressionÍyÍ}LªIdentifierÍ~ÍŠ¬openInternalÂÂ”LªIdentifierÍ‹Í’§contextLªIdentifierÍ”ÍŸ«toTransformX°BinaryExpressionÍ¡Í¶LªIdentifierÍ¡Í¦¥scale¡*LªIdentifierÍ©Í¶­pixelMapWidthX°BinaryExpressionÍ¸ÍÎLªIdentifierÍ¸Í½¥scale¡*LªIdentifierÍÀÍÎ®pixelMapHeightÂÀW¯ReturnStatementÍåÍ	3W¯AwaitExpressionÍìÍ	2S®CallExpressionÍòÍ	2V°MemberExpressionÍòÍ	T®ThisExpressionÍòÍöLªIdentifierÍ÷Í	¬openInternalÂÂ”LªIdentifierÍ	Í	§contextLªIdentifierÍ	Í	«toTransformV°MemberExpressionÍ	Í	$LªIdentifierÍ	Í	¤sizeLªIdentifierÍ	Í	$¥widthÂÂV°MemberExpressionÍ	&Í	1LªIdentifierÍ	&Í	*¤sizeLªIdentifierÍ	+Í	1¦heightÂÂÂN°MethodDefinitionÍ	@Í\ÂÂLªIdentifierÍ	FÍ	R¬openInternal¦methodO²FunctionExpressionÍ	RÍ\ÀÂÂÃ”LªIdentifierÍ	SÍ	Z§contextLªIdentifierÍ	\Í	b¦bitmapLªIdentifierÍ	dÍ	i¥widthLªIdentifierÍ	kÍ	q¦heightM®BlockStatementÍ	sÍ\œ]«IfStatementÍ	~Í
+X°BinaryExpressionÍ	‚Í	–LªIdentifierÍ	‚Í	‰§context¢==LªIdentifierÍ	Í	–©undefinedM®BlockStatementÍ	˜Í
+’R³ExpressionStatementÍ	§Í	òS®CallExpressionÍ	§Í	ñV°MemberExpressionÍ	§Í	´LªIdentifierÍ	§Í	®§consoleLªIdentifierÍ	¯Í	´¥errorÂÂ‘Q§LiteralÍ	µÍ	ğÙ9MaskTransformation openInternal the context is undefined.Ù;'MaskTransformation openInternal the context is undefined.'ÂW¯ReturnStatementÍ
+ Í
+LªIdentifierÍ
+Í
+¦bitmapÀY³VariableDeclarationÍ
+#Í
+€‘Z²VariableDeclaratorÍ
+'Í
+LªIdentifierÍ
+'Í
+4­moduleContextW¯AwaitExpressionÍ
+7Í
+S®CallExpressionÍ
+=Í
+V°MemberExpressionÍ
+=Í
+\LªIdentifierÍ
+=Í
+H«applicationLªIdentifierÍ
+IÍ
+\³createModuleContextÂÂ’LªIdentifierÍ
+]Í
+d§contextV°MemberExpressionÍ
+fÍ
+~T®ThisExpressionÍ
+fÍ
+jLªIdentifierÍ
+kÍ
+~³mResourceModuleNameÂÂÂ£let]«IfStatementÍ
+ŠÍ1X°BinaryExpressionÍ
+Í
+¨LªIdentifierÍ
+Í
+›­moduleContext¢==LªIdentifierÍ
+ŸÍ
+¨©undefinedM®BlockStatementÍ
+ªÍ1’R³ExpressionStatementÍ
+¹Í
+S®CallExpressionÍ
+¹Í	V°MemberExpressionÍ
+¹Í
+ÆLªIdentifierÍ
+¹Í
+À§consoleLªIdentifierÍ
+ÁÍ
+Æ¥errorÂÂ‘Q§LiteralÍ
+ÇÍÙ?MaskTransformation openInternal the moduleContext is undefined.ÙA'MaskTransformation openInternal the moduleContext is undefined.'ÂW¯ReturnStatementÍÍ&LªIdentifierÍÍ%¦bitmapÀY³VariableDeclarationÍ;Ío‘Z²VariableDeclaratorÍ?ÍnLªIdentifierÍ?ÍN¯resourceManagerV°MemberExpressionÍQÍnLªIdentifierÍQÍ^­moduleContextLªIdentifierÍ_Ín¯resourceManagerÂÂ£let]«IfStatementÍyÍ$X°BinaryExpressionÍ}Í™LªIdentifierÍ}ÍŒ¯resourceManager¢==LªIdentifierÍÍ™©undefinedM®BlockStatementÍ›Í$’R³ExpressionStatementÍªÍıS®CallExpressionÍªÍüV°MemberExpressionÍªÍ·LªIdentifierÍªÍ±§consoleLªIdentifierÍ²Í·¥errorÂÂ‘Q§LiteralÍ¸ÍûÙAMaskTransformation openInternal the resourceManager is undefined.ÙC'MaskTransformation openInternal the resourceManager is undefined.'ÂW¯ReturnStatementÍÍLªIdentifierÍÍ¦bitmapÀY³VariableDeclarationÍ.Ír‘Z²VariableDeclaratorÍ2ÍqLªIdentifierÍ2Í7¥arrayW¯AwaitExpressionÍ:ÍqS®CallExpressionÍ@ÍqV°MemberExpressionÍ@Í_LªIdentifierÍ@ÍO¯resourceManagerLªIdentifierÍPÍ_¯getMediaContentÂÂ‘V°MemberExpressionÍ`ÍpT®ThisExpressionÍ`ÍdLªIdentifierÍeÍp«mResourceIdÂÂÂ£letY³VariableDeclarationÍ|ÍÓ‘Z²VariableDeclaratorÍ€ÍÒLªIdentifierÍ€Í†¦bufferS®CallExpressionÍ‰ÍÒV°MemberExpressionÍ‰Í›V°MemberExpressionÍ‰Í•LªIdentifierÍ‰Í¥arrayLªIdentifierÍÍ•¦bufferÂÂLªIdentifierÍ–Í›¥sliceÂÂ’V°MemberExpressionÍœÍ¬LªIdentifierÍœÍ¡¥arrayLªIdentifierÍ¢Í¬ªbyteOffsetÂÂX°BinaryExpressionÍ®ÍÑV°MemberExpressionÍ®Í¾LªIdentifierÍ®Í³¥arrayLªIdentifierÍ´Í¾ªbyteLengthÂÂ¡+V°MemberExpressionÍÁÍÑLªIdentifierÍÁÍÆ¥arrayLªIdentifierÍÇÍÑªbyteOffsetÂÂÂ£letY³VariableDeclarationÍİÍ‘Z²VariableDeclaratorÍáÍLªIdentifierÍáÍì«imageSourceS®CallExpressionÍïÍV°MemberExpressionÍïÍLªIdentifierÍïÍô¥imageLªIdentifierÍõÍ±createImageSourceÂÂ‘LªIdentifierÍÍ¦bufferÂ£letY³VariableDeclarationÍÍ»‘Z²VariableDeclaratorÍÍºLªIdentifierÍÍ$§options[°ObjectExpressionÍ'Íº’\¨PropertyÍ6ÍDÂÂÂLªIdentifierÍ6Í>¨editableQ§LiteralÍ@ÍDÃ¤true¤init\¨PropertyÍSÍ¯ÂÂÂLªIdentifierÍSÍ^«desiredSize[°ObjectExpressionÍ`Í¯’\¨PropertyÍsÍÂÂÂLªIdentifierÍsÍx¥widthLªIdentifierÍzÍ¥width¤init\¨PropertyÍ’Í ÂÂÂLªIdentifierÍ’Í˜¦heightLªIdentifierÍšÍ ¦height¤init¤init£letY³VariableDeclarationÍÅÍ ‘Z²VariableDeclaratorÍÉÍÿLªIdentifierÍÉÍÓªmaskBitmapW¯AwaitExpressionÍÖÍÿS®CallExpressionÍÜÍÿV°MemberExpressionÍÜÍöLªIdentifierÍÜÍç«imageSourceLªIdentifierÍèÍö®createPixelMapÂÂ‘LªIdentifierÍ÷Íş§optionsÂ£letR³ExpressionStatementÍ
+Í S®CallExpressionÍ
+ÍV°MemberExpressionÍ
+ÍLªIdentifierÍ
+Í«imageSourceLªIdentifierÍÍ§releaseÂÂÂW¯ReturnStatementÍ*ÍUW¯AwaitExpressionÍ1ÍTS®CallExpressionÍ7ÍTV°MemberExpressionÍ7Í@T®ThisExpressionÍ7Í;LªIdentifierÍ<Í@¤maskÂÂ’LªIdentifierÍAÍG¦bitmapLªIdentifierÍIÍSªmaskBitmapÂN°MethodDefinitionÍbÍtÂÂLªIdentifierÍhÍl¤mask¦methodO²FunctionExpressionÍlÍtÀÂÂÃ’LªIdentifierÍmÍs¦bitmapLªIdentifierÍuÍªmaskBitmapM®BlockStatementÍÍtÜ !Y³VariableDeclarationÍŒÍ¸‘Z²VariableDeclaratorÍÍ·LªIdentifierÍÍ™©imageInfoW¯AwaitExpressionÍœÍ·S®CallExpressionÍ¢Í·V°MemberExpressionÍ¢ÍµLªIdentifierÍ¢Í¨¦bitmapLªIdentifierÍ©Íµ¬getImageInfoÂÂÂ£letY³VariableDeclarationÍÂÍ/‘Z²VariableDeclaratorÍÆÍ.LªIdentifierÍÆÍÊ¤size[°ObjectExpressionÍÍÍ.’\¨PropertyÍÜÍ÷ÂÂÂLªIdentifierÍÜÍá¥widthV°MemberExpressionÍãÍ÷V°MemberExpressionÍãÍñLªIdentifierÍãÍì©imageInfoLªIdentifierÍíÍñ¤sizeÂÂLªIdentifierÍòÍ÷¥widthÂÂ¤init\¨PropertyÍÍ#ÂÂÂLªIdentifierÍÍ¦heightV°MemberExpressionÍÍ#V°MemberExpressionÍÍLªIdentifierÍÍ©imageInfoLªIdentifierÍÍ¤sizeÂÂLªIdentifierÍÍ#¦heightÂÂ¤init£let]«IfStatementÍ9ÍÂ^¯UnaryExpressionÍ=ÍB¡!ÃLªIdentifierÍ>ÍB¤sizeM®BlockStatementÍDÍÂ’R³ExpressionStatementÍSÍ›S®CallExpressionÍSÍšV°MemberExpressionÍSÍ`LªIdentifierÍSÍZ§consoleLªIdentifierÍ[Í`¥errorÂÂ‘Q§LiteralÍaÍ™Ù6MaskTransformation mask the image size does not exist.Ù8'MaskTransformation mask the image size does not exist.'ÂW¯ReturnStatementÍ©Í·LªIdentifierÍ°Í¶¦bitmapÀY³VariableDeclarationÍÌÍã‘Z²VariableDeclaratorÍĞÍâLªIdentifierÍĞÍÕ¥widthV°MemberExpressionÍØÍâLªIdentifierÍØÍÜ¤sizeLªIdentifierÍİÍâ¥widthÂÂ£letY³VariableDeclarationÍíÍ‘Z²VariableDeclaratorÍñÍLªIdentifierÍñÍ÷¦heightV°MemberExpressionÍúÍLªIdentifierÍúÍş¤sizeLªIdentifierÍÿÍ¦heightÂÂ£letY³VariableDeclarationÍÍR‘Z²VariableDeclaratorÍÍQLªIdentifierÍÍ§rgbDataS®CallExpressionÍÍQV°MemberExpressionÍÍBLªIdentifierÍÍ1³CalculatePixelUtilsLªIdentifierÍ2ÍB°createInt2DArrayÂÂ’LªIdentifierÍCÍI¦heightLªIdentifierÍKÍP¥widthÂ£letY³VariableDeclarationÍ\Í›‘Z²VariableDeclaratorÍ`ÍšLªIdentifierÍ`ÍjªbufferDataÔr_•¤type¥start£end¦callee©arguments­NewExpressionÍmÍšLªIdentifierÍqÍ|«ArrayBuffer‘S®CallExpressionÍ}Í™V°MemberExpressionÍ}Í—LªIdentifierÍ}Íƒ¦bitmapLªIdentifierÍ„Í—³getPixelBytesNumberÂÂÂ£letR³ExpressionStatementÍ¥ÍÑW¯AwaitExpressionÍ¥ÍĞS®CallExpressionÍ«ÍĞV°MemberExpressionÍ«ÍÄLªIdentifierÍ«Í±¦bitmapLªIdentifierÍ²ÍÄ²readPixelsToBufferÂÂ‘LªIdentifierÍÅÍÏªbufferDataÂY³VariableDeclarationÍÛÍ‘Z²VariableDeclaratorÍßÍLªIdentifierÍßÍè©dataArray_­NewExpressionÍëÍLªIdentifierÍïÍùªUint8Array‘LªIdentifierÍúÍªbufferData£letY³VariableDeclarationÍÍ‘Z²VariableDeclaratorÍÍLªIdentifierÍÍ¢phQ§LiteralÍÍ ¡0£letY³VariableDeclarationÍ%Í0‘Z²VariableDeclaratorÍ)Í/LªIdentifierÍ)Í+¢pwQ§LiteralÍ.Í/ ¡0£letÔr`—¤type¥start£end¤init¤test¦update¤body¬ForStatementÍ:Í
+Y³VariableDeclarationÍ?ÍL‘Z²VariableDeclaratorÍCÍLLªIdentifierÍCÍH¥indexQ§LiteralÍKÍL ¡0£letX°BinaryExpressionÍNÍfLªIdentifierÍNÍS¥index¡<V°MemberExpressionÍVÍfLªIdentifierÍVÍ_©dataArrayLªIdentifierÍ`Íf¦lengthÂÂU´AssignmentExpressionÍhÍr¢+=LªIdentifierÍhÍm¥indexQ§LiteralÍqÍr¡4M®BlockStatementÍtÍ
+Y³VariableDeclarationÍƒÍ‘Z²VariableDeclaratorÍ‰ÍLªIdentifierÍ‰ÍŠ¡rV°MemberExpressionÍÍLªIdentifierÍÍ–©dataArrayLªIdentifierÍ—Íœ¥indexÃÂ¥constY³VariableDeclarationÍ¬ÍË‘Z²VariableDeclaratorÍ²ÍÊLªIdentifierÍ²Í³¡gV°MemberExpressionÍ¶ÍÊLªIdentifierÍ¶Í¿©dataArrayX°BinaryExpressionÍÀÍÉLªIdentifierÍÀÍÅ¥index¡+Q§LiteralÍÈÍÉ¡1ÃÂ¥constY³VariableDeclarationÍÙÍø‘Z²VariableDeclaratorÍßÍ÷LªIdentifierÍßÍà¡bV°MemberExpressionÍãÍ÷LªIdentifierÍãÍì©dataArrayX°BinaryExpressionÍíÍöLªIdentifierÍíÍò¥index¡+Q§LiteralÍõÍö¡2ÃÂ¥constY³VariableDeclarationÍÍ%‘Z²VariableDeclaratorÍÍ$LªIdentifierÍÍ¡fV°MemberExpressionÍÍ$LªIdentifierÍÍ©dataArrayX°BinaryExpressionÍÍ#LªIdentifierÍÍ¥index¡+Q§LiteralÍ"Í#¡3ÃÂ¥constY³VariableDeclarationÍ3ÍP‘Z²VariableDeclaratorÍ7ÍOLªIdentifierÍ7Í<¥entry_­NewExpressionÍ?ÍOLªIdentifierÍCÍMªPixelEntry£letR³ExpressionStatementÍ^ÍjU´AssignmentExpressionÍ^Íi¡=V°MemberExpressionÍ^ÍeLªIdentifierÍ^Íc¥entryLªIdentifierÍdÍe¡aÂÂQ§LiteralÍhÍi ¡0R³ExpressionStatementÍxÍ„U´AssignmentExpressionÍxÍƒ¡=V°MemberExpressionÍxÍLªIdentifierÍxÍ}¥entryLªIdentifierÍ~Í¡bÂÂLªIdentifierÍ‚Íƒ¡bR³ExpressionStatementÍ’ÍU´AssignmentExpressionÍ’Í¡=V°MemberExpressionÍ’Í™LªIdentifierÍ’Í—¥entryLªIdentifierÍ˜Í™¡gÂÂLªIdentifierÍœÍ¡gR³ExpressionStatementÍ¬Í¸U´AssignmentExpressionÍ¬Í·¡=V°MemberExpressionÍ¬Í³LªIdentifierÍ¬Í±¥entryLªIdentifierÍ²Í³¡rÂÂLªIdentifierÍ¶Í·¡rR³ExpressionStatementÍÆÍÒU´AssignmentExpressionÍÆÍÑ¡=V°MemberExpressionÍÆÍÍLªIdentifierÍÆÍË¥entryLªIdentifierÍÌÍÍ¡fÂÂLªIdentifierÍĞÍÑ¡fR³ExpressionStatementÍàÍU´AssignmentExpressionÍàÍ¡=V°MemberExpressionÍàÍëLªIdentifierÍàÍå¥entryLªIdentifierÍæÍë¥pixelÂÂS®CallExpressionÍîÍV°MemberExpressionÍîÍüLªIdentifierÍîÍøªColorUtilsLªIdentifierÍùÍü£rgbÂÂ“V°MemberExpressionÍıÍLªIdentifierÍıÍ¥entryLªIdentifierÍÍ¡rÂÂV°MemberExpressionÍÍLªIdentifierÍÍ¥entryLªIdentifierÍÍ¡gÂÂV°MemberExpressionÍÍLªIdentifierÍÍ¥entryLªIdentifierÍÍ¡bÂÂÂR³ExpressionStatementÍ&ÍbU´AssignmentExpressionÍ&Ía¡=V°MemberExpressionÍ&Í5V°MemberExpressionÍ&Í1LªIdentifierÍ&Í-§rgbDataLªIdentifierÍ.Í0¢phÃÂLªIdentifierÍ2Í4¢pwÃÂS®CallExpressionÍ8ÍaV°MemberExpressionÍ8ÍFLªIdentifierÍ8ÍBªColorUtilsLªIdentifierÍCÍF£rgbÂÂ“V°MemberExpressionÍGÍNLªIdentifierÍGÍL¥entryLªIdentifierÍMÍN¡rÂÂV°MemberExpressionÍPÍWLªIdentifierÍPÍU¥entryLªIdentifierÍVÍW¡gÂÂV°MemberExpressionÍYÍ`LªIdentifierÍYÍ^¥entryLªIdentifierÍ_Í`¡bÂÂÂ]«IfStatementÍpÍÿX°BinaryExpressionÍtÍƒLªIdentifierÍtÍv¢pw¢==X°BinaryExpressionÍzÍƒLªIdentifierÍzÍ¥width¡-Q§LiteralÍ‚Íƒ¡1M®BlockStatementÍ…ÍÅ’R³ExpressionStatementÍ˜ÍŸU´AssignmentExpressionÍ˜Í¡=LªIdentifierÍ˜Íš¢pwQ§LiteralÍÍ ¡0R³ExpressionStatementÍ±Í¶^°UpdateExpressionÍ±Íµ¢++ÂLªIdentifierÍ±Í³¢phM®BlockStatementÍØÍÿ‘R³ExpressionStatementÍëÍğ^°UpdateExpressionÍëÍï¢++ÂLªIdentifierÍëÍí¢pwY³VariableDeclarationÍÍH‘Z²VariableDeclaratorÍÍGLªIdentifierÍÍ%­imageInfoMaskW¯AwaitExpressionÍ(ÍGS®CallExpressionÍ.ÍGV°MemberExpressionÍ.ÍELªIdentifierÍ.Í8ªmaskBitmapLªIdentifierÍ9ÍE¬getImageInfoÂÂÂ£letY³VariableDeclarationÍRÍË‘Z²VariableDeclaratorÍVÍÊLªIdentifierÍVÍ^¨sizeMask[°ObjectExpressionÍaÍÊ’\¨PropertyÍpÍÂÂÂLªIdentifierÍpÍu¥widthV°MemberExpressionÍwÍV°MemberExpressionÍwÍ‰LªIdentifierÍwÍ„­imageInfoMaskLªIdentifierÍ…Í‰¤sizeÂÂLªIdentifierÍŠÍ¥widthÂÂ¤init\¨PropertyÍÍ¿ÂÂÂLªIdentifierÍÍ¤¦heightV°MemberExpressionÍ¦Í¿V°MemberExpressionÍ¦Í¸LªIdentifierÍ¦Í³­imageInfoMaskLªIdentifierÍ´Í¸¤sizeÂÂLªIdentifierÍ¹Í¿¦heightÂÂ¤init£let]«IfStatementÍÕÍe^¯UnaryExpressionÍÙÍâ¡!ÃLªIdentifierÍÚÍâ¨sizeMaskM®BlockStatementÍäÍe’R³ExpressionStatementÍóÍ>S®CallExpressionÍóÍ=V°MemberExpressionÍóÍ LªIdentifierÍóÍú§consoleLªIdentifierÍûÍ ¥errorÂÂ‘Q§LiteralÍÍ<Ù9MaskTransformation mask the sizeMask size does not exist.Ù;'MaskTransformation mask the sizeMask size does not exist.'ÂW¯ReturnStatementÍLÍZLªIdentifierÍSÍY¦bitmapÀY³VariableDeclarationÍoÍ‘Z²VariableDeclaratorÍsÍLªIdentifierÍsÍ|©widthMaskV°MemberExpressionÍÍLªIdentifierÍÍ‡¨sizeMaskLªIdentifierÍˆÍ¥widthÂÂ£letY³VariableDeclarationÍ˜Í¹‘Z²VariableDeclaratorÍœÍ¸LªIdentifierÍœÍ¦ªheightMaskV°MemberExpressionÍ©Í¸LªIdentifierÍ©Í±¨sizeMaskLªIdentifierÍ²Í¸¦heightÂÂ£letY³VariableDeclarationÍÃÍ‘Z²VariableDeclaratorÍÇÍLªIdentifierÍÇÍÒ«rgbDataMaskS®CallExpressionÍÕÍV°MemberExpressionÍÕÍùLªIdentifierÍÕÍè³CalculatePixelUtilsLªIdentifierÍéÍù°createInt2DArrayÂÂ’LªIdentifierÍúÍªheightMaskLªIdentifierÍÍ©widthMaskÂ£letY³VariableDeclarationÍÍ6‘Z²VariableDeclaratorÍÍ5LªIdentifierÍÍ'¨pixEntry_­NewExpressionÍ*Í5LªIdentifierÍ.Í3¥Array£letY³VariableDeclarationÍ@Í„‘Z²VariableDeclaratorÍDÍƒLªIdentifierÍDÍO«bufferDataM_­NewExpressionÍRÍƒLªIdentifierÍVÍa«ArrayBuffer‘S®CallExpressionÍbÍ‚V°MemberExpressionÍbÍ€LªIdentifierÍbÍlªmaskBitmapLªIdentifierÍmÍ€³getPixelBytesNumberÂÂÂ£letR³ExpressionStatementÍÍ¿W¯AwaitExpressionÍÍ¾S®CallExpressionÍ”Í¾V°MemberExpressionÍ”Í±LªIdentifierÍ”ÍªmaskBitmapLªIdentifierÍŸÍ±²readPixelsToBufferÂÂ‘LªIdentifierÍ²Í½«bufferDataMÂY³VariableDeclarationÍÉÍö‘Z²VariableDeclaratorÍÍÍõLªIdentifierÍÍÍ×ªdataArrayM_­NewExpressionÍÚÍõLªIdentifierÍŞÍèªUint8Array‘LªIdentifierÍéÍô«bufferDataM£letY³VariableDeclarationÍ Í‘Z²VariableDeclaratorÍÍLªIdentifierÍÍ£phMQ§LiteralÍ
+Í ¡0£letY³VariableDeclarationÍÍ"‘Z²VariableDeclaratorÍÍ!LªIdentifierÍÍ£pwMQ§LiteralÍ Í! ¡0£let`¬ForStatementÍ,ÍåY³VariableDeclarationÍ1Í>‘Z²VariableDeclaratorÍ5Í>LªIdentifierÍ5Í:¥indexQ§LiteralÍ=Í> ¡0£letX°BinaryExpressionÍ@ÍYLªIdentifierÍ@ÍE¥index¡<V°MemberExpressionÍHÍYLªIdentifierÍHÍRªdataArrayMLªIdentifierÍSÍY¦lengthÂÂU´AssignmentExpressionÍ[Íe¢+=LªIdentifierÍ[Í`¥indexQ§LiteralÍdÍe¡4M®BlockStatementÍgÍåY³VariableDeclarationÍvÍ’‘Z²VariableDeclaratorÍ|Í‘LªIdentifierÍ|Í}¡rV°MemberExpressionÍ€Í‘LªIdentifierÍ€ÍŠªdataArrayMLªIdentifierÍ‹Í¥indexÃÂ¥constY³VariableDeclarationÍ ÍÀ‘Z²VariableDeclaratorÍ¦Í¿LªIdentifierÍ¦Í§¡gV°MemberExpressionÍªÍ¿LªIdentifierÍªÍ´ªdataArrayMX°BinaryExpressionÍµÍ¾LªIdentifierÍµÍº¥index¡+Q§LiteralÍ½Í¾¡1ÃÂ¥constY³VariableDeclarationÍÎÍî‘Z²VariableDeclaratorÍÔÍíLªIdentifierÍÔÍÕ¡bV°MemberExpressionÍØÍíLªIdentifierÍØÍâªdataArrayMX°BinaryExpressionÍãÍìLªIdentifierÍãÍè¥index¡+Q§LiteralÍëÍì¡2ÃÂ¥constY³VariableDeclarationÍüÍ‘Z²VariableDeclaratorÍÍLªIdentifierÍÍ¡fV°MemberExpressionÍÍLªIdentifierÍÍªdataArrayMX°BinaryExpressionÍÍLªIdentifierÍÍ¥index¡+Q§LiteralÍÍ¡3ÃÂ¥constY³VariableDeclarationÍ*ÍG‘Z²VariableDeclaratorÍ.ÍFLªIdentifierÍ.Í3¥entry_­NewExpressionÍ6ÍFLªIdentifierÍ:ÍDªPixelEntry£letR³ExpressionStatementÍUÍaU´AssignmentExpressionÍUÍ`¡=V°MemberExpressionÍUÍ\LªIdentifierÍUÍZ¥entryLªIdentifierÍ[Í\¡aÂÂQ§LiteralÍ_Í` ¡0R³ExpressionStatementÍoÍ{U´AssignmentExpressionÍoÍz¡=V°MemberExpressionÍoÍvLªIdentifierÍoÍt¥entryLªIdentifierÍuÍv¡bÂÂLªIdentifierÍyÍz¡bR³ExpressionStatementÍ‰Í•U´AssignmentExpressionÍ‰Í”¡=V°MemberExpressionÍ‰ÍLªIdentifierÍ‰Í¥entryLªIdentifierÍÍ¡gÂÂLªIdentifierÍ“Í”¡gR³ExpressionStatementÍ£Í¯U´AssignmentExpressionÍ£Í®¡=V°MemberExpressionÍ£ÍªLªIdentifierÍ£Í¨¥entryLªIdentifierÍ©Íª¡rÂÂLªIdentifierÍ­Í®¡rR³ExpressionStatementÍ½ÍÉU´AssignmentExpressionÍ½ÍÈ¡=V°MemberExpressionÍ½ÍÄLªIdentifierÍ½ÍÂ¥entryLªIdentifierÍÃÍÄ¡fÂÂLªIdentifierÍÇÍÈ¡fR³ExpressionStatementÍ×ÍU´AssignmentExpressionÍ×Í¡=V°MemberExpressionÍ×ÍâLªIdentifierÍ×ÍÜ¥entryLªIdentifierÍİÍâ¥pixelÂÂS®CallExpressionÍåÍV°MemberExpressionÍåÍóLªIdentifierÍåÍïªColorUtilsLªIdentifierÍğÍó£rgbÂÂ“V°MemberExpressionÍôÍûLªIdentifierÍôÍù¥entryLªIdentifierÍúÍû¡rÂÂV°MemberExpressionÍıÍLªIdentifierÍıÍ¥entryLªIdentifierÍÍ¡gÂÂV°MemberExpressionÍÍLªIdentifierÍÍ¥entryLªIdentifierÍÍ¡bÂÂÂR³ExpressionStatementÍÍ2S®CallExpressionÍÍ1V°MemberExpressionÍÍ*LªIdentifierÍÍ%¨pixEntryLªIdentifierÍ&Í*¤pushÂÂ‘LªIdentifierÍ+Í0¥entryÂ]«IfStatementÍ@Í5X±LogicalExpressionÍDÍpX±LogicalExpressionÍDÍ`X°BinaryExpressionÍDÍPV°MemberExpressionÍDÍKLªIdentifierÍDÍI¥entryLªIdentifierÍJÍK¡rÂÂ¢==Q§LiteralÍOÍP ¡0¢&&X°BinaryExpressionÍTÍ`V°MemberExpressionÍTÍ[LªIdentifierÍTÍY¥entryLªIdentifierÍZÍ[¡gÂÂ¢==Q§LiteralÍ_Í` ¡0¢&&X°BinaryExpressionÍdÍpV°MemberExpressionÍdÍkLªIdentifierÍdÍi¥entryLªIdentifierÍjÍk¡bÂÂ¢==Q§LiteralÍoÍp ¡0M®BlockStatementÍrÍ¾‘R³ExpressionStatementÍ…Í¯U´AssignmentExpressionÍ…Í®¡=V°MemberExpressionÍ…ÍšV°MemberExpressionÍ…Í•LªIdentifierÍ…Í«rgbDataMaskLªIdentifierÍ‘Í”£phMÃÂLªIdentifierÍ–Í™£pwMÃÂV°MemberExpressionÍÍ®V°MemberExpressionÍÍ©LªIdentifierÍÍ¤§rgbDataLªIdentifierÍ¥Í¨£phMÃÂLªIdentifierÍªÍ­£pwMÃÂM®BlockStatementÍÑÍ5‘R³ExpressionStatementÍäÍ&U´AssignmentExpressionÍäÍ%¡=V°MemberExpressionÍäÍùV°MemberExpressionÍäÍôLªIdentifierÍäÍï«rgbDataMaskLªIdentifierÍğÍó£phMÃÂLªIdentifierÍõÍø£pwMÃÂS®CallExpressionÍüÍ%V°MemberExpressionÍüÍ
+LªIdentifierÍüÍªColorUtilsLªIdentifierÍÍ
+£rgbÂÂ“V°MemberExpressionÍÍLªIdentifierÍÍ¥entryLªIdentifierÍÍ¡rÂÂV°MemberExpressionÍÍLªIdentifierÍÍ¥entryLªIdentifierÍÍ¡gÂÂV°MemberExpressionÍÍ$LªIdentifierÍÍ"¥entryLªIdentifierÍ#Í$¡bÂÂÂ]«IfStatementÍCÍÚX°BinaryExpressionÍGÍ[LªIdentifierÍGÍJ£pwM¢==X°BinaryExpressionÍNÍ[LªIdentifierÍNÍW©widthMask¡-Q§LiteralÍZÍ[¡1M®BlockStatementÍ]ÍŸ’R³ExpressionStatementÍpÍxU´AssignmentExpressionÍpÍw¡=LªIdentifierÍpÍs£pwMQ§LiteralÍvÍw ¡0R³ExpressionStatementÍŠÍ^°UpdateExpressionÍŠÍ¢++ÂLªIdentifierÍŠÍ£phMM®BlockStatementÍ²ÍÚ‘R³ExpressionStatementÍÅÍË^°UpdateExpressionÍÅÍÊ¢++ÂLªIdentifierÍÅÍÈ£pwMY³VariableDeclarationÍïÍ5‘Z²VariableDeclaratorÍóÍ4LªIdentifierÍóÍ ­bufferNewData_­NewExpressionÍÍ4LªIdentifierÍÍ«ArrayBuffer‘S®CallExpressionÍÍ3V°MemberExpressionÍÍ1LªIdentifierÍÍªmaskBitmapLªIdentifierÍÍ1³getPixelBytesNumberÂÂÂ£letY³VariableDeclarationÍ?Íp‘Z²VariableDeclaratorÍCÍoLªIdentifierÍCÍO¬dataNewArray_­NewExpressionÍRÍoLªIdentifierÍVÍ`ªUint8Array‘LªIdentifierÍaÍn­bufferNewData£letY³VariableDeclarationÍzÍˆ‘Z²VariableDeclaratorÍ~Í‡LªIdentifierÍ~Íƒ¥indexQ§LiteralÍ†Í‡ ¡0£letY³VariableDeclarationÍ’Í‘Z²VariableDeclaratorÍ–ÍœLªIdentifierÍ–Í˜¢mhQ§LiteralÍ›Íœ ¡0£letY³VariableDeclarationÍ§Í²‘Z²VariableDeclaratorÍ«Í±LªIdentifierÍ«Í­¢nwQ§LiteralÍ°Í± ¡0£let`¬ForStatementÍ¼ÍY³VariableDeclarationÍÁÍÊ‘Z²VariableDeclaratorÍÅÍÊLªIdentifierÍÅÍÆ¡iQ§LiteralÍÉÍÊ ¡0£letX°BinaryExpressionÍÌÍãLªIdentifierÍÌÍÍ¡i¡<V°MemberExpressionÍĞÍãLªIdentifierÍĞÍÜ¬dataNewArrayLªIdentifierÍİÍã¦lengthÂÂU´AssignmentExpressionÍåÍë¢+=LªIdentifierÍåÍæ¡iQ§LiteralÍêÍë¡4M®BlockStatementÍíÍšY³VariableDeclarationÍüÍ‘Z²VariableDeclaratorÍ ÍLªIdentifierÍ Í¦pixel1V°MemberExpressionÍ	ÍV°MemberExpressionÍ	ÍLªIdentifierÍ	Í«rgbDataMaskLªIdentifierÍÍ¢mhÃÂLªIdentifierÍÍ¢nwÃÂ£let]«IfStatementÍ+Í¾X°BinaryExpressionÍ/ÍBLªIdentifierÍ/Í1¢nw¢==X°BinaryExpressionÍ5ÍBLªIdentifierÍ5Í>©widthMask¡-Q§LiteralÍAÍB¡1M®BlockStatementÍDÍ„’R³ExpressionStatementÍWÍ^U´AssignmentExpressionÍWÍ]¡=LªIdentifierÍWÍY¢nwQ§LiteralÍ\Í] ¡0R³ExpressionStatementÍpÍu^°UpdateExpressionÍpÍt¢++ÂLªIdentifierÍpÍr¢mhM®BlockStatementÍ—Í¾‘R³ExpressionStatementÍªÍ¯^°UpdateExpressionÍªÍ®¢++ÂLªIdentifierÍªÍ¬¢nwY³VariableDeclarationÍÌÍì‘Z²VariableDeclaratorÍĞÍëLªIdentifierÍĞÍÒ¢pRS®CallExpressionÍÕÍëV°MemberExpressionÍÕÍãLªIdentifierÍÕÍßªColorUtilsLªIdentifierÍàÍã£redÂÂ‘LªIdentifierÍäÍê¦pixel1Â£letY³VariableDeclarationÍúÍ‘Z²VariableDeclaratorÍşÍLªIdentifierÍşÍ ¢pGS®CallExpressionÍÍV°MemberExpressionÍÍLªIdentifierÍÍªColorUtilsLªIdentifierÍÍ¥greenÂÂ‘LªIdentifierÍÍ¦pixel1Â£letY³VariableDeclarationÍ*ÍK‘Z²VariableDeclaratorÍ.ÍJLªIdentifierÍ.Í0¢pBS®CallExpressionÍ3ÍJV°MemberExpressionÍ3ÍBLªIdentifierÍ3Í=ªColorUtilsLªIdentifierÍ>ÍB¤blueÂÂ‘LªIdentifierÍCÍI¦pixel1Â£letR³ExpressionStatementÍYÍnU´AssignmentExpressionÍYÍm¡=V°MemberExpressionÍYÍhLªIdentifierÍYÍe¬dataNewArrayLªIdentifierÍfÍg¡iÃÂLªIdentifierÍkÍm¢pRR³ExpressionStatementÍ|Í•U´AssignmentExpressionÍ|Í”¡=V°MemberExpressionÍ|ÍLªIdentifierÍ|Íˆ¬dataNewArrayX°BinaryExpressionÍ‰ÍLªIdentifierÍ‰ÍŠ¡i¡+Q§LiteralÍÍ¡1ÃÂLªIdentifierÍ’Í”¢pGR³ExpressionStatementÍ£Í¼U´AssignmentExpressionÍ£Í»¡=V°MemberExpressionÍ£Í¶LªIdentifierÍ£Í¯¬dataNewArrayX°BinaryExpressionÍ°ÍµLªIdentifierÍ°Í±¡i¡+Q§LiteralÍ´Íµ¡2ÃÂLªIdentifierÍ¹Í»¢pBR³ExpressionStatementÍÊÍòU´AssignmentExpressionÍÊÍñ¡=V°MemberExpressionÍÊÍİLªIdentifierÍÊÍÖ¬dataNewArrayX°BinaryExpressionÍ×ÍÜLªIdentifierÍ×ÍØ¡i¡+Q§LiteralÍÛÍÜ¡3ÃÂV°MemberExpressionÍàÍñV°MemberExpressionÍàÍïLªIdentifierÍàÍè¨pixEntryLªIdentifierÍéÍî¥indexÃÂLªIdentifierÍğÍñ¡fÂÂR³ExpressionStatementÍ Í^°UpdateExpressionÍ Í¢++ÂLªIdentifierÍ Í¥indexR³ExpressionStatementÍÍQW¯AwaitExpressionÍÍPS®CallExpressionÍ#ÍPV°MemberExpressionÍ#ÍALªIdentifierÍ#Í-ªmaskBitmapLªIdentifierÍ.ÍA³writeBufferToPixelsÂÂ‘LªIdentifierÍBÍO­bufferNewDataÂW¯ReturnStatementÍ[ÍmLªIdentifierÍbÍlªmaskBitmapÀ–Ôra•¤type¥start£endªspecifiers¦source±ImportDeclarationÍnÍ°‘Ôrb•¤type¥start£end¨imported¥local¯ImportSpecifierÍwÍLªIdentifierÍwÍ¶PixelMapTransformationLªIdentifierÍwÍ¶PixelMapTransformationQ§LiteralÍ•Í¯¸./PixelMapTransformationº'./PixelMapTransformation'a±ImportDeclarationÍ²Íİ‘Ôrc”¤type¥start£end¥local¶ImportDefaultSpecifierÍ¹Í¾LªIdentifierÍ¹Í¾¥imageQ§LiteralÍÄÍÜ¶@ohos.multimedia.image¸"@ohos.multimedia.image"a±ImportDeclarationÍßÍ"‘b¯ImportSpecifierÍèÍûLªIdentifierÍèÍû³CalculatePixelUtilsLªIdentifierÍèÍû³CalculatePixelUtilsQ§LiteralÍÍ!¼../utils/CalculatePixelUtils¾'../utils/CalculatePixelUtils'a±ImportDeclarationÍ$ÍU‘b¯ImportSpecifierÍ-Í7LªIdentifierÍ-Í7ªColorUtilsLªIdentifierÍ-Í7ªColorUtilsQ§LiteralÍ?ÍT³../utils/ColorUtilsµ'../utils/ColorUtils'a±ImportDeclarationÍWÍ‡‘b¯ImportSpecifierÍ`ÍjLªIdentifierÍ`ÍjªPixelEntryLªIdentifierÍ`ÍjªPixelEntryQ§LiteralÍrÍ†²./entry/PixelEntry´'./entry/PixelEntry'a±ImportDeclarationÍ‰ÍÁ‘c¶ImportDefaultSpecifierÍÍ›LªIdentifierÍÍ›«applicationQ§LiteralÍ¡ÍÀ½@ohos.app.ability.application¿"@ohos.app.ability.application"

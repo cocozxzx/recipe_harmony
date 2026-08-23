@@ -1,0 +1,395 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚZ/*
+ * Copyright (C) 2025 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { FileCache } from '../cache/FileCache';
+import { ImageKnifeRequestSource } from '../model/ImageKnifeData';
+import http from '@ohos.net.http';
+import { ImageKnifeLoader } from '../ImageKnifeLoader';
+import { combineArrayBuffers } from '../utils/ArrayBufferUtils';
+import emitter from "@ohos.events.emitter";
+import { Constants, LoadPhase, LoadPixelMapCode } from '../utils/Constants';
+import { LogUtil } from '../utils/LogUtil';
+import taskpool from "@ohos.taskpool";
+import hiTraceMeter from "@ohos.hiTraceMeter";
+class RequestData {
+    constructor() {
+        this.receiveSize = 2000;
+        this.totalSize = 2000;
+    }
+}
+// HTTPåŠ è½½ç­–ç•¥
+export class HttpLoaderStrategy {
+    async loadImage(request, requestList, fileKey, callBackData, callBackTimeInfo) {
+        let resBuf;
+        let loadError = '';
+        // ä»æ–‡ä»¶ç¼“å­˜è·å–
+        ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_NET);
+        callBackTimeInfo.diskCheckStartTime = Date.now();
+        hiTraceMeter.startTrace('getFileCache', request.componentId);
+        resBuf = FileCache.getFileCacheByFile(request.context, fileKey, request.fileCacheFolder);
+        hiTraceMeter.finishTrace('getFileCache', request.componentId);
+        callBackTimeInfo.diskCheckEndTime = Date.now();
+        if (resBuf !== undefined) {
+            LogUtil.log(`success get image from filecache for key = ${fileKey} src = ${request.componentId},
+        srcType:${request.requestSource}, ${request.componentVersion}`);
+            ImageKnifeLoader.parseFile(resBuf, fileKey, request, callBackData);
+        }
+        else if (request.onlyRetrieveFromCache !== true) {
+            LogUtil.log(`HttpDownloadClient.start: ${request.componentId}, srcType:${request.requestSource},
+        ${request.componentVersion}`);
+            callBackTimeInfo.netRequestStartTime = Date.now();
+            if (taskpool.Task.isCanceled()) {
+                return;
+            }
+            const httpRequest = http.createHttp();
+            emitter.once(request.src + request.componentId, () => {
+                httpRequest.destroy();
+            });
+            let progress = 0;
+            let arrayBuffers = [];
+            const headerObj = ImageKnifeLoader.getHeaderObj(request);
+            httpRequest.on('dataReceive', (data) => {
+                arrayBuffers.push(data);
+            });
+            if (request.isWatchProgress) {
+                httpRequest.on('dataReceiveProgress', (data) => {
+                    if (data != undefined && typeof data.receiveSize === 'number' && typeof data.totalSize === 'number') {
+                        const percent = Math.round(((data.receiveSize * 1.0) / (data.totalSize * 1.0)) * 100);
+                        if (progress !== percent) {
+                            progress = percent;
+                            if (requestList === undefined) {
+                                // å­çº¿ç¨‹
+                                emitter.emit(Constants.PROGRESS_EMITTER + request.memoryKey, { data: { 'value': progress } });
+                            }
+                            else {
+                                // ä¸»çº¿ç¨‹è¯·æ±‚
+                                requestList.forEach((requestWithSource) => {
+                                    if (requestWithSource.request.imageKnifeOption.progressListener !== undefined &&
+                                        requestWithSource.source === ImageKnifeRequestSource.SRC) {
+                                        requestWithSource.request.imageKnifeOption.progressListener(progress);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+            hiTraceMeter.startTrace('loadHttp', request.componentId);
+            let promise = httpRequest.requestInStream(request.src, {
+                header: headerObj,
+                method: http.RequestMethod.GET,
+                expectDataType: http.HttpDataType.ARRAY_BUFFER,
+                connectTimeout: request.connectTimeout ?? 60000,
+                readTimeout: request.readTimeout ?? 30000,
+                caPath: request.caPath,
+                dnsOverHttps: request.dnsOverHttps,
+                dnsServers: request.dnsServers,
+                remoteValidation: request.remoteValidation
+            });
+            promise.then((data) => {
+                emitter.off(request.src + request.componentId);
+                httpRequest.destroy();
+                httpRequest.off('dataReceive');
+                httpRequest.off('dataReceiveProgress');
+                callBackData.httpCode = data;
+                ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_NET, undefined);
+                callBackTimeInfo.netRequestEndTime = Date.now();
+                if (data == 200 || data == 206 || data == 204) {
+                    hiTraceMeter.finishTrace('loadHttp', request.componentId);
+                    resBuf = combineArrayBuffers(arrayBuffers);
+                    arrayBuffers = [];
+                    ImageKnifeLoader.parseFile(resBuf, fileKey, request, callBackData, true, headerObj);
+                }
+                else {
+                    arrayBuffers = [];
+                    loadError = 'HttpDownloadClient has error, http code =' + JSON.stringify(data);
+                    ImageKnifeLoader.makeEmptyResult(request, loadError, ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_NET, LoadPixelMapCode.IMAGE_HTTPS_LOAD_FAILED_CODE));
+                }
+            }).catch((err) => {
+                emitter.off(request.src + request.componentId);
+                httpRequest.destroy();
+                httpRequest.off('dataReceive');
+                httpRequest.off('dataReceiveProgress');
+                arrayBuffers = [];
+                callBackData.httpCode = err.code;
+                loadError = 'HttpDownloadClient download ERROR : err = ' + JSON.stringify(err);
+                callBackTimeInfo.netRequestEndTime = Date.now();
+                ImageKnifeLoader.makeEmptyResult(request, loadError, ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_NET, LoadPixelMapCode.IMAGE_HTTPS_LOAD_FAILED_CODE));
+            });
+            LogUtil.log('HttpDownloadClient.end:' + request.componentId + ',srcType:' +
+                request.requestSource + ',' + request.componentVersion);
+            return;
+        }
+        else {
+            callBackTimeInfo.netRequestEndTime = Date.now();
+            loadError = `onlyRetrieveFromCache, do not fetch image src = ${request.src}`;
+            ImageKnifeLoader.makeEmptyResult(request, loadError, callBackData);
+            return;
+        }
+    }
+}
+//# sourceMappingURL=HttpLoaderStrategy.js.mapÂšÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\FileCache.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsÙZ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.net.http.d.tsÙŒC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnifeLoader.etsÙ’C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\ArrayBufferUtils.etsÙ` hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.events.emitter.d.tsÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\Constants.etsÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsÙZ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.taskpool.d.tsÙ^ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.hiTraceMeter.d.tsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\loaderStrategy\HttpLoaderStrategy.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚß/*
+ * Copyright (C) 2025 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { FileCache } from '../cache/FileCache';
+import { IImageLoaderStrategy } from './IImageLoaderStrategy';
+import {
+  ImageKnifeData,
+  ImageKnifeRequestSource,
+  ImageKnifeRequestWithSource,
+  RequestJobRequest,
+  TimeInfo
+} from '../model/ImageKnifeData';
+import http from '@ohos.net.http';
+import { ImageKnifeLoader } from '../ImageKnifeLoader';
+import { combineArrayBuffers } from '../utils/ArrayBufferUtils';
+import { BusinessError, emitter } from '@kit.BasicServicesKit';
+import { Constants, LoadPhase, LoadPixelMapCode } from '../utils/Constants';
+import { LogUtil } from '../utils/LogUtil';
+import List from '@ohos.util.List';
+import { taskpool } from '@kit.ArkTS';
+import { hiTraceMeter } from '@kit.PerformanceAnalysisKit';
+
+class RequestData {
+  public receiveSize: number = 2000
+  public totalSize: number = 2000
+}
+
+// HTTPåŠ è½½ç­–ç•¥
+export class HttpLoaderStrategy implements IImageLoaderStrategy {
+  async loadImage(
+    request: RequestJobRequest,
+    requestList: List<ImageKnifeRequestWithSource> | undefined,
+    fileKey: string,
+    callBackData: ImageKnifeData,
+    callBackTimeInfo: TimeInfo
+  ): Promise<void> {
+    let resBuf: ArrayBuffer | undefined;
+    let loadError: string = '';
+
+    // ä»æ–‡ä»¶ç¼“å­˜è·å–
+    ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_NET);
+    callBackTimeInfo.diskCheckStartTime = Date.now();
+    hiTraceMeter.startTrace('getFileCache',request.componentId)
+    resBuf = FileCache.getFileCacheByFile(request.context, fileKey, request.fileCacheFolder);
+    hiTraceMeter.finishTrace('getFileCache',request.componentId)
+    callBackTimeInfo.diskCheckEndTime = Date.now();
+
+    if (resBuf !== undefined) {
+      LogUtil.log(`success get image from filecache for key = ${fileKey} src = ${request.componentId},
+        srcType:${request.requestSource}, ${request.componentVersion}`);
+      ImageKnifeLoader.parseFile(resBuf, fileKey, request, callBackData);
+    } else if (request.onlyRetrieveFromCache !== true) {
+      LogUtil.log(`HttpDownloadClient.start: ${request.componentId}, srcType:${request.requestSource},
+        ${request.componentVersion}`);
+      callBackTimeInfo.netRequestStartTime = Date.now();
+      if (taskpool.Task.isCanceled()) {
+        return
+      }
+      const httpRequest = http.createHttp();
+      emitter.once((request.src as string) + request.componentId,()=>{
+        httpRequest.destroy()
+      })
+      let progress: number = 0;
+      let arrayBuffers: ArrayBuffer[] = [];
+      const headerObj = ImageKnifeLoader.getHeaderObj(request);
+
+      httpRequest.on('dataReceive', (data: ArrayBuffer) => {
+        arrayBuffers.push(data);
+      });
+
+      if (request.isWatchProgress) {
+        httpRequest.on('dataReceiveProgress', (data: RequestData) => {
+          if (data != undefined && typeof data.receiveSize === 'number' && typeof data.totalSize === 'number') {
+            const percent = Math.round(((data.receiveSize * 1.0) / (data.totalSize * 1.0)) * 100);
+            if (progress !== percent) {
+              progress = percent;
+              if (requestList === undefined) {
+                // å­çº¿ç¨‹
+                emitter.emit(Constants.PROGRESS_EMITTER + request.memoryKey, { data: { 'value': progress } });
+              } else {
+                // ä¸»çº¿ç¨‹è¯·æ±‚
+                requestList.forEach((requestWithSource: ImageKnifeRequestWithSource) => {
+                  if (requestWithSource.request.imageKnifeOption.progressListener !== undefined &&
+                    requestWithSource.source === ImageKnifeRequestSource.SRC) {
+                    requestWithSource.request.imageKnifeOption.progressListener(progress);
+                  }
+                });
+              }
+            }
+          }
+        });
+      }
+      hiTraceMeter.startTrace('loadHttp',request.componentId)
+      let promise = httpRequest.requestInStream(request.src as string, {
+        header: headerObj,
+        method: http.RequestMethod.GET,
+        expectDataType: http.HttpDataType.ARRAY_BUFFER,
+        connectTimeout: request.connectTimeout ?? 60000,
+        readTimeout: request.readTimeout ?? 30000,
+        caPath: request.caPath,
+        dnsOverHttps: request.dnsOverHttps,
+        dnsServers: request.dnsServers,
+        remoteValidation: request.remoteValidation
+      });
+      promise.then((data: number) => {
+        emitter.off((request.src as string) + request.componentId)
+        httpRequest.destroy()
+        httpRequest.off('dataReceive')
+        httpRequest.off('dataReceiveProgress')
+        callBackData.httpCode = data;
+        ImageKnifeLoader.assembleError(callBackData,LoadPhase.PHASE_NET, undefined);
+        callBackTimeInfo.netRequestEndTime = Date.now();
+        if (data == 200 || data == 206 || data == 204) {
+          hiTraceMeter.finishTrace('loadHttp',request.componentId)
+          resBuf = combineArrayBuffers(arrayBuffers);
+          arrayBuffers = []
+          ImageKnifeLoader.parseFile(resBuf, fileKey, request, callBackData,true,headerObj);
+        } else {
+          arrayBuffers = []
+          loadError = 'HttpDownloadClient has error, http code =' + JSON.stringify(data);
+          ImageKnifeLoader.makeEmptyResult(request,loadError, ImageKnifeLoader.assembleError(callBackData,
+            LoadPhase.PHASE_NET, LoadPixelMapCode.IMAGE_HTTPS_LOAD_FAILED_CODE));
+        }
+      }).catch((err: BusinessError) => {
+        emitter.off((request.src as string) + request.componentId)
+        httpRequest.destroy()
+        httpRequest.off('dataReceive')
+        httpRequest.off('dataReceiveProgress')
+        arrayBuffers = []
+        callBackData.httpCode = err.code;
+        loadError = 'HttpDownloadClient download ERROR : err = ' + JSON.stringify(err);
+        callBackTimeInfo.netRequestEndTime = Date.now();
+        ImageKnifeLoader.makeEmptyResult(request,loadError, ImageKnifeLoader.assembleError(callBackData,
+          LoadPhase.PHASE_NET, LoadPixelMapCode.IMAGE_HTTPS_LOAD_FAILED_CODE));
+      });
+      LogUtil.log('HttpDownloadClient.end:' + request.componentId + ',srcType:' +
+        request.requestSource + ',' + request.componentVersion);
+      return;
+    } else {
+      callBackTimeInfo.netRequestEndTime = Date.now();
+      loadError = `onlyRetrieveFromCache, do not fetch image src = ${request.src}`;
+      ImageKnifeLoader.makeEmptyResult(request, loadError, callBackData);
+      return;
+    }
+  }
+}
+ÀÔrDš®@ohos.net.http´@ohos.events.emitter®@ohos.taskpool²@ohos.hiTraceMeter·../model/ImageKnifeData²../cache/FileCache³../ImageKnifeLoader²../utils/Constants°../utils/LogUtil¹../utils/ArrayBufferUtilsÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÃÙZ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.net.http.d.tsAÃªoh-resolveÂEAÃÙ` hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.events.emitter.d.tsAÃªoh-resolveÂEAÃÙZ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.taskpool.d.tsAÃªoh-resolveÂEAÃÙ^ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.hiTraceMeter.d.tsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsAÃªoh-resolveÂEAÂÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\FileCache.etsAÃªoh-resolveÂEAÂÙŒC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnifeLoader.etsAÃªoh-resolveÂEAÂÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\Constants.etsAÃªoh-resolveÂEAÂÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsAÃªoh-resolveÂEAÂÙ’C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\ArrayBufferUtils.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappingsµHttpLoaderStrategy.js ‘¶HttpLoaderStrategy.etsÜ ‘”    ‘” ˜”   ” ”	 	” ” ” ”. .”/ /˜”   ” ”	 ”  ”" ”( ”ÌA  ”ÌB !–”   ” ” ” ”! !”" "˜”   ” ”	 	” ” ”! !”6 6”7 7˜”   ” ”	 	” ” ”$ $”? ?”Ì@ Ì@–”   ” ” ” '”* >”+ ?œ”   ” ”	 	” ” ” ” ”/ /”1 1”7 7”ÌK ÌK”ÌL ÌL˜”   ” ”	 	” ” ” ”* *”+ +–”   ” 	” ” ”% %”& &–”   ” 	” ” ”- :”. ;“”  ! ” !” !‘” ! •” "	” "” "” "#”  "#•” #	” #” #” #!” #!’” $ ” $‘” $’”  & ” &””  ' ” '” '” '” (”	 (”
+ (” (” )” )” *”( *>”* +”1 +”3 ,”? , ”ÌA -”ÌQ -”” /” /” /'” /(–” 0” 0” 0” 0” 0” 0’” 2” 2œ” 3” 3” 3”& 3"”' 3#”3 3/”5 31”> 3:”? 3;”ÌH 3ÌD”ÌI 3ÌE”ÌJ 3ÌFš” 4” 4” 4”+ 4'”. 4*”2 4.”3 4/”6 42”8 44”9 45œ” 5” 5” 5” 5”  5”. 5*”0 5+”7 52”8 53”ÌC 5>”ÌD 5?”ÌE 5?Ü ” 6” 6
+” 6” 6” 6”- 6)”. 6*”5 61”6 62”= 69”? 6;”ÌF 6ÌB”ÌH 6ÌD”ÌO 6ÌK”ÌP 6ÌL”Ì_ 6Ì[”Ì` 6Ì\”Ìa 6Ì]œ” 7” 7” 7”  7”! 7”/ 7+”1 7,”8 73”9 74”ÌD 7?”ÌE 7Ì@”ÌF 7Ì@š” 8” 8” 8”) 8%”, 8(”0 8,”1 8-”4 80”6 82”7 83–” :” :” :” :”  :”" :›” ;” ;” ;” ;” ;”ÌF ;Ì@”ÌM ;ÌG”ÌW ;ÌQ”Ì^ ;ÌX”Ì_ ;ÌY”Ìj ;Ìd›” <” <” <”' <'”, <,”3 <3”4 <4”ÌD <ÌD”ÌF <ÌF”ÌG <ÌG”ÌH <ÌH” =” =” =”& = ”' =!”- ='”/ =)”6 =0”8 =2”? =9”ÌA =;”ÌM =ÌG”ÌN =ÌH”ÌO =ÌI‘”	 >˜” >” >” >” >”. >,”3 >1”7 >5”9 >7” ?” ?” ?” ?” ?”5 ?/”< ?6”= ?7”ÌH ?ÌB”ÌU ?ÌO”Ì\ ?ÌV”Ì] ?ÌW”Ìj ?Ìd—”
+ Ì@
+” Ì@” Ì@”" Ì@"”$ Ì@$”% Ì@%”& Ì@&š” ÌA” ÌA” ÌA”0 ÌA*”3 ÌA-”7 ÌA1”8 ÌA2”; ÌA5”= ÌA7”> ÌA8™” ÌB” ÌB
+” ÌB” ÌB” ÌB” ÌB”( ÌB"”* ÌB$”, ÌB&’” ÌC” ÌC‘” ÌD™” ÌE” ÌE” ÌE”  ÌE”$ ÌE”% ÌE”/ ÌE)”1 ÌE+”2 ÌE,Ÿ” ÌF” ÌF” ÌF” ÌF” ÌF”  ÌF”! ÌF”$ ÌF*”' ÌF-”. ÌF4”/ ÌF5”: ÌFÌ@”< ÌFÌA”? ÌFÌC”ÌA ÌFÌE–” ÌG” ÌG” ÌG”# ÌG”% ÌG”& ÌG”” ÌH” ÌH” ÌH” ÌH–” ÌI” ÌI
+” ÌI” ÌI” ÌI” ÌI–” ÌJ” ÌJ
+” ÌJ” ÌJ(”! ÌJ*”" ÌJ+›” ÌK” ÌK” ÌK” ÌK”. ÌK(”/ ÌK)”; ÌK5”< ÌK6”ÌC ÌK=”ÌD ÌK>”ÌE ÌK?›” ÌM” ÌM” ÌM” ÌM” ÌM”( ÌM"”* ÌM$”+ ÌM%”/ ÌM6”1 ÌM8”3 ÌM:˜” ÌN” ÌN” ÌN”! ÌN”" ÌN”& ÌN”' ÌN”( ÌN ”” ÌO” ÌO” ÌO” ÌO	–” ÌQ” ÌQ
+” ÌQ” ÌQ”' ÌQ!”) ÌQ#›” ÌR” ÌR” ÌR” ÌR” ÌR”4 ÌR,”6 ÌR.”7 ÌR/”; ÌRÌ@”= ÌRÌB”? ÌRÌDÜ ” ÌS
+” ÌS” ÌS”  ÌS”) ÌS”- ÌS#”4 ÌS*”8 ÌS.”9 ÌS/”ÌD ÌS:”ÌI ÌS?”ÌQ ÌSÌG”ÌU ÌSÌK”Ì\ ÌSÌR”Ì` ÌSÌV”Ìa ÌSÌW”Ìj ÌSÌ`”Ìo ÌSÌe”Ìw ÌSÌm”Ìy ÌSÌoÜ ” ÌT” ÌT”% ÌT”( ÌT”, ÌT ”- ÌT!”2 ÌT&”3 ÌT'”4 ÌT(”5 ÌT)”9 ÌT-”: ÌT.”ÌE ÌT9”ÌH ÌT<”ÌK ÌT?”ÌL ÌTÌ@”ÌO ÌTÌC”ÌP ÌTÌD”ÌT ÌTÌH”ÌU ÌTÌI”Ì^ ÌTÌR”Ìa ÌTÌU”Ìd ÌTÌX”Ìe ÌTÌY”Ìf ÌTÌZ”Ìi ÌTÌ]”Ìl ÌTÌ`”Ìm ÌTÌa”Ìn ÌTÌb–” ÌU” ÌU”$ ÌU”) ÌU”0 ÌU$”2 ÌU&•” ÌV”$ ÌV”' ÌV”. ÌV ”/ ÌV!–” ÌW”  ÌW”+ ÌW”0 ÌW"”9 ÌW+”; ÌW-’”  ÌX”& ÌXÜ ”  ÌY”' ÌY”( ÌY”, ÌY”- ÌY”6 ÌY&”7 ÌY'”ÌG ÌY7”ÌJ ÌY:”ÌQ ÌYÌA”ÌR ÌYÌB”Ì[ ÌYÌK”Ì] ÌYÌM”Ì_ ÌYÌO”Ìc ÌYÌS”Ìe ÌYÌU”Ìg ÌYÌW”Ìn ÌYÌ^”Ìp ÌYÌ`”Ìx ÌYÌh”Ìz ÌYÌj”Ì| ÌYÌl”Ì} ÌYÌm”Ì~ ÌYÌn‘” ÌZ‘”! ÌZ’”  Ì[”( Ì[™”  Ì\”+ Ì\”, Ì\”3 Ì\#”4 Ì\$”5 Ì\%”ÌF Ì\ÌS”ÌH Ì\ÌU”ÌJ Ì\ÌW›”$ Ì]”( Ì]”9 Ì]'”: Ì](”ÌA Ì]/”ÌB Ì]0”ÌR Ì]Ì@”ÌS Ì]ÌA”Ìc Ì]ÌQ”Ìh Ì]ÌV”Ìq Ì]Ì_™”( Ì^”9 Ì^%”: Ì^&”Ì@ Ì^,”ÌE Ì^1”Ì\ Ì^ÌH”Ì] Ì^ÌI”Ì` Ì^ÌL”Ìb Ì^ÌNœ”( Ì_”9 Ì_%”: Ì_&”ÌA Ì_-”ÌB Ì_.”ÌR Ì_>”ÌS Ì_?”Ìc Ì_ÌO”Ìd Ì_ÌP”Ìl Ì_ÌX”Ìm Ì_ÌY”Ìn Ì_ÌZ‘”% Ì`””  Ìa”! Ìa”" Ìa”# Ìa‘” Ìb‘” Ìc‘” Ìd”” Ìe” Ìe	” Ìe
+” Ìe‘” Ìfœ” Ìg” Ìg” Ìg”# Ìg”$ Ìg”. Ìg(”0 Ìg)”7 Ìg0”8 Ìg1”ÌC Ìg<”ÌD Ìg=”ÌE Ìg=œ” Ìh” Ìh
+” Ìh” Ìh”% Ìh”& Ìh ”5 Ìh/”6 Ìh0”= Ìh7”> Ìh8”ÌA ÌhÌE”ÌC ÌhÌG”” Ìi” Ìi” Ìi”! Ìi˜” Ìj” Ìj” Ìj” Ìj” Ìj”* Ìj"”+ Ìj#”. Ìj&˜” Ìk” Ìk”  Ìk”$ Ìk”% Ìk”1 Ìk)”2 Ìk*”> Ìk6˜” Ìl” Ìl”  Ìl”' Ìl”( Ìl ”6 Ìl.”: Ìl2”? Ìl7˜” Ìm” Ìm” Ìm”$ Ìm”% Ìm”0 Ìm(”4 Ìm,”9 Ìm1–” Ìn” Ìn” Ìn” Ìn”  Ìn”& Ìn–” Ìo” Ìo” Ìo”% Ìo”& Ìo”2 Ìo*–” Ìp” Ìp” Ìp”# Ìp”$ Ìp”. Ìp&–” Ìq”  Ìq”" Ìq”) Ìq!”* Ìq"”: Ìq2“” Ìr” Ìr” Ìr	™” Ìs” Ìs” Ìs” Ìs” Ìs” Ìs” Ìs ”  Ìs"”" Ìs$” Ìt” Ìt” Ìt” Ìt” Ìt”# Ìt”$ Ìt”' Ìt+”* Ìt.”1 Ìt5”2 Ìt6”= ÌtÌA”> ÌtÌB”? ÌtÌB–” Ìu” Ìu” Ìu”# Ìu”% Ìu”& Ìu˜” Ìv” Ìv” Ìv” Ìv”  Ìv”- Ìv%”. Ìv&”/ Ìv&˜” Ìw” Ìw” Ìw” Ìw”  Ìw”5 Ìw-”6 Ìw.”7 Ìw.—” Ìx” Ìx” Ìx”% Ìx”( Ìx ”, Ìx$”- Ìx%” Ìy”  Ìy”! Ìy”. Ìy&”/ Ìy'”; Ìy3”= Ìy4”ÌF Ìy=”ÌG Ìy>”ÌP ÌyÌG”ÌR ÌyÌI”Ì[ ÌyÌR”Ì\ ÌyÌS”Ì] ÌyÌTš” Ìz”  Ìz”! Ìz”2 Ìz*”5 Ìz-”9 Ìz1”: Ìz2”= Ìz5”? Ìz7”Ì@ Ìz8” Ì{” Ì{” Ì{” Ì{” Ì{”# Ì{”' Ì{”+ Ì{#”. Ì{&”2 Ì{*”6 Ì{.”: Ì{2”= Ì{5”? Ì{7œ” Ì|
+”  Ì|”! Ì|”, Ì|"”- Ì|#”7 Ì|-”9 Ì|.”Ì@ Ì|5”ÌA Ì|6”ÌL Ì|ÌA”ÌM Ì|ÌB”ÌN Ì|ÌB˜” Ì}
+” Ì}” Ì}”0 Ì}&”1 Ì}'”= Ì}3”> Ì}4”? Ì}5•” Ì~
+”  Ì~”# Ì~”% Ì~”& Ì~Ü ” Ì
+”$ Ì”% Ì”. Ì$”/ Ì%”5 Ì+”7 Ì-”> Ì4”Ì@ Ì6”ÌG Ì=”ÌI Ì?”ÌU ÌÌK”ÌW ÌÌL”Ì[ ÌÌP”Ì] ÌÌQ”Ìf ÌÌZ”Ìg ÌÌ[”Ìh ÌÌ\‘” Ì€	‘” Ì€•” Ì
+”  Ì”# Ì”% Ì”& Ìœ” Ì‚
+” Ì‚”  Ì‚”ÌK Ì‚ÌA”ÌN Ì‚ÌD”ÌR Ì‚ÌH”ÌS Ì‚ÌI”Ì\ Ì‚ÌR”Ì] Ì‚ÌS”Ìa Ì‚ÌW”Ìb Ì‚ÌX”Ìc Ì‚ÌYÜ ” Ìƒ
+”$ Ìƒ”% Ìƒ”4 Ìƒ*”5 Ìƒ+”< Ìƒ2”> Ìƒ3”ÌG Ìƒ<”ÌI Ìƒ>”ÌY ÌƒÌN”ÌZ ÌƒÌO”Ìg ÌƒÌ\”Ìh ÌƒÌ]”Ìt ÌƒÌi”Ìv Ì„”Ì Ì„”Ì€ Ì„”Ì‰ Ì„”Ì‹ Ì„!”Ì› Ì„1”Ìœ Ì„2”Ì¸ Ì„ÌN”Ì¹ Ì„ÌO”Ìº Ì„ÌP”Ì» Ì„ÌQ‘” Ì…	š” Ì†” Ì†” Ì†” Ì†	” Ì†” Ì†” Ì†” Ì†"” Ì†$” Ì†&” Ì‡” Ì‡” Ì‡” Ì‡” Ì‡”# Ì‡”$ Ì‡”' Ì‡+”* Ì‡.”1 Ì‡5”2 Ì‡6”= Ì‡ÌA”> Ì‡ÌB”? Ì‡ÌB–” Ìˆ” Ìˆ” Ìˆ”# Ìˆ”% Ìˆ”& Ìˆ˜” Ì‰” Ì‰” Ì‰” Ì‰”  Ì‰”- Ì‰%”. Ì‰&”/ Ì‰&˜” ÌŠ” ÌŠ” ÌŠ” ÌŠ”  ÌŠ”5 ÌŠ-”6 ÌŠ.”7 ÌŠ.•” Ì‹” Ì‹” Ì‹”! Ì‹”" Ì‹™” ÌŒ” ÌŒ” ÌŒ”% ÌŒ”( ÌŒ ”+ ÌŒ#”, ÌŒ$”0 ÌŒ(”1 ÌŒ)œ” Ì” Ì” Ì”ÌH ÌÌ@”ÌK ÌÌC”ÌO ÌÌG”ÌP ÌÌH”ÌY ÌÌQ”ÌZ ÌÌR”Ì] ÌÌU”Ì^ ÌÌV”Ì_ ÌÌWš” Ì”  Ì”! Ì”2 Ì*”5 Ì-”9 Ì1”: Ì2”= Ì5”? Ì7”Ì@ Ì8Ü ” Ì”  Ì”! Ì”0 Ì(”1 Ì)”8 Ì0”: Ì1”ÌC Ì:”ÌE Ì<”ÌU ÌÌL”ÌV ÌÌM”Ìc ÌÌZ”Ìd ÌÌ[”Ìp ÌÌg”Ìr Ì
+”Ì{ Ì”Ì| Ì”Ì… Ì”Ì‡ Ì”Ì— Ì/”Ì˜ Ì0”Ì´ ÌÌL”Ìµ ÌÌM”Ì¶ ÌÌN”Ì· ÌÌO”” Ì‘” Ì‘” Ì‘” Ì‘	œ” Ì’” Ì’” Ì’” Ì’” Ì’”1 Ì’+”4 Ì’.”; Ì’5”< Ì’6”ÌG Ì’ÌA”ÌJ Ì’ÌD”ÌU Ì’ÌOœ” Ì“” Ì“” Ì“”% Ì“”( Ì“ ”+ Ì“#”. Ì“&”5 Ì“-”6 Ì“.”ÌF Ì“>”ÌG Ì“?”ÌH Ì“Ì@’” Ì”” Ì”‘”	 Ì•‘” Ì•š” Ì–” Ì–” Ì–”. Ì–(”1 Ì–+”5 Ì–/”6 Ì–0”9 Ì–3”; Ì–5”< Ì–6™” Ì—” Ì—” Ì—”ÌK Ì—ÌE”ÌR Ì—ÌL”ÌS Ì—ÌM”ÌV Ì—ÌP”ÌX Ì—ÌR”ÌY Ì—ÌSœ” Ì˜” Ì˜” Ì˜”, Ì˜&”- Ì˜'”4 Ì˜.”6 Ì˜0”? Ì˜9”ÌA Ì˜;”ÌM Ì˜ÌG”ÌN Ì˜ÌH”ÌO Ì˜ÌI’” Ì™” Ì™‘”	 Ìš’” Ì›” Ì›‘” ÌœÔrG–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜ ‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ‘”  Ìs ‘”  Ìt ‘”  Ìu ‘”  Ìv ‘”  Ìw ‘”  Ìx ‘”  Ìy ‘”  Ìz ‘”  Ì{ ‘”  Ì| ‘”  Ì} ‘”  Ì~ ‘”  Ì ‘”  Ì€ ‘”  Ì ‘”  Ì‚ ‘”  Ìƒ ‘”  Ì„ ‘”  Ì… ‘”  Ì† ‘”  Ì‡ ‘”  Ìˆ ‘”  Ì‰ ‘”  ÌŠ ‘”  Ì‹ ‘”  ÌŒ ‘”  Ì ÔrH’§missing¦pluginÃ¦genAbcÂÔ  ÔrI”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrJ–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍÍÔrK–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍÍÔrL”¤type¥start£end¤nameªIdentifierÍÍ$²HttpLoaderStrategyÀÔrM”¤type¥start£end¤body©ClassBodyÍ%Í‘ÔrN˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍ,ÍÂÂLªIdentifierÍ2Í;©loadImage¦methodÔrO™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍ;ÍÀÂÂÃ•LªIdentifierÍ<ÍC§requestLªIdentifierÍEÍP«requestListLªIdentifierÍRÍY§fileKeyLªIdentifierÍ[Íg¬callBackDataLªIdentifierÍiÍy°callBackTimeInfoM®BlockStatementÍ{Í™ÔrP•¤type¥start£end¬declarations¤kind³VariableDeclarationÍ†Í‘‘ÔrQ•¤type¥start£end¢id¤init²VariableDeclaratorÍŠÍLªIdentifierÍŠÍ¦resBufÀ£letP³VariableDeclarationÍ›Í®‘Q²VariableDeclaratorÍŸÍ­LªIdentifierÍŸÍ¨©loadErrorÔrR•¤type¥start£end¥value£raw§LiteralÍ«Í­ ¢''£letÔrS”¤type¥start£endªexpression³ExpressionStatementÍÌÍÔrT–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍÌÍÔrU—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍÌÍêLªIdentifierÍÌÍÜ°ImageKnifeLoaderLªIdentifierÍİÍê­assembleErrorÂÂ’LªIdentifierÍëÍ÷¬callBackDataU°MemberExpressionÍùÍLªIdentifierÍùÍ©LoadPhaseLªIdentifierÍÍ©PHASE_NETÂÂÂS³ExpressionStatementÍÍIÔrV–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍÍH¡=U°MemberExpressionÍÍ;LªIdentifierÍÍ(°callBackTimeInfoLªIdentifierÍ)Í;²diskCheckStartTimeÂÂT®CallExpressionÍ>ÍHU°MemberExpressionÍ>ÍFLªIdentifierÍ>ÍB¤DateLªIdentifierÍCÍF£nowÂÂÂS³ExpressionStatementÍSÍT®CallExpressionÍSÍU°MemberExpressionÍSÍjLªIdentifierÍSÍ_¬hiTraceMeterLªIdentifierÍ`ÍjªstartTraceÂÂ’R§LiteralÍkÍy¬getFileCache®'getFileCache'U°MemberExpressionÍ{ÍLªIdentifierÍ{Í‚§requestLªIdentifierÍƒÍ«componentIdÂÂÂS³ExpressionStatementÍšÍóV´AssignmentExpressionÍšÍò¡=LªIdentifierÍšÍ ¦resBufT®CallExpressionÍ£ÍòU°MemberExpressionÍ£Í¿LªIdentifierÍ£Í¬©FileCacheLªIdentifierÍ­Í¿²getFileCacheByFileÂÂ“U°MemberExpressionÍÀÍÏLªIdentifierÍÀÍÇ§requestLªIdentifierÍÈÍÏ§contextÂÂLªIdentifierÍÑÍØ§fileKeyU°MemberExpressionÍÚÍñLªIdentifierÍÚÍá§requestLªIdentifierÍâÍñ¯fileCacheFolderÂÂÂS³ExpressionStatementÍıÍ;T®CallExpressionÍıÍ:U°MemberExpressionÍıÍLªIdentifierÍıÍ	¬hiTraceMeterLªIdentifierÍ
+Í«finishTraceÂÂ’R§LiteralÍÍ$¬getFileCache®'getFileCache'U°MemberExpressionÍ&Í9LªIdentifierÍ&Í-§requestLªIdentifierÍ.Í9«componentIdÂÂÂS³ExpressionStatementÍEÍtV´AssignmentExpressionÍEÍs¡=U°MemberExpressionÍEÍfLªIdentifierÍEÍU°callBackTimeInfoLªIdentifierÍVÍf°diskCheckEndTimeÂÂT®CallExpressionÍiÍsU°MemberExpressionÍiÍqLªIdentifierÍiÍm¤DateLªIdentifierÍnÍq£nowÂÂÂÔrW–¤type¥start£end¤testªconsequent©alternate«IfStatementÍ~ÍúÔrX–¤type¥start£end¤left¨operator¥right°BinaryExpressionÍ‚Í–LªIdentifierÍ‚Íˆ¦resBuf£!==LªIdentifierÍÍ–©undefinedM®BlockStatementÍ˜Í­’S³ExpressionStatementÍ§ÍQT®CallExpressionÍ§ÍPU°MemberExpressionÍ§Í²LªIdentifierÍ§Í®§LogUtilLªIdentifierÍ¯Í²£logÂÂ‘ÔrY•¤type¥start£end«expressions¦quasis¯TemplateLiteralÍ³ÍO”LªIdentifierÍáÍè§fileKeyU°MemberExpressionÍòÍLªIdentifierÍòÍù§requestLªIdentifierÍúÍ«componentIdÂÂU°MemberExpressionÍÍ0LªIdentifierÍÍ"§requestLªIdentifierÍ#Í0­requestSourceÂÂU°MemberExpressionÍ5ÍMLªIdentifierÍ5Í<§requestLªIdentifierÍ=ÍM°componentVersionÂÂ•ÔrZ•¤type¥start£end¥value¤tail¯TemplateElementÍ´ÍßÔr[’£raw¦cookedÙ+success get image from filecache for key = Ù+success get image from filecache for key = ÂZ¯TemplateElementÍéÍğ[§ src = § src = ÂZ¯TemplateElementÍÍ[²,
+        srcType:²,
+        srcType:ÂZ¯TemplateElementÍ1Í3[¢, ¢, ÂZ¯TemplateElementÍNÍN[  ÃÂS³ExpressionStatementÍ_Í¢T®CallExpressionÍ_Í¡U°MemberExpressionÍ_ÍyLªIdentifierÍ_Ío°ImageKnifeLoaderLªIdentifierÍpÍy©parseFileÂÂ”LªIdentifierÍzÍ€¦resBufLªIdentifierÍ‚Í‰§fileKeyLªIdentifierÍ‹Í’§requestLªIdentifierÍ”Í ¬callBackDataÂW«IfStatementÍ¼ÍúX°BinaryExpressionÍÀÍæU°MemberExpressionÍÀÍİLªIdentifierÍÀÍÇ§requestLªIdentifierÍÈÍİµonlyRetrieveFromCacheÂÂ£!==R§LiteralÍâÍæÃ¤trueM®BlockStatementÍèÍàŸS³ExpressionStatementÍ÷Í	T®CallExpressionÍ÷Í	~U°MemberExpressionÍ÷Í	LªIdentifierÍ÷Íş§LogUtilLªIdentifierÍÿÍ	£logÂÂ‘Y¯TemplateLiteralÍ	Í	}“U°MemberExpressionÍ	 Í	3LªIdentifierÍ	 Í	'§requestLªIdentifierÍ	(Í	3«componentIdÂÂU°MemberExpressionÍ	@Í	ULªIdentifierÍ	@Í	G§requestLªIdentifierÍ	HÍ	U­requestSourceÂÂU°MemberExpressionÍ	cÍ	{LªIdentifierÍ	cÍ	j§requestLªIdentifierÍ	kÍ	{°componentVersionÂÂ”Z¯TemplateElementÍ	Í	[ºHttpDownloadClient.start: ºHttpDownloadClient.start: ÂZ¯TemplateElementÍ	4Í	>[ª, srcType:ª, srcType:ÂZ¯TemplateElementÍ	VÍ	a[ª,
+        ª,
+        ÂZ¯TemplateElementÍ	|Í	|[  ÃÂS³ExpressionStatementÍ	Í	¿V´AssignmentExpressionÍ	Í	¾¡=U°MemberExpressionÍ	Í	±LªIdentifierÍ	Í	°callBackTimeInfoLªIdentifierÍ	Í	±³netRequestStartTimeÂÂT®CallExpressionÍ	´Í	¾U°MemberExpressionÍ	´Í	¼LªIdentifierÍ	´Í	¸¤DateLªIdentifierÍ	¹Í	¼£nowÂÂÂW«IfStatementÍ	ÍÍ
+T®CallExpressionÍ	ÑÍ	ëU°MemberExpressionÍ	ÑÍ	éU°MemberExpressionÍ	ÑÍ	ŞLªIdentifierÍ	ÑÍ	Ù¨taskpoolLªIdentifierÍ	ÚÍ	Ş¤TaskÂÂLªIdentifierÍ	ßÍ	éªisCanceledÂÂÂM®BlockStatementÍ	íÍ
+‘Ôr\”¤type¥start£end¨argument¯ReturnStatementÍ
+ Í
+ÀÀP³VariableDeclarationÍ
+$Í
+J‘Q²VariableDeclaratorÍ
+*Í
+ILªIdentifierÍ
+*Í
+5«httpRequestT®CallExpressionÍ
+8Í
+IU°MemberExpressionÍ
+8Í
+GLªIdentifierÍ
+8Í
+<¤httpLªIdentifierÍ
+=Í
+GªcreateHttpÂÂÂ¥constS³ExpressionStatementÍ
+XÍ
+ÈT®CallExpressionÍ
+XÍ
+ÇU°MemberExpressionÍ
+XÍ
+dLªIdentifierÍ
+XÍ
+_§emitterLªIdentifierÍ
+`Í
+d¤onceÂÂ’X°BinaryExpressionÍ
+eÍ
+†U°MemberExpressionÍ
+eÍ
+pLªIdentifierÍ
+eÍ
+l§requestLªIdentifierÍ
+mÍ
+p£srcÂÂ¡+U°MemberExpressionÍ
+sÍ
+†LªIdentifierÍ
+sÍ
+z§requestLªIdentifierÍ
+{Í
+†«componentIdÂÂO·ArrowFunctionExpressionÍ
+ˆÍ
+ÆÀÂÂÂM®BlockStatementÍ
+Í
+Æ‘S³ExpressionStatementÍ
+¡Í
+·T®CallExpressionÍ
+¡Í
+¶U°MemberExpressionÍ
+¡Í
+´LªIdentifierÍ
+¡Í
+¬«httpRequestLªIdentifierÍ
+­Í
+´§destroyÂÂÂÂP³VariableDeclarationÍ
+ÖÍ
+ç‘Q²VariableDeclaratorÍ
+ÚÍ
+æLªIdentifierÍ
+ÚÍ
+â¨progressR§LiteralÍ
+åÍ
+æ ¡0£letP³VariableDeclarationÍ
+õÍ‘Q²VariableDeclaratorÍ
+ùÍ
+LªIdentifierÍ
+ùÍ¬arrayBuffersÔr]”¤type¥start£end¨elements¯ArrayExpressionÍÍ
+£letP³VariableDeclarationÍÍR‘Q²VariableDeclaratorÍÍQLªIdentifierÍÍ(©headerObjT®CallExpressionÍ+ÍQU°MemberExpressionÍ+ÍHLªIdentifierÍ+Í;°ImageKnifeLoaderLªIdentifierÍ<ÍH¬getHeaderObjÂÂ‘LªIdentifierÍIÍP§requestÂ¥constS³ExpressionStatementÍ`ÍÄT®CallExpressionÍ`ÍÃU°MemberExpressionÍ`ÍnLªIdentifierÍ`Ík«httpRequestLªIdentifierÍlÍn¢onÂÂ’R§LiteralÍoÍ|«dataReceive­'dataReceive'O·ArrowFunctionExpressionÍ~ÍÂÀÂÂÂ‘LªIdentifierÍÍƒ¤dataM®BlockStatementÍˆÍÂ‘S³ExpressionStatementÍ›Í³T®CallExpressionÍ›Í²U°MemberExpressionÍ›Í¬LªIdentifierÍ›Í§¬arrayBuffersLªIdentifierÍ¨Í¬¤pushÂÂ‘LªIdentifierÍ­Í±¤dataÂÂW«IfStatementÍÒÍ2U°MemberExpressionÍÖÍíLªIdentifierÍÖÍİ§requestLªIdentifierÍŞÍí¯isWatchProgressÂÂM®BlockStatementÍïÍ2‘S³ExpressionStatementÍÍ#T®CallExpressionÍÍ"U°MemberExpressionÍÍLªIdentifierÍÍ«httpRequestLªIdentifierÍÍ¢onÂÂ’R§LiteralÍÍ&³dataReceiveProgressµ'dataReceiveProgress'O·ArrowFunctionExpressionÍ(Í!ÀÂÂÂ‘LªIdentifierÍ)Í-¤dataM®BlockStatementÍ2Í!‘W«IfStatementÍIÍX±LogicalExpressionÍMÍ¬X±LogicalExpressionÍMÍ†X°BinaryExpressionÍMÍ^LªIdentifierÍMÍQ¤data¢!=LªIdentifierÍUÍ^©undefined¢&&X°BinaryExpressionÍbÍ†Ôr^–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍbÍy¦typeofÃU°MemberExpressionÍiÍyLªIdentifierÍiÍm¤dataLªIdentifierÍnÍy«receiveSizeÂÂ£===R§LiteralÍ~Í†¦number¨'number'¢&&X°BinaryExpressionÍŠÍ¬^¯UnaryExpressionÍŠÍŸ¦typeofÃU°MemberExpressionÍ‘ÍŸLªIdentifierÍ‘Í•¤dataLªIdentifierÍ–ÍŸ©totalSizeÂÂ£===R§LiteralÍ¤Í¬¦number¨'number'M®BlockStatementÍ®Í’P³VariableDeclarationÍÉÍ‘Q²VariableDeclaratorÍÏÍLªIdentifierÍÏÍÖ§percentT®CallExpressionÍÙÍU°MemberExpressionÍÙÍãLªIdentifierÍÙÍİ¤MathLªIdentifierÍŞÍã¥roundÂÂ‘X°BinaryExpressionÍäÍX°BinaryExpressionÍåÍX°BinaryExpressionÍæÍüU°MemberExpressionÍæÍöLªIdentifierÍæÍê¤dataLªIdentifierÍëÍö«receiveSizeÂÂ¡*R§LiteralÍùÍü£1.0¡/X°BinaryExpressionÍÍU°MemberExpressionÍÍLªIdentifierÍÍ¤dataLªIdentifierÍÍ©totalSizeÂÂ¡*R§LiteralÍÍ£1.0¡*R§LiteralÍÍÌd£100Â¥constW«IfStatementÍ9Í÷X°BinaryExpressionÍ=ÍQLªIdentifierÍ=ÍE¨progress£!==LªIdentifierÍJÍQ§percentM®BlockStatementÍSÍ÷’S³ExpressionStatementÍrÍ…V´AssignmentExpressionÍrÍ„¡=LªIdentifierÍrÍz¨progressLªIdentifierÍ}Í„§percentW«IfStatementÍ£ÍÜX°BinaryExpressionÍ§ÍÀLªIdentifierÍ§Í²«requestList£===LªIdentifierÍ·ÍÀ©undefinedM®BlockStatementÍÂÍŠ‘S³ExpressionStatementÍÍkT®CallExpressionÍÍjU°MemberExpressionÍÍLªIdentifierÍÍ§emitterLªIdentifierÍÍ¤emitÂÂ’X°BinaryExpressionÍÍHU°MemberExpressionÍÍ4LªIdentifierÍÍ#©ConstantsLªIdentifierÍ$Í4°PROGRESS_EMITTERÂÂ¡+U°MemberExpressionÍ7ÍHLªIdentifierÍ7Í>§requestLªIdentifierÍ?ÍH©memoryKeyÂÂÔr_”¤type¥start£endªproperties°ObjectExpressionÍJÍi‘Ôr`™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍLÍgÂÂÂLªIdentifierÍLÍP¤data_°ObjectExpressionÍRÍg‘`¨PropertyÍTÍeÂÂÂR§LiteralÍTÍ[¥value§'value'LªIdentifierÍ]Íe¨progress¤init¤initÂM®BlockStatementÍ­ÍÜ‘S³ExpressionStatementÍúÍ½T®CallExpressionÍúÍ¼U°MemberExpressionÍúÍLªIdentifierÍúÍ«requestListLªIdentifierÍÍ§forEachÂÂ‘O·ArrowFunctionExpressionÍÍ»ÀÂÂÂ‘LªIdentifierÍÍ ±requestWithSourceM®BlockStatementÍ%Í»‘W«IfStatementÍLÍ˜X±LogicalExpressionÍPÍşX°BinaryExpressionÍPÍ™U°MemberExpressionÍPÍ‹U°MemberExpressionÍPÍzU°MemberExpressionÍPÍiLªIdentifierÍPÍa±requestWithSourceLªIdentifierÍbÍi§requestÂÂLªIdentifierÍjÍz°imageKnifeOptionÂÂLªIdentifierÍ{Í‹°progressListenerÂÂ£!==LªIdentifierÍÍ™©undefined¢&&X°BinaryExpressionÍÆÍşU°MemberExpressionÍÆÍŞLªIdentifierÍÆÍ×±requestWithSourceLªIdentifierÍØÍŞ¦sourceÂÂ£===U°MemberExpressionÍãÍşLªIdentifierÍãÍú·ImageKnifeRequestSourceLªIdentifierÍûÍş£SRCÂÂM®BlockStatementÍ Í˜‘S³ExpressionStatementÍ+ÍqT®CallExpressionÍ+ÍpU°MemberExpressionÍ+ÍfU°MemberExpressionÍ+ÍUU°MemberExpressionÍ+ÍDLªIdentifierÍ+Í<±requestWithSourceLªIdentifierÍ=ÍD§requestÂÂLªIdentifierÍEÍU°imageKnifeOptionÂÂLªIdentifierÍVÍf°progressListenerÂÂ‘LªIdentifierÍgÍo¨progressÂÀÂÀÀÂÀS³ExpressionStatementÍ@ÍyT®CallExpressionÍ@ÍxU°MemberExpressionÍ@ÍWLªIdentifierÍ@ÍL¬hiTraceMeterLªIdentifierÍMÍWªstartTraceÂÂ’R§LiteralÍXÍb¨loadHttpª'loadHttp'U°MemberExpressionÍdÍwLªIdentifierÍdÍk§requestLªIdentifierÍlÍw«componentIdÂÂÂP³VariableDeclarationÍ‡Í¯‘Q²VariableDeclaratorÍ‹Í®LªIdentifierÍ‹Í’§promiseT®CallExpressionÍ•Í®U°MemberExpressionÍ•Í°LªIdentifierÍ•Í «httpRequestLªIdentifierÍ¡Í°¯requestInStreamÂÂ’U°MemberExpressionÍ±Í¼LªIdentifierÍ±Í¸§requestLªIdentifierÍ¹Í¼£srcÂÂ_°ObjectExpressionÍ¾Í­™`¨PropertyÍÑÍâÂÂÂLªIdentifierÍÑÍ×¦headerLªIdentifierÍÙÍâ©headerObj¤init`¨PropertyÍõÍÂÂÂLªIdentifierÍõÍû¦methodU°MemberExpressionÍıÍU°MemberExpressionÍıÍLªIdentifierÍıÍ¤httpLªIdentifierÍÍ­RequestMethodÂÂLªIdentifierÍÍ£GETÂÂ¤init`¨PropertyÍ&ÍTÂÂÂLªIdentifierÍ&Í4®expectDataTypeU°MemberExpressionÍ6ÍTU°MemberExpressionÍ6ÍGLªIdentifierÍ6Í:¤httpLªIdentifierÍ;ÍG¬HttpDataTypeÂÂLªIdentifierÍHÍT¬ARRAY_BUFFERÂÂ¤init`¨PropertyÍgÍ–ÂÂÂLªIdentifierÍgÍu®connectTimeoutX±LogicalExpressionÍwÍ–U°MemberExpressionÍwÍLªIdentifierÍwÍ~§requestLªIdentifierÍÍ®connectTimeoutÂÂ¢??R§LiteralÍ‘Í–Íê`¥60000¤init`¨PropertyÍ©ÍÒÂÂÂLªIdentifierÍ©Í´«readTimeoutX±LogicalExpressionÍ¶ÍÒU°MemberExpressionÍ¶ÍÉLªIdentifierÍ¶Í½§requestLªIdentifierÍ¾ÍÉ«readTimeoutÂÂ¢??R§LiteralÍÍÍÒÍu0¥30000¤init`¨PropertyÍåÍûÂÂÂLªIdentifierÍåÍë¦caPathU°MemberExpressionÍíÍûLªIdentifierÍíÍô§requestLªIdentifierÍõÍû¦caPathÂÂ¤init`¨PropertyÍÍ0ÂÂÂLªIdentifierÍÍ¬dnsOverHttpsU°MemberExpressionÍÍ0LªIdentifierÍÍ#§requestLªIdentifierÍ$Í0¬dnsOverHttpsÂÂ¤init`¨PropertyÍCÍaÂÂÂLªIdentifierÍCÍMªdnsServersU°MemberExpressionÍOÍaLªIdentifierÍOÍV§requestLªIdentifierÍWÍaªdnsServersÂÂ¤init`¨PropertyÍtÍÂÂÂLªIdentifierÍtÍ„°remoteValidationU°MemberExpressionÍ†ÍLªIdentifierÍ†Í§requestLªIdentifierÍÍ°remoteValidationÂÂ¤initÂ£letS³ExpressionStatementÍ½ÍT®CallExpressionÍ½ÍU°MemberExpressionÍ½Í{T®CallExpressionÍ½ÍuU°MemberExpressionÍ½ÍÉLªIdentifierÍ½ÍÄ§promiseLªIdentifierÍÅÍÉ¤thenÂÂ‘O·ArrowFunctionExpressionÍÊÍtÀÂÂÂ‘LªIdentifierÍËÍÏ¤dataM®BlockStatementÍÔÍt˜S³ExpressionStatementÍçÍT®CallExpressionÍçÍU°MemberExpressionÍçÍòLªIdentifierÍçÍî§emitterLªIdentifierÍïÍò£offÂÂ‘X°BinaryExpressionÍóÍU°MemberExpressionÍóÍşLªIdentifierÍóÍú§requestLªIdentifierÍûÍş£srcÂÂ¡+U°MemberExpressionÍÍLªIdentifierÍÍ§requestLªIdentifierÍ	Í«componentIdÂÂÂS³ExpressionStatementÍ(Í>T®CallExpressionÍ(Í=U°MemberExpressionÍ(Í;LªIdentifierÍ(Í3«httpRequestLªIdentifierÍ4Í;§destroyÂÂÂS³ExpressionStatementÍPÍoT®CallExpressionÍPÍnU°MemberExpressionÍPÍ_LªIdentifierÍPÍ[«httpRequestLªIdentifierÍ\Í_£offÂÂ‘R§LiteralÍ`Ím«dataReceive­'dataReceive'ÂS³ExpressionStatementÍÍ¨T®CallExpressionÍÍ§U°MemberExpressionÍÍLªIdentifierÍÍŒ«httpRequestLªIdentifierÍÍ£offÂÂ‘R§LiteralÍ‘Í¦³dataReceiveProgressµ'dataReceiveProgress'ÂS³ExpressionStatementÍºÍ×V´AssignmentExpressionÍºÍÖ¡=U°MemberExpressionÍºÍÏLªIdentifierÍºÍÆ¬callBackDataLªIdentifierÍÇÍÏ¨httpCodeÂÂLªIdentifierÍÒÍÖ¤dataS³ExpressionStatementÍéÍ6T®CallExpressionÍéÍ5U°MemberExpressionÍéÍLªIdentifierÍéÍù°ImageKnifeLoaderLªIdentifierÍúÍ­assembleErrorÂÂ“LªIdentifierÍÍ¬callBackDataU°MemberExpressionÍÍ)LªIdentifierÍÍ©LoadPhaseLªIdentifierÍ Í)©PHASE_NETÂÂLªIdentifierÍ+Í4©undefinedÂS³ExpressionStatementÍHÍxV´AssignmentExpressionÍHÍw¡=U°MemberExpressionÍHÍjLªIdentifierÍHÍX°callBackTimeInfoLªIdentifierÍYÍj±netRequestEndTimeÂÂT®CallExpressionÍmÍwU°MemberExpressionÍmÍuLªIdentifierÍmÍq¤DateLªIdentifierÍrÍu£nowÂÂÂW«IfStatementÍŠÍeX±LogicalExpressionÍÍ·X±LogicalExpressionÍÍ¨X°BinaryExpressionÍÍ™LªIdentifierÍÍ’¤data¢==R§LiteralÍ–Í™ÌÈ£200¢||X°BinaryExpressionÍÍ¨LªIdentifierÍÍ¡¤data¢==R§LiteralÍ¥Í¨ÌÎ£206¢||X°BinaryExpressionÍ¬Í·LªIdentifierÍ¬Í°¤data¢==R§LiteralÍ´Í·ÌÌ£204M®BlockStatementÍ¹Íğ”S³ExpressionStatementÍĞÍ
+T®CallExpressionÍĞÍ	U°MemberExpressionÍĞÍèLªIdentifierÍĞÍÜ¬hiTraceMeterLªIdentifierÍİÍè«finishTraceÂÂ’R§LiteralÍéÍó¨loadHttpª'loadHttp'U°MemberExpressionÍõÍLªIdentifierÍõÍü§requestLªIdentifierÍıÍ«componentIdÂÂÂS³ExpressionStatementÍ ÍKV´AssignmentExpressionÍ ÍJ¡=LªIdentifierÍ Í&¦resBufT®CallExpressionÍ)ÍJLªIdentifierÍ)Í<³combineArrayBuffers‘LªIdentifierÍ=ÍI¬arrayBuffersÂS³ExpressionStatementÍaÍsV´AssignmentExpressionÍaÍr¡=LªIdentifierÍaÍm¬arrayBuffers]¯ArrayExpressionÍpÍrS³ExpressionStatementÍ‰ÍİT®CallExpressionÍ‰ÍÜU°MemberExpressionÍ‰Í£LªIdentifierÍ‰Í™°ImageKnifeLoaderLªIdentifierÍšÍ£©parseFileÂÂ–LªIdentifierÍ¤Íª¦resBufLªIdentifierÍ¬Í³§fileKeyLªIdentifierÍµÍ¼§requestLªIdentifierÍ¾ÍÊ¬callBackDataR§LiteralÍÌÍĞÃ¤trueLªIdentifierÍÒÍÛ©headerObjÂM®BlockStatementÍÍe“S³ExpressionStatementÍÍ0V´AssignmentExpressionÍÍ/¡=LªIdentifierÍÍ*¬arrayBuffers]¯ArrayExpressionÍ-Í/S³ExpressionStatementÍFÍ•V´AssignmentExpressionÍFÍ”¡=LªIdentifierÍFÍO©loadErrorX°BinaryExpressionÍRÍ”R§LiteralÍRÍ}Ù)HttpDownloadClient has error, http code =Ù+'HttpDownloadClient has error, http code ='¡+T®CallExpressionÍ€Í”U°MemberExpressionÍ€ÍLªIdentifierÍ€Í„¤JSONLªIdentifierÍ…Í©stringifyÂÂ‘LªIdentifierÍÍ“¤dataÂS³ExpressionStatementÍ«ÍRT®CallExpressionÍ«ÍQU°MemberExpressionÍ«ÍËLªIdentifierÍ«Í»°ImageKnifeLoaderLªIdentifierÍ¼ÍË¯makeEmptyResultÂÂ“LªIdentifierÍÌÍÓ§requestLªIdentifierÍÕÍŞ©loadErrorT®CallExpressionÍàÍPU°MemberExpressionÍàÍşLªIdentifierÍàÍğ°ImageKnifeLoaderLªIdentifierÍñÍş­assembleErrorÂÂ“LªIdentifierÍÿÍ¬callBackDataU°MemberExpressionÍÍ LªIdentifierÍÍ©LoadPhaseLªIdentifierÍÍ ©PHASE_NETÂÂU°MemberExpressionÍ"ÍOLªIdentifierÍ"Í2°LoadPixelMapCodeLªIdentifierÍ3ÍO¼IMAGE_HTTPS_LOAD_FAILED_CODEÂÂÂÂÂLªIdentifierÍvÍ{¥catchÂÂ‘O·ArrowFunctionExpressionÍ|ÍÀÂÂÂ‘LªIdentifierÍ}Í€£errM®BlockStatementÍ…Í™S³ExpressionStatementÍ˜ÍÇT®CallExpressionÍ˜ÍÆU°MemberExpressionÍ˜Í£LªIdentifierÍ˜ÍŸ§emitterLªIdentifierÍ Í££offÂÂ‘X°BinaryExpressionÍ¤ÍÅU°MemberExpressionÍ¤Í¯LªIdentifierÍ¤Í«§requestLªIdentifierÍ¬Í¯£srcÂÂ¡+U°MemberExpressionÍ²ÍÅLªIdentifierÍ²Í¹§requestLªIdentifierÍºÍÅ«componentIdÂÂÂS³ExpressionStatementÍÙÍïT®CallExpressionÍÙÍîU°MemberExpressionÍÙÍìLªIdentifierÍÙÍä«httpRequestLªIdentifierÍåÍì§destroyÂÂÂS³ExpressionStatementÍÍ T®CallExpressionÍÍU°MemberExpressionÍÍLªIdentifierÍÍ«httpRequestLªIdentifierÍÍ£offÂÂ‘R§LiteralÍÍ«dataReceive­'dataReceive'ÂS³ExpressionStatementÍ2ÍYT®CallExpressionÍ2ÍXU°MemberExpressionÍ2ÍALªIdentifierÍ2Í=«httpRequestLªIdentifierÍ>ÍA£offÂÂ‘R§LiteralÍBÍW³dataReceiveProgressµ'dataReceiveProgress'ÂS³ExpressionStatementÍkÍ}V´AssignmentExpressionÍkÍ|¡=LªIdentifierÍkÍw¬arrayBuffers]¯ArrayExpressionÍzÍ|S³ExpressionStatementÍÍ°V´AssignmentExpressionÍÍ¯¡=U°MemberExpressionÍÍ¤LªIdentifierÍÍ›¬callBackDataLªIdentifierÍœÍ¤¨httpCodeÂÂU°MemberExpressionÍ§Í¯LªIdentifierÍ§Íª£errLªIdentifierÍ«Í¯¤codeÂÂS³ExpressionStatementÍÂÍV´AssignmentExpressionÍÂÍ¡=LªIdentifierÍÂÍË©loadErrorX°BinaryExpressionÍÎÍR§LiteralÍÎÍúÙ*HttpDownloadClient download ERROR : err = Ù,'HttpDownloadClient download ERROR : err = '¡+T®CallExpressionÍıÍU°MemberExpressionÍıÍLªIdentifierÍıÍ¤JSONLªIdentifierÍÍ©stringifyÂÂ‘LªIdentifierÍÍ£errÂS³ExpressionStatementÍ#ÍSV´AssignmentExpressionÍ#ÍR¡=U°MemberExpressionÍ#ÍELªIdentifierÍ#Í3°callBackTimeInfoLªIdentifierÍ4ÍE±netRequestEndTimeÂÂT®CallExpressionÍHÍRU°MemberExpressionÍHÍPLªIdentifierÍHÍL¤DateLªIdentifierÍMÍP£nowÂÂÂS³ExpressionStatementÍeÍT®CallExpressionÍeÍU°MemberExpressionÍeÍ…LªIdentifierÍeÍu°ImageKnifeLoaderLªIdentifierÍvÍ…¯makeEmptyResultÂÂ“LªIdentifierÍ†Í§requestLªIdentifierÍÍ˜©loadErrorT®CallExpressionÍšÍ
+U°MemberExpressionÍšÍ¸LªIdentifierÍšÍª°ImageKnifeLoaderLªIdentifierÍ«Í¸­assembleErrorÂÂ“LªIdentifierÍ¹ÍÅ¬callBackDataU°MemberExpressionÍÇÍÚLªIdentifierÍÇÍĞ©LoadPhaseLªIdentifierÍÑÍÚ©PHASE_NETÂÂU°MemberExpressionÍÜÍ	LªIdentifierÍÜÍì°LoadPixelMapCodeLªIdentifierÍíÍ	¼IMAGE_HTTPS_LOAD_FAILED_CODEÂÂÂÂÂS³ExpressionStatementÍ+ÍÀT®CallExpressionÍ+Í¿U°MemberExpressionÍ+Í6LªIdentifierÍ+Í2§LogUtilLªIdentifierÍ3Í6£logÂÂ‘X°BinaryExpressionÍ7Í¾X°BinaryExpressionÍ7Í£X°BinaryExpressionÍ7ÍX°BinaryExpressionÍ7ÍtX°BinaryExpressionÍ7ÍfR§LiteralÍ7ÍP·HttpDownloadClient.end:¹'HttpDownloadClient.end:'¡+U°MemberExpressionÍSÍfLªIdentifierÍSÍZ§requestLªIdentifierÍ[Íf«componentIdÂÂ¡+R§LiteralÍiÍt©,srcType:«',srcType:'¡+U°MemberExpressionÍˆÍLªIdentifierÍˆÍ§requestLªIdentifierÍÍ­requestSourceÂÂ¡+R§LiteralÍ Í£¡,£','¡+U°MemberExpressionÍ¦Í¾LªIdentifierÍ¦Í­§requestLªIdentifierÍ®Í¾°componentVersionÂÂÂ\¯ReturnStatementÍÎÍÕÀM®BlockStatementÍïÍú”S³ExpressionStatementÍşÍ.V´AssignmentExpressionÍşÍ-¡=U°MemberExpressionÍşÍ LªIdentifierÍşÍ°callBackTimeInfoLªIdentifierÍÍ ±netRequestEndTimeÂÂT®CallExpressionÍ#Í-U°MemberExpressionÍ#Í+LªIdentifierÍ#Í'¤DateLªIdentifierÍ(Í+£nowÂÂÂS³ExpressionStatementÍ<Í‰V´AssignmentExpressionÍ<Íˆ¡=LªIdentifierÍ<ÍE©loadErrorY¯TemplateLiteralÍHÍˆ‘U°MemberExpressionÍ{Í†LªIdentifierÍ{Í‚§requestLªIdentifierÍƒÍ†£srcÂÂ’Z¯TemplateElementÍIÍy[Ù0onlyRetrieveFromCache, do not fetch image src = Ù0onlyRetrieveFromCache, do not fetch image src = ÂZ¯TemplateElementÍ‡Í‡[  ÃS³ExpressionStatementÍ—ÍÚT®CallExpressionÍ—ÍÙU°MemberExpressionÍ—Í·LªIdentifierÍ—Í§°ImageKnifeLoaderLªIdentifierÍ¨Í·¯makeEmptyResultÂÂ“LªIdentifierÍ¸Í¿§requestLªIdentifierÍÁÍÊ©loadErrorLªIdentifierÍÌÍØ¬callBackDataÂ\¯ReturnStatementÍèÍïÀÀšÔra•¤type¥start£endªspecifiers¦source±ImportDeclarationÍnÍ‘Ôrb•¤type¥start£end¨imported¥local¯ImportSpecifierÍwÍ€LªIdentifierÍwÍ€©FileCacheLªIdentifierÍwÍ€©FileCacheR§LiteralÍˆÍœ²../cache/FileCache´'../cache/FileCache'a±ImportDeclarationÍŸÍá‘b¯ImportSpecifierÍ¨Í¿LªIdentifierÍ¨Í¿·ImageKnifeRequestSourceLªIdentifierÍ¨Í¿·ImageKnifeRequestSourceR§LiteralÍÇÍà·../model/ImageKnifeData¹'../model/ImageKnifeData'a±ImportDeclarationÍãÍ‘Ôrc”¤type¥start£end¥local¶ImportDefaultSpecifierÍêÍîLªIdentifierÍêÍî¤httpR§LiteralÍôÍ®@ohos.net.http°'@ohos.net.http'a±ImportDeclarationÍÍ>‘b¯ImportSpecifierÍÍ LªIdentifierÍÍ °ImageKnifeLoaderLªIdentifierÍÍ °ImageKnifeLoaderR§LiteralÍ(Í=³../ImageKnifeLoaderµ'../ImageKnifeLoader'a±ImportDeclarationÍ@Í€‘b¯ImportSpecifierÍIÍ\LªIdentifierÍIÍ\³combineArrayBuffersLªIdentifierÍIÍ\³combineArrayBuffersR§LiteralÍdÍ¹../utils/ArrayBufferUtils»'../utils/ArrayBufferUtils'a±ImportDeclarationÍ‚Í­‘c¶ImportDefaultSpecifierÍ‰ÍLªIdentifierÍ‰Í§emitterR§LiteralÍ–Í¬´@ohos.events.emitter¶"@ohos.events.emitter"a±ImportDeclarationÍ¯Íû“b¯ImportSpecifierÍ¸ÍÁLªIdentifierÍ¸ÍÁ©ConstantsLªIdentifierÍ¸ÍÁ©Constantsb¯ImportSpecifierÍÃÍÌLªIdentifierÍÃÍÌ©LoadPhaseLªIdentifierÍÃÍÌ©LoadPhaseb¯ImportSpecifierÍÎÍŞLªIdentifierÍÎÍŞ°LoadPixelMapCodeLªIdentifierÍÎÍŞ°LoadPixelMapCodeR§LiteralÍæÍú²../utils/Constants´'../utils/Constants'a±ImportDeclarationÍıÍ(‘b¯ImportSpecifierÍÍLªIdentifierÍÍ§LogUtilLªIdentifierÍÍ§LogUtilR§LiteralÍÍ'°../utils/LogUtil²'../utils/LogUtil'a±ImportDeclarationÍ*ÍP‘c¶ImportDefaultSpecifierÍ1Í9LªIdentifierÍ1Í9¨taskpoolR§LiteralÍ?ÍO®@ohos.taskpool°"@ohos.taskpool"a±ImportDeclarationÍRÍ€‘c¶ImportDefaultSpecifierÍYÍeLªIdentifierÍYÍe¬hiTraceMeterR§LiteralÍkÍ²@ohos.hiTraceMeter´"@ohos.hiTraceMeter"

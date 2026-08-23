@@ -211,7 +211,11 @@ export struct MinePage {
   }
 
   private user(): UserInfo {
-    return this.auth.user ?? ({ bindings: [] } as object as UserInfo);
+    const fallback: UserInfo = {
+      id: '', nickname: '', avatar: '', phone: '', email: '',
+      hasPassword: false, favoriteCount: 0, likeCount: 0, bindings: []
+    };
+    return this.auth.user ?? fallback;
   }
 
   private openDoc(docKey: string, title: Resource): void {

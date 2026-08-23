@@ -79,7 +79,7 @@ export struct DesignPreview {
         SectionHeader({ title: '按钮' })
         Column({ space: 12 }) {
           PrimaryButton({ text: '主按钮' })
-          PrimaryButton({ text: '主按钮（禁用）', enabled: false })
+          PrimaryButton({ text: '主按钮（禁用）', btnEnabled: false })
           PrimaryButton({ text: '主按钮（加载中）', loading: true })
           SecondaryButton({ text: '次按钮' })
           TextButton({ text: '文字按钮' })

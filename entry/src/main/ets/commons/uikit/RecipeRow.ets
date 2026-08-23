@@ -10,7 +10,16 @@ import { NetImage } from './NetImage';
  */
 @ComponentV2
 export struct RecipeRow {
-  @Param item: RecipeListItem = {} as RecipeListItem;
+  @Param item: RecipeListItem = {
+    id: '',
+    name: '',
+    coverImage: '',
+    difficulty: 0,
+    cookTime: 0,
+    favoriteCount: 0,
+    likeCount: 0,
+    tagName: ''
+  };
   @Param showDivider: boolean = true;
   @Event onTap: (item: RecipeListItem) => void = () => {};
 

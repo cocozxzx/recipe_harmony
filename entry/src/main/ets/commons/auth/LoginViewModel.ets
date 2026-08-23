@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import BuildProfile from 'BuildProfile';
 import { AuthResult, LoginMode } from '../model/User';
 import { readableMessage } from '../network/Errors';
 import { Toast } from '../uikit/Toast';
@@ -6,7 +7,7 @@ import { Formatter } from '../utils/Formatter';
 import { Logger } from '../utils/Logger';
 import { AuthRepository } from './AuthRepository';
 import { AuthService } from './AuthService';
-import { HuaweiAuth } from './HuaweiAuth';
+import { HuaweiAuth, HuaweiAuthResult } from './HuaweiAuth';
 
 const TAG: string = 'LoginViewModel';
 const COUNTDOWN_SECONDS: number = 60;
@@ -114,12 +115,17 @@ export class LoginViewModel {
     }
     this.submitting = true;
     try {
-      const authCode: string = await HuaweiAuth.getAuthCode(context);
-      if (authCode.length === 0) {
-        Toast.show($r('app.string.login_huawei_failed'));
+      const auth: HuaweiAuthResult = await HuaweiAuth.getAuthCode(context);
+      if (auth.authCode.length === 0) {
+        // debug 包直接把 Account Kit 的错误码显示出来，否则真机上无从排查
+        if (BuildProfile.LOG_ENABLED as boolean) {
+          Toast.show(`华为登录失败 code=${auth.errCode} ${auth.errMsg}`, 4000);
+        } else {
+          Toast.show($r('app.string.login_huawei_failed'));
+        }
         return;
       }
-      const result: AuthResult = await AuthRepository.loginByHuawei(authCode);
+      const result: AuthResult = await AuthRepository.loginByHuawei(auth.authCode);
       await AuthService.get().onLoginSuccess(result);
       Toast.show($r('app.string.login_success'));
     } catch (e) {

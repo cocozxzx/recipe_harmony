@@ -4,13 +4,13 @@ import { Motion } from './Theme';
 @ComponentV2
 export struct PrimaryButton {
   @Param text: ResourceStr = '';
-  @Param enabled: boolean = true;
+  @Param btnEnabled: boolean = true;
   @Param loading: boolean = false;
   @Param fullWidth: boolean = true;
   @Event onTap: () => void = () => {};
 
   build() {
-    Button({ stateEffect: this.enabled && !this.loading }) {
+    Button({ stateEffect: this.btnEnabled && !this.loading }) {
       Row({ space: 8 }) {
         if (this.loading) {
           LoadingProgress()
@@ -29,9 +29,9 @@ export struct PrimaryButton {
     .constraintSize({ minWidth: this.fullWidth ? 0 : 120 })
     .height($r('app.float.button_height'))
     .borderRadius($r('app.float.radius_md'))
-    .backgroundColor(this.enabled ? $r('app.color.brand_primary') : $r('app.color.text_disabled'))
+    .backgroundColor(this.btnEnabled ? $r('app.color.brand_primary') : $r('app.color.text_disabled'))
     .padding({ left: $r('app.float.space_lg'), right: $r('app.float.space_lg') })
-    .enabled(this.enabled && !this.loading)
+    .enabled(this.btnEnabled && !this.loading)
     .animation(Motion.standard())
     .onClick(() => this.onTap())
   }
@@ -41,23 +41,23 @@ export struct PrimaryButton {
 @ComponentV2
 export struct SecondaryButton {
   @Param text: ResourceStr = '';
-  @Param enabled: boolean = true;
+  @Param btnEnabled: boolean = true;
   @Param fullWidth: boolean = true;
   @Event onTap: () => void = () => {};
 
   build() {
-    Button(this.text, { stateEffect: this.enabled })
+    Button(this.text, { stateEffect: this.btnEnabled })
       .type(ButtonType.Normal)
       .width(this.fullWidth ? '100%' : undefined)
       .constraintSize({ minWidth: this.fullWidth ? 0 : 120 })
       .height($r('app.float.button_height'))
       .borderRadius($r('app.float.radius_md'))
       .backgroundColor($r('app.color.brand_primary_light'))
-      .fontColor(this.enabled ? $r('app.color.brand_primary') : $r('app.color.text_disabled'))
+      .fontColor(this.btnEnabled ? $r('app.color.brand_primary') : $r('app.color.text_disabled'))
       .fontSize($r('app.float.font_title_sm'))
       .fontWeight(FontWeight.Medium)
       .padding({ left: $r('app.float.space_lg'), right: $r('app.float.space_lg') })
-      .enabled(this.enabled)
+      .enabled(this.btnEnabled)
       .onClick(() => this.onTap())
   }
 }
@@ -67,12 +67,12 @@ export struct SecondaryButton {
 export struct TextButton {
   @Param text: ResourceStr = '';
   @Param color: ResourceColor = $r('app.color.brand_primary');
-  @Param size: Length = $r('app.float.font_body');
+  @Param textSize: Length = $r('app.float.font_body');
   @Event onTap: () => void = () => {};
 
   build() {
     Text(this.text)
-      .fontSize(this.size)
+      .fontSize(this.textSize)
       .fontColor(this.color)
       .fontWeight(FontWeight.Medium)
       .padding({ left: $r('app.float.space_sm'), right: $r('app.float.space_sm'), top: 4, bottom: 4 })

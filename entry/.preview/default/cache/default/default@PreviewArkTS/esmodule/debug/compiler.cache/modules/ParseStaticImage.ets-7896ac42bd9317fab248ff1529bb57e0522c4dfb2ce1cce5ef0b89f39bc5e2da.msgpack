@@ -1,0 +1,430 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚü/*
+ * Copyright (C) 2025 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// é™æ€å›¾è§£ç ç­–ç•¥
+import { ImageKnifeLoader } from "../ImageKnifeLoader";
+import { ImageKnifeRequestSource } from "../model/ImageKnifeData";
+import { LoadPhase, LoadPixelMapCode } from "../utils/Constants";
+import image from "@ohos.multimedia.image";
+import sendableImage from "@ohos.multimedia.sendableImage";
+import deviceInfo from "@ohos.deviceInfo";
+import { LogUtil } from "../utils/LogUtil";
+import { DownsampleStrategy } from "../downsampling/DownsampleStartegy";
+import hiTraceMeter from "@ohos.hiTraceMeter";
+export class ParseStaticImage {
+    async parseImage(resBuf, typeValue, fileKey, request, callBackData) {
+        let resPixelmap = undefined;
+        hiTraceMeter.startTrace('parseImage', request.componentId);
+        let timeInfo = ImageKnifeLoader.getTimeInfo(callBackData);
+        let pixel = undefined;
+        let rangeMode = undefined;
+        switch (request.dynamicRangeMode) {
+            case DynamicRangeMode.HIGH:
+                rangeMode = image.DecodingDynamicRange.HDR;
+                break;
+            case DynamicRangeMode.CONSTRAINT:
+                rangeMode = image.DecodingDynamicRange.AUTO;
+                break;
+            case DynamicRangeMode.STANDARD:
+                rangeMode = image.DecodingDynamicRange.SDR;
+                break;
+        }
+        let decodingOptions = {
+            editable: request.requestSource === ImageKnifeRequestSource.SRC && request.transformation !== undefined ? true :
+                false,
+            desiredDynamicRange: rangeMode
+        };
+        let imageSource = image.createImageSource(resBuf);
+        if (imageSource === undefined) {
+            ImageKnifeLoader.makeEmptyResult(request, 'image.createImageSource failed', ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_CREATE_SOURCE, LoadPixelMapCode.IMAGE_SOURCE_ERROR_CODE));
+            return;
+        }
+        let imageInfoSync = imageSource.getImageInfoSync();
+        if (imageInfoSync === undefined) {
+            imageSource.release();
+            ImageKnifeLoader.makeEmptyResult(request, 'getImageInfoSync failed');
+            return;
+        }
+        let size = imageInfoSync.size;
+        callBackData.imageWidth = size.width;
+        callBackData.imageHeight = size.height;
+        if (request.isAutoImageFit && request.requestSource === ImageKnifeRequestSource.SRC) {
+            request.componentHeight = request.componentWidth * size.height / size.width;
+        }
+        try {
+            if ((request.downsampType !== DownsampleStrategy.NONE) &&
+                request.requestSource === ImageKnifeRequestSource.SRC) {
+                decodingOptions.desiredSize =
+                    ImageKnifeLoader.getDownsamplerDecodingOptions(typeValue, request, size, ImageKnifeRequestSource.SRC);
+            }
+        }
+        catch (err) {
+            imageSource.release();
+            ImageKnifeLoader.makeEmptyResult(request, 'getDownsamplerDecodingOptions failed:' + err);
+            return;
+        }
+        // å¦‚æœå¼€å¯jpegè§£ç ä¼˜åŒ–ã€ç±»å‹æ˜¯jpeg/jpgä¸”æ²¡æœ‰å›¾å½¢å˜æ¢åå¤„ç†(é…ç½®transformation)ï¼Œè®¾ç½®YUVæ ¼å¼è§£ç 
+        if (request.jpegOptimizeDecoding && !request.transformation && typeValue === 'jpg') {
+            decodingOptions.desiredPixelFormat = image.PixelMapFormat.NV12;
+            LogUtil.log(`decodingOptions.desiredPixelFormat is image.PixelMapFormat.NV12 : ${request.componentId},srcType:${request.requestSource}, ${request.componentVersion}`);
+        }
+        timeInfo.decodeStartTime = Date.now();
+        // è·å–æ—‹è½¬ä¿¡æ¯
+        let exif = undefined;
+        await imageSource.getImageProperty(image.PropertyKey.ORIENTATION).then((res) => {
+            exif = res;
+        }).catch((error) => {
+            LogUtil.info("The normal image don't have rotation information, " + error.message);
+        });
+        await imageSource.createPixelMap(decodingOptions)
+            .then((pixelmap) => {
+            timeInfo.decodeEndTime = Date.now();
+            resPixelmap = pixelmap;
+            imageSource.release();
+        }).catch((error) => {
+            timeInfo.decodeEndTime = Date.now();
+            imageSource.release();
+            ImageKnifeLoader.makeEmptyResult(request, 'createPixelMap failed:' + JSON.stringify(error), ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_CREATE_PIXEL_MAP, LoadPixelMapCode.IMAGE_DECODE_ERROR_CODE));
+            return;
+        });
+        if (request.requestSource === ImageKnifeRequestSource.SRC && request.transformation !== undefined &&
+            resPixelmap !== undefined) {
+            LogUtil.log('requestJob.transform.start:' + request.componentId + ',srcType:' + request.requestSource + ',' +
+                request.componentVersion);
+            resPixelmap = await request.transformation?.transform(request.context, resPixelmap, request.componentWidth, request.componentHeight);
+            LogUtil.log('requestJob.transform.end:' + request.componentId + ',srcType:' + request.requestSource + ',' +
+                request.componentVersion);
+        }
+        try {
+            resPixelmap?.setTransferDetached(true);
+        }
+        catch (e) {
+            LogUtil.error('PixelMap setTransferDetached failed:' + JSON.stringify(e));
+        }
+        // è®¾ç½®ç¿»è½¬å’Œæ—‹è½¬è§’åº¦
+        if (exif && exif !== 'Top-left') {
+            let result = ImageKnifeLoader.getOrientation(exif);
+            if (result.horizontal || result.vertical) {
+                resPixelmap?.flipSync(result.horizontal, result.vertical);
+            }
+            if (result.rotate > 0) {
+                resPixelmap?.rotateSync(result.rotate);
+            }
+            LogUtil.log('The normal image set flip , horizontal=' + result.horizontal + ', vertical=' + result.vertical +
+                ', rotate=' + result.rotate);
+        }
+        if (request.pixelName !== undefined) {
+            if (deviceInfo.sdkApiVersion < 13) {
+                LogUtil.error('api not support setPixelName');
+            }
+            else {
+                resPixelmap?.setMemoryNameSync(request.pixelName);
+            }
+        }
+        //è·å–å„ä¸ªpixelMapçš„å¤§å°
+        if (resPixelmap !== undefined) {
+            let decodeImages = [];
+            let size = resPixelmap.getImageInfoSync().size;
+            let decodeImage = {
+                contentWidth: size.width,
+                contentHeight: size.height,
+                contentSize: resPixelmap.getPixelBytesNumber()
+            };
+            decodeImages.push(decodeImage);
+            callBackData.decodeImages = decodeImages;
+            pixel = sendableImage.convertFromPixelMap(resPixelmap);
+        }
+        LogUtil.log('image parse pixelmap end:' + request.componentId + ',srcType:' + request.requestSource + ',' +
+            request.componentVersion);
+        hiTraceMeter.finishTrace('parseImage', request.componentId);
+        return {
+            pixelMap: pixel,
+            bufferSize: resBuf.byteLength,
+            fileKey: fileKey,
+            size: size,
+            type: typeValue,
+            imageKnifeData: callBackData
+        };
+    }
+}
+//# sourceMappingURL=ParseStaticImage.js.mapÂ™ÙŒC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnifeLoader.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\Constants.etsÙb hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.multimedia.image.d.tsÙk hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.multimedia.sendableImage.d.etsÙ\ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.deviceInfo.d.tsÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsÙ›C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\downsampling\DownsampleStartegy.etsÙ^ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.hiTraceMeter.d.tsÙšC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\parseStrategy\ParseStaticImage.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚH/*
+ * Copyright (C) 2025 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// é™æ€å›¾è§£ç ç­–ç•¥
+import { ImageKnifeLoader } from "../ImageKnifeLoader";
+import {
+  DecodeImageInfo,
+  ImageKnifeData,
+  ImageKnifeRequestSource,
+  RequestJobRequest,
+  RequestJobResult,
+  TimeInfo
+} from "../model/ImageKnifeData";
+import { LoadPhase, LoadPixelMapCode } from "../utils/Constants";
+import { IParseImage } from "./IParseImage";
+import { image, sendableImage } from "@kit.ImageKit";
+import { BusinessError, deviceInfo } from "@kit.BasicServicesKit";
+import { LogUtil } from "../utils/LogUtil";
+import { DownsampleStrategy } from "../downsampling/DownsampleStartegy";
+import { hiTraceMeter } from "@kit.PerformanceAnalysisKit";
+
+export class ParseStaticImage implements IParseImage {
+  async parseImage(
+    resBuf: ArrayBuffer,
+    typeValue: string,
+    fileKey: string,
+    request: RequestJobRequest,
+    callBackData: ImageKnifeData
+  ): Promise<RequestJobResult | undefined> {
+    let resPixelmap: PixelMap | undefined = undefined
+    hiTraceMeter.startTrace('parseImage', request.componentId)
+    let timeInfo: TimeInfo = ImageKnifeLoader.getTimeInfo(callBackData);
+    let pixel: sendableImage.PixelMap | undefined = undefined
+    let rangeMode: image.DecodingDynamicRange | undefined = undefined
+    switch (request.dynamicRangeMode) {
+      case DynamicRangeMode.HIGH:
+        rangeMode = image.DecodingDynamicRange.HDR;
+        break;
+      case DynamicRangeMode.CONSTRAINT:
+        rangeMode = image.DecodingDynamicRange.AUTO;
+        break;
+      case DynamicRangeMode.STANDARD:
+        rangeMode = image.DecodingDynamicRange.SDR;
+        break;
+    }
+    let decodingOptions: image.DecodingOptions = {
+      editable: request.requestSource === ImageKnifeRequestSource.SRC && request.transformation !== undefined ? true :
+        false,
+      desiredDynamicRange: rangeMode
+    }
+    let imageSource: image.ImageSource = image.createImageSource(resBuf)
+    if (imageSource === undefined) {
+      ImageKnifeLoader.makeEmptyResult(request, 'image.createImageSource failed',
+        ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_CREATE_SOURCE,
+          LoadPixelMapCode.IMAGE_SOURCE_ERROR_CODE))
+      return
+    }
+
+    let imageInfoSync = imageSource.getImageInfoSync()
+    if (imageInfoSync === undefined) {
+      imageSource.release()
+      ImageKnifeLoader.makeEmptyResult(request, 'getImageInfoSync failed')
+      return
+    }
+    let size = imageInfoSync.size
+    callBackData.imageWidth = size.width;
+    callBackData.imageHeight = size.height;
+
+    if (request.isAutoImageFit && request.requestSource === ImageKnifeRequestSource.SRC) {
+      request.componentHeight = request.componentWidth * size.height / size.width
+    }
+
+    try {
+      if ((request.downsampType !== DownsampleStrategy.NONE) &&
+        request.requestSource === ImageKnifeRequestSource.SRC) {
+        decodingOptions.desiredSize =
+          ImageKnifeLoader.getDownsamplerDecodingOptions(typeValue, request, size, ImageKnifeRequestSource.SRC)
+      }
+    } catch (err) {
+      imageSource.release()
+      ImageKnifeLoader.makeEmptyResult(request, 'getDownsamplerDecodingOptions failed:' + err)
+      return
+    }
+
+    // å¦‚æœå¼€å¯jpegè§£ç ä¼˜åŒ–ã€ç±»å‹æ˜¯jpeg/jpgä¸”æ²¡æœ‰å›¾å½¢å˜æ¢åå¤„ç†(é…ç½®transformation)ï¼Œè®¾ç½®YUVæ ¼å¼è§£ç 
+    if (request.jpegOptimizeDecoding && !request.transformation && typeValue === 'jpg') {
+      decodingOptions.desiredPixelFormat = image.PixelMapFormat.NV12;
+      LogUtil.log(`decodingOptions.desiredPixelFormat is image.PixelMapFormat.NV12 : ${ request.componentId },srcType:${request.requestSource}, ${request.componentVersion}`)
+    }
+
+
+    timeInfo.decodeStartTime = Date.now();
+
+    // è·å–æ—‹è½¬ä¿¡æ¯
+    let exif: string | undefined = undefined;
+    await imageSource.getImageProperty(image.PropertyKey.ORIENTATION).then((res) => {
+      exif = res;
+    }).catch((error: BusinessError) => {
+      LogUtil.info("The normal image don't have rotation information, " + error.message);
+    })
+
+    await imageSource.createPixelMap(decodingOptions)
+      .then((pixelmap: PixelMap) => {
+        timeInfo.decodeEndTime = Date.now();
+        resPixelmap = pixelmap
+        imageSource.release()
+      }).catch((error: BusinessError) => {
+        timeInfo.decodeEndTime = Date.now();
+        imageSource.release()
+        ImageKnifeLoader.makeEmptyResult(request, 'createPixelMap failed:' + JSON.stringify(error),
+          ImageKnifeLoader.assembleError(callBackData, LoadPhase.PHASE_CREATE_PIXEL_MAP,
+            LoadPixelMapCode.IMAGE_DECODE_ERROR_CODE))
+        return
+      })
+    if (request.requestSource === ImageKnifeRequestSource.SRC && request.transformation !== undefined &&
+      resPixelmap !== undefined) {
+      LogUtil.log('requestJob.transform.start:' + request.componentId + ',srcType:' + request.requestSource + ',' +
+      request.componentVersion)
+      resPixelmap = await request.transformation?.transform(request.context, resPixelmap, request.componentWidth,
+        request.componentHeight);
+      LogUtil.log('requestJob.transform.end:' + request.componentId + ',srcType:' + request.requestSource + ',' +
+      request.componentVersion)
+    }
+    try {
+      resPixelmap?.setTransferDetached(true)
+    } catch (e) {
+      LogUtil.error('PixelMap setTransferDetached failed:' + JSON.stringify(e))
+    }
+    // è®¾ç½®ç¿»è½¬å’Œæ—‹è½¬è§’åº¦
+    if (exif && exif !== 'Top-left') {
+      let result = ImageKnifeLoader.getOrientation(exif);
+      if (result.horizontal || result.vertical) {
+        resPixelmap?.flipSync(result.horizontal, result.vertical);
+      }
+      if (result.rotate > 0) {
+        resPixelmap?.rotateSync(result.rotate);
+      }
+      LogUtil.log('The normal image set flip , horizontal=' + result.horizontal + ', vertical=' + result.vertical +
+        ', rotate=' + result.rotate);
+    }
+    if (request.pixelName !== undefined) {
+      if (deviceInfo.sdkApiVersion < 13) {
+        LogUtil.error('api not support setPixelName')
+      } else {
+        resPixelmap?.setMemoryNameSync(request.pixelName)
+      }
+    }
+    //è·å–å„ä¸ªpixelMapçš„å¤§å°
+    if (resPixelmap !== undefined) {
+      let decodeImages: DecodeImageInfo[] = [];
+      let size = (resPixelmap as PixelMap).getImageInfoSync().size;
+      let decodeImage: DecodeImageInfo = {
+        contentWidth: size.width,
+        contentHeight: size.height,
+        contentSize: (resPixelmap as PixelMap).getPixelBytesNumber()
+      }
+      decodeImages.push(decodeImage);
+      callBackData.decodeImages = decodeImages;
+      pixel = sendableImage.convertFromPixelMap(resPixelmap)
+    }
+
+    LogUtil.log('image parse pixelmap end:' + request.componentId + ',srcType:' + request.requestSource + ',' +
+    request.componentVersion)
+    hiTraceMeter.finishTrace('parseImage', request.componentId)
+
+    return {
+      pixelMap: pixel,
+      bufferSize: resBuf.byteLength,
+      fileKey: fileKey,
+      size: size,
+      type: typeValue,
+      imageKnifeData: callBackData
+    }
+  }
+}ÀÔrD™¶@ohos.multimedia.image¾@ohos.multimedia.sendableImage°@ohos.deviceInfo²@ohos.hiTraceMeter³../ImageKnifeLoader·../model/ImageKnifeData²../utils/Constants°../utils/LogUtilÙ"../downsampling/DownsampleStartegyÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÃÙb hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.multimedia.image.d.tsAÃªoh-resolveÂEAÃÙk hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.multimedia.sendableImage.d.etsAÃªoh-resolveÂEAÃÙ\ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.deviceInfo.d.tsAÃªoh-resolveÂEAÃÙ^ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.hiTraceMeter.d.tsAÃªoh-resolveÂEAÂÙŒC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnifeLoader.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsAÃªoh-resolveÂEAÂÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\Constants.etsAÃªoh-resolveÂEAÂÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsAÃªoh-resolveÂEAÂÙ›C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\downsampling\DownsampleStartegy.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappings³ParseStaticImage.js ‘´ParseStaticImage.etsÜ  ‘”    ‘” ’”   ”
+ 
+˜”   ” ”	 	” ” ”! !”6 6”7 7˜”   ” ”	 ”  ”" ”( ”ÌA  ”ÌB !š”   ” ”	 	” ” ”$ $”& &”, ,”Ì@ Ì@”ÌA ÌA–”   ” 	” ” %”* 4”+ 5–”   ” ” ” %”: 4”; 5–”   ” ” "” *”) ÌA”* ÌB˜”   ” ”	 	” ” ” ”* *”+ +˜”   ” ”	 	” ” ”# #”ÌG ÌG”ÌH ÌH–”   ” 	” ” ”- :”. ;””    ”  ”  ”  ” !”	 !”
+ !” !” "” "” #”& #”( $”/ $”1 %”8 %”: &”ÌF & –” (” (” (” (,”# (5”$ (5œ” )” )” )” )”  )”, )(”. )*”5 )1”6 )2”ÌA )=”ÌB )>”ÌC )>›” *” *” *” *”' *-”( *.”3 *9”4 *:”Ì@ *ÌF”ÌA *ÌG”ÌB *ÌH–” +” +” +” +4” +=” +=–” ,” ,” ,” ,<”! ,ÌE”" ,ÌE–” -” -” -” -”( -$”* -&•” .” .”! .”" .”& . ™” /” /” /”! /”" /”6 /.”7 //”: /2”; /3’” 0” 0•” 1” 1”! 1”" 1”, 1&™” 2” 2” 2”! 2”" 2”6 2.”7 2/”; 23”< 24’” 3” 3•” 4” 4”! 4”" 4”* 4$™” 5” 5” 5”! 5”" 5”6 5.”7 5/”: 52”; 53’” 6” 6‘”	 7”” 8” 8” 8” 81Ü ” 9” 9” 9” 9” 9”+ 9%”0 9*”ÌG 9ÌA”ÌH 9ÌB”ÌK 9ÌE”ÌO 9ÌI”ÌV 9ÌP”ÌW 9ÌQ”Ìe 9Ì_”Ìj 9Ìd”Ìs 9Ìm”Ìt 9Ìn”Ìu 9Ìo”Ìv 9Ìp”Ìz 9Ìt”Ì{ 9Ìu”Ì| 9Ìv’” :” :”” ;” ;”! ;”* ;$’”	 <”
+ <›” =” =” =” =)” =.”  =/”1 =Ì@”2 =ÌA”8 =ÌG”9 =ÌH”: =ÌH–” >” >” >” >”% >!”' >#Ü ” ?” ?” ?”, ?&”- ?'”4 ?.”6 ?0”ÌV ?ÌP”ÌX Ì@”Ìh Ì@”Ìi Ì@”Ìv Ì@&”Ìw Ì@'”Ìƒ Ì@3”Ì… Ì@5”Ì Ì@>”Ì Ì@?”Ì¢ Ì@ÌR”Ì¤ ÌA
+”Ì´ ÌA”Ìµ ÌA”ÌÌ ÌA2”ÌÍ ÌA3”ÌÎ ÌA4”ÌÏ ÌA4’” ÌB” ÌB‘”	 ÌC™” ÌE” ÌE” ÌE” ÌE”' ÌE#”( ÌE$”8 ÌE4”: ÌE6”; ÌE6–” ÌF” ÌF” ÌF” ÌF”' ÌF#”) ÌF%–” ÌG” ÌG” ÌG” ÌG”! ÌG”" ÌGš” ÌH” ÌH” ÌH”, ÌH&”- ÌH'”4 ÌH.”6 ÌH0”ÌO ÌHÌI”ÌP ÌHÌJ”ÌQ ÌHÌJ’” ÌI” ÌI‘”	 ÌJ˜” ÌK” ÌK” ÌK” ÌK”  ÌK”! ÌK”% ÌK!”& ÌK!™” ÌL” ÌL” ÌL” ÌL”" ÌL”& ÌL"”' ÌL#”, ÌL(”- ÌL)™” ÌM” ÌM” ÌM”  ÌM”# ÌM”' ÌM#”( ÌM$”. ÌM*”/ ÌM+” ÌO” ÌO” ÌO” ÌO”" ÌO”& ÌO"”- ÌO)”. ÌO*”; ÌO7”Ì@ ÌO<”ÌW ÌOÌS”ÌX ÌOÌT”Ì[ ÌOÌW”Ì] ÌOÌYÜ ” ÌP” ÌP” ÌP”# ÌP”& ÌP ”- ÌP'”. ÌP(”< ÌP6”? ÌP9”ÌC ÌP=”ÌD ÌP>”ÌJ ÌPÌD”ÌM ÌPÌG”ÌQ ÌPÌK”ÌR ÌPÌL”ÌW ÌPÌQ”ÌX ÌPÌQ‘”	 ÌQ’” ÌS” ÌS›” ÌT” ÌT
+” ÌT” ÌT” ÌT”% ÌT”* ÌT$”< ÌT6”= ÌT7”ÌA ÌT;”ÌB ÌT<™” ÌU” ÌU” ÌU”% ÌU”* ÌU"”ÌA ÌU9”ÌB ÌU:”ÌE ÌU=”ÌG ÌU?”” ÌV” ÌV”  ÌV”+ ÌV#Ü ” ÌW
+”$ ÌW”% ÌW”ÌB ÌW8”ÌC ÌW9”ÌL ÌWÌB”ÌN ÌWÌD”ÌU ÌWÌK”ÌW ÌWÌM”Ì[ ÌWÌQ”Ì] ÌWÌS”Ìt ÌWÌj”Ìu ÌWÌk”Ìx ÌWÌn”Ìy ÌWÌo”Ìz ÌWÌo‘” ÌX‘”	 ÌY”” ÌY” ÌY” ÌY” ÌY–” ÌZ” ÌZ” ÌZ” ÌZ”! ÌZ”" ÌZœ” Ì[” Ì[” Ì[”, Ì[&”- Ì['”4 Ì[.”6 Ì[0”Ì] Ì[ÌW”Ì` Ì[ÌZ”Ìc Ì[Ì]”Ìd Ì[Ì^”Ìe Ì[Ì^’” Ì\” Ì\‘”	 Ì]’” Ì_”ÌI Ì_ÌEŸ” Ì`” Ì`” Ì`” Ì`”( Ì`$”, Ì`(”- Ì`)”4 Ì`0”5 Ì`1”ÌC Ì`?”ÌG Ì`ÌC”ÌP Ì`ÌL”ÌU Ì`ÌQ”ÌZ Ì`ÌV”Ì\ Ì`ÌX›” Ìa” Ìa” Ìa”. Ìa(”1 Ìa+”6 Ìa0”7 Ìa1”ÌE Ìa?”ÌF ÌaÌ@”ÌJ ÌaÌD”ÌK ÌaÌEÜ ” Ìb” Ìb” Ìb” Ìb” Ìb”Ì] ÌbÌX”Ìd ÌbÌ_”Ìe ÌbÌ`”Ìp ÌbÌl”Ì| ÌbÌx”Ìƒ ÌbÌ”Ì„ ÌbÌ€”Ì‘ ÌbÌ”Ì– ÌbÌ’”Ì ÌbÌ™”Ì ÌbÌš”Ì® ÌbÌª”Ì° ÌbÌ¬”Ì± ÌbÌ­”Ì² ÌbÌ­‘”	 Ìcš” Ìf” Ìf” Ìf”  Ìf”# Ìf”' Ìf#”( Ìf$”+ Ìf'”- Ìf)”. Ìf*’” Ìh” Ìh–” Ìi” Ìi” Ìi” Ìi#” Ìi,” Ìi-Ü ” Ìj” Ìj
+” Ìj” Ìj”* Ìj&”+ Ìj'”0 Ìj,”1 Ìj-”< Ìj8”= Ìj9”ÌH ÌjÌD”ÌI ÌjÌE”ÌJ ÌjÌF”ÌN ÌjÌJ”ÌO ÌjÌK”ÌP ÌjÌL”ÌS ÌjÌO”ÌU ÌjÌQ”ÌW ÌjÌS•” Ìk” Ìk
+” Ìk” Ìk” Ìkš” Ìl”	 Ìl”
+ Ìl” Ìl” Ìl” Ìl” Ìl” Ìl"” Ìl$” Ìl&œ” Ìm” Ìm” Ìm” Ìm” Ìm”ÌM ÌmÌG”ÌP ÌmÌJ”ÌU ÌmÌO”ÌV ÌmÌP”Ì] ÌmÌW”Ì^ ÌmÌX”Ì_ ÌmÌY”” Ìn”	 Ìn”
+ Ìn” Ìn˜” Ìp” Ìp
+” Ìp” Ìp”( Ìp$”) Ìp%”8 Ìp4”9 Ìp5—” Ìq” Ìq” Ìq” Ìq” Ìq” Ìq!” Ìq#š” Ìr” Ìr” Ìr”" Ìr”% Ìr!”) Ìr%”* Ìr&”- Ìr)”/ Ìr+”0 Ìr,•” Ìs” Ìs” Ìs”" Ìs”# Ìs–” Ìt” Ìt” Ìt” Ìt”! Ìt”" Ìtš” Ìu”	 Ìu”
+ Ìu” Ìu	” Ìu” Ìu” Ìu” Ìu$” Ìu&” Ìu(š” Ìv” Ìv” Ìv”" Ìv”% Ìv!”) Ìv%”* Ìv&”- Ìv)”/ Ìv+”0 Ìv,–” Ìw” Ìw” Ìw” Ìw”! Ìw”" ÌwÜ  ” Ìx” Ìx” Ìx”, Ìx(”- Ìx)”4 Ìx0”6 Ìx2”ÌN ÌxÌJ”ÌQ ÌxÌM”ÌU ÌxÌQ”ÌV ÌxÌR”Ì_ ÌxÌ[”Ì` ÌxÌ\”Ìe ÌxÌa”Ìf ÌxÌb”Ìh Ìy
+”Ìx Ìy”Ìy Ìy”Ì† Ìy(”Ì‡ Ìy)”Ì“ Ìy5”Ì• Ìy7”Ì ÌyÌ@”ÌŸ ÌyÌA”Ìµ ÌyÌW”Ì· Ìz”ÌÇ Ìz”ÌÈ Ìz”Ìß Ìz4”Ìà Ìz5”Ìá Ìz6”Ìâ Ìz6’” Ì{” Ì{”” Ì|”	 Ì|”
+ Ì|” Ì|Ÿ” Ì}” Ì}” Ì}” Ì}”! Ì}”& Ì}"”= Ì}9”> Ì}:”ÌA Ì}=”ÌE Ì}ÌA”ÌL Ì}ÌH”ÌM Ì}ÌI”Ì[ Ì}ÌW”Ì` Ì}Ì\”Ìi Ì}Ìe•” Ì~” Ì~” Ì~”% Ì~”' Ì~!Ü ” Ì” Ì” Ì” Ì” Ì”5 Ì/”8 Ì2”? Ì9”Ì@ Ì:”ÌK ÌÌE”ÌN ÌÌH”ÌY ÌÌS”Ì\ ÌÌV”Ìc ÌÌ]”Ìd ÌÌ^”Ìq ÌÌk”Ìt ÌÌn”Ìw ÌÌq–” Ì€” Ì€” Ì€”( Ì€”) Ì€”* Ì€Ü ” Ì” Ì” Ì”  Ì”' Ì!”( Ì"”6 Ì0”8 Ì2”ÌA Ì;”ÌB Ì<”ÌI ÌÌC”ÌJ ÌÌD”ÌQ ÌÌK”ÌS ÌÌM”Ì^ ÌÌX”Ì` ÌÌZ”Ìg ÌÌa”Ìh ÌÌb”Ìv ÌÌp”Ìx Ì‚”Ì Ì‚”Ì€ Ì‚”Ì Ì‚”Ì Ì‚ ”Ì‘ Ì‚!Ü ” Ìƒ” Ìƒ” Ìƒ” Ìƒ” Ìƒ”3 Ìƒ-”6 Ìƒ0”= Ìƒ7”> Ìƒ8”ÌI ÌƒÌC”ÌL ÌƒÌF”ÌW ÌƒÌQ”ÌZ ÌƒÌT”Ìa ÌƒÌ[”Ìb ÌƒÌ\”Ìo ÌƒÌi”Ìr ÌƒÌl”Ìu ÌƒÌo–” Ì„” Ì„” Ì„”( Ì„”) Ì„”* Ì„‘”	 Ì…’” Ì†” Ì†˜” Ì‡” Ì‡” Ì‡”, Ì‡&”- Ì‡'”1 Ì‡+”2 Ì‡,”3 Ì‡,‘”	 Ìˆ”” Ìˆ” Ìˆ” Ìˆ” ÌˆŸ” Ì‰” Ì‰” Ì‰” Ì‰” Ì‰”Ì@ Ì‰:”ÌC Ì‰=”ÌG Ì‰ÌA”ÌH Ì‰ÌB”ÌQ Ì‰ÌK”ÌR Ì‰ÌL”ÌS Ì‰ÌM”ÌT Ì‰ÌN”ÌU Ì‰ÌO”ÌV Ì‰ÌO‘”	 ÌŠ’” Ì‹” Ì‹˜” ÌŒ” ÌŒ” ÌŒ” ÌŒ” ÌŒ” ÌŒ”' ÌŒ#”) ÌŒ%›” Ì” Ì
+” Ì” Ì”) Ì#”* Ì$”8 Ì2”9 Ì3”= Ì7”> Ì8”? Ì9š” Ì” Ì
+” Ì” Ì”! Ì”% Ì”+ Ì%”, Ì&”4 Ì.”6 Ì0” Ì” Ì” Ì”% Ì”& Ì”, Ì$”- Ì%”7 Ì/”9 Ì1”? Ì7”Ì@ Ì8”ÌH ÌÌ@”ÌI ÌÌA”ÌJ ÌÌB‘” Ì˜” Ì‘” Ì‘
+” Ì‘” Ì‘” Ì‘”  Ì‘”! Ì‘”# Ì‘š” Ì’” Ì’” Ì’”' Ì’”( Ì’ ”. Ì’&”/ Ì’'”5 Ì’-”6 Ì’.”7 Ì’/‘” Ì“Ü ” Ì”” Ì”” Ì”” Ì”” Ì””ÌA Ì”;”ÌD Ì”>”ÌJ Ì”ÌD”ÌK Ì”ÌE”ÌU Ì”ÌO”ÌX Ì”ÌR”Ìe Ì”Ì_”Ìh Ì”Ìb”Ìn Ì”Ìh”Ìo Ì”Ìi”Ìw Ì”Ìq˜” Ì•” Ì•” Ì•”$ Ì•”% Ì•”+ Ì•#”, Ì•$”- Ì•%‘”	 Ì–˜” Ì—” Ì—” Ì—” Ì—” Ì—”" Ì—”+ Ì—'”- Ì—)˜” Ì˜” Ì˜
+” Ì˜” Ì˜”( Ì˜"”+ Ì˜%”- Ì˜'”/ Ì˜)˜” Ì™” Ì™” Ì™” Ì™” Ì™”< Ì™4”= Ì™5”> Ì™5‘” Ìš‘” Ìšš” Ì›” Ì›” Ì›”. Ì›&”/ Ì›'”6 Ì›.”7 Ì›/”Ì@ Ì›8”ÌA Ì›9”ÌB Ì›9‘” Ìœ‘”	 Ì’” Ì” Ì–” ÌŸ” ÌŸ” ÌŸ” ÌŸ”% ÌŸ!”' ÌŸ#–” Ì ” Ì 
+” Ì ” Ì ,”! Ì .”" Ì /›” Ì¡” Ì¡
+” Ì¡” Ì¡”" Ì¡*”# Ì¡+”3 Ì¡;”5 Ì¡=”6 Ì¡>”: Ì¡ÌB”; Ì¡ÌC”” Ì¢” Ì¢
+” Ì¢” Ì¢)–” Ì£” Ì£” Ì£”" Ì£”# Ì£”( Ì£ –” Ì¤” Ì¤” Ì¤”# Ì¤”$ Ì¤”* Ì¤"—” Ì¥” Ì¥” Ì¥”( Ì¥.”) Ì¥/”< Ì¥ÌB”> Ì¥ÌD’” Ì¦” Ì¦˜” Ì§” Ì§” Ì§” Ì§” Ì§”) Ì§#”* Ì§$”+ Ì§%—” Ì¨” Ì¨” Ì¨”% Ì¨”( Ì¨"”4 Ì¨.”5 Ì¨/š” Ì©” Ì©” Ì©”! Ì©”" Ì©”5 Ì©/”6 Ì©0”ÌA Ì©;”ÌB Ì©<”ÌC Ì©<‘”	 ÌªÜ ” Ì¬” Ì¬” Ì¬” Ì¬” Ì¬”/ Ì¬+”2 Ì¬.”9 Ì¬5”: Ì¬6”ÌE Ì¬ÌA”ÌH Ì¬ÌD”ÌS Ì¬ÌO”ÌV Ì¬ÌR”Ì] Ì¬ÌY”Ì^ Ì¬ÌZ”Ìk Ì¬Ìg”Ìn Ì¬Ìj”Ìq Ì¬Ìm–” Ì­” Ì­” Ì­”$ Ì­”% Ì­”& Ì­œ” Ì®” Ì®” Ì®”  Ì®”! Ì®”- Ì®)”/ Ì®+”6 Ì®2”7 Ì®3”ÌB Ì®>”ÌC Ì®?”ÌD Ì®?’” Ì°” Ì°”” Ì±” Ì±” Ì±” Ì±–” Ì²” Ì²” Ì²” Ì²” Ì²”) Ì²#”” Ì³” Ì³” Ì³” Ì³”” Ì´” Ì´
+” Ì´” Ì´”” Ìµ” Ìµ
+” Ìµ” Ìµ”” Ì¶” Ì¶” Ì¶”( Ì¶"’”	 Ì·”
+ Ì·’” Ì¸” Ì¸‘” Ì¹ÔrG–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜ ¡‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ‘”  Ìs ‘”  Ìt ‘”  Ìu ‘”  Ìv ‘”  Ìw ‘”  Ìx ‘”  Ìy ‘”  Ìz ‘”  Ì{ ‘”  Ì| ‘”  Ì} ‘”  Ì~ ‘”  Ì ‘”  Ì€ ‘”  Ì ‘”  Ì‚ ‘”  Ìƒ ‘”  Ì„ ‘”  Ì… ‘”  Ì† ‘”  Ì‡ ‘”  Ìˆ ‘”  Ì‰ ‘”  ÌŠ ‘”  Ì‹ ‘”  ÌŒ ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì‘ ‘”  Ì’ ‘”  Ì“ ‘”  Ì” ‘”  Ì• ‘”  Ì– ‘”  Ì— ‘”  Ì˜ ‘”  Ì™ ‘”  Ìš ‘”  Ì› ‘”  Ìœ ‘”  Ì ‘”  Ì ‘”  ÌŸ ‘”  Ì  ÔrH’§missing¦pluginÃ¦genAbcÂÔ  ÔrI”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrJ–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍwÍVÔrK–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍ~ÍVÔrL”¤type¥start£end¤nameªIdentifierÍ„Í”°ParseStaticImageÀÔrM”¤type¥start£end¤body©ClassBodyÍ•ÍV‘ÔrN˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍœÍSÂÂLªIdentifierÍ¢Í¬ªparseImage¦methodÔrO™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍ¬ÍSÀÂÂÃ•LªIdentifierÍ­Í³¦resBufLªIdentifierÍµÍ¾©typeValueLªIdentifierÍÀÍÇ§fileKeyLªIdentifierÍÉÍĞ§requestLªIdentifierÍÒÍŞ¬callBackDataM®BlockStatementÍàÍSÜ ÔrP•¤type¥start£end¬declarations¤kind³VariableDeclarationÍëÍ‘ÔrQ•¤type¥start£end¢id¤init²VariableDeclaratorÍïÍLªIdentifierÍïÍú«resPixelmapLªIdentifierÍıÍ©undefined£letÔrR”¤type¥start£endªexpression³ExpressionStatementÍÍLÔrS–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍÍKÔrT—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍÍ(LªIdentifierÍÍ¬hiTraceMeterLªIdentifierÍÍ(ªstartTraceÂÂ’ÔrU•¤type¥start£end¥value£raw§LiteralÍ)Í5ªparseImage¬'parseImage'T°MemberExpressionÍ7ÍJLªIdentifierÍ7Í>§requestLªIdentifierÍ?ÍJ«componentIdÂÂÂP³VariableDeclarationÍVÍ‘Q²VariableDeclaratorÍZÍLªIdentifierÍZÍb¨timeInfoS®CallExpressionÍeÍT°MemberExpressionÍeÍLªIdentifierÍeÍu°ImageKnifeLoaderLªIdentifierÍvÍ«getTimeInfoÂÂ‘LªIdentifierÍ‚Í¬callBackDataÂ£letP³VariableDeclarationÍšÍ°‘Q²VariableDeclaratorÍÍ¯LªIdentifierÍÍ£¥pixelLªIdentifierÍ¦Í¯©undefined£letP³VariableDeclarationÍºÍÔ‘Q²VariableDeclaratorÍ¾ÍÓLªIdentifierÍ¾ÍÇ©rangeModeLªIdentifierÍÊÍÓ©undefined£letÔrV•¤type¥start£end¬discriminant¥cases¯SwitchStatementÍŞÍ‘T°MemberExpressionÍæÍşLªIdentifierÍæÍí§requestLªIdentifierÍîÍş°dynamicRangeModeÂÂ“ÔrW•¤type¥start£endªconsequent¤testªSwitchCaseÍÍ’R³ExpressionStatementÍ<ÍgÔrX–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍ<Íf¡=LªIdentifierÍ<ÍE©rangeModeT°MemberExpressionÍHÍfT°MemberExpressionÍHÍbLªIdentifierÍHÍM¥imageLªIdentifierÍNÍb´DecodingDynamicRangeÂÂLªIdentifierÍcÍf£HDRÂÂÔrY”¤type¥start£end¥label®BreakStatementÍyÍÀT°MemberExpressionÍÍ)LªIdentifierÍÍ$°DynamicRangeModeLªIdentifierÍ%Í)¤HIGHÂÂWªSwitchCaseÍÍ’R³ExpressionStatementÍÀÍìX´AssignmentExpressionÍÀÍë¡=LªIdentifierÍÀÍÉ©rangeModeT°MemberExpressionÍÌÍëT°MemberExpressionÍÌÍæLªIdentifierÍÌÍÑ¥imageLªIdentifierÍÒÍæ´DecodingDynamicRangeÂÂLªIdentifierÍçÍë¤AUTOÂÂY®BreakStatementÍşÍÀT°MemberExpressionÍ’Í­LªIdentifierÍ’Í¢°DynamicRangeModeLªIdentifierÍ£Í­ªCONSTRAINTÂÂWªSwitchCaseÍÍ†’R³ExpressionStatementÍCÍnX´AssignmentExpressionÍCÍm¡=LªIdentifierÍCÍL©rangeModeT°MemberExpressionÍOÍmT°MemberExpressionÍOÍiLªIdentifierÍOÍT¥imageLªIdentifierÍUÍi´DecodingDynamicRangeÂÂLªIdentifierÍjÍm£SDRÂÂY®BreakStatementÍ€Í†ÀT°MemberExpressionÍÍ0LªIdentifierÍÍ'°DynamicRangeModeLªIdentifierÍ(Í0¨STANDARDÂÂP³VariableDeclarationÍ›Í€‘Q²VariableDeclaratorÍŸÍLªIdentifierÍŸÍ®¯decodingOptionsÔrZ”¤type¥start£endªproperties°ObjectExpressionÍ±Í’Ôr[™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍÀÍGÂÂÂLªIdentifierÍÀÍÈ¨editableÔr\–¤type¥start£end¤testªconsequent©alternateµConditionalExpressionÍÊÍGÔr]–¤type¥start£end¤left¨operator¥right±LogicalExpressionÍÊÍ']°BinaryExpressionÍÊÍÿT°MemberExpressionÍÊÍßLªIdentifierÍÊÍÑ§requestLªIdentifierÍÒÍß­requestSourceÂÂ£===T°MemberExpressionÍäÍÿLªIdentifierÍäÍû·ImageKnifeRequestSourceLªIdentifierÍüÍÿ£SRCÂÂ¢&&]°BinaryExpressionÍÍ'T°MemberExpressionÍÍLªIdentifierÍÍ
+§requestLªIdentifierÍÍ®transformationÂÂ£!==LªIdentifierÍÍ'©undefinedU§LiteralÍ*Í.Ã¤trueU§LiteralÍBÍGÂ¥false¤init[¨PropertyÍVÍtÂÂÂLªIdentifierÍVÍi³desiredDynamicRangeLªIdentifierÍkÍt©rangeMode¤init£letP³VariableDeclarationÍŠÍ¼‘Q²VariableDeclaratorÍÍ»LªIdentifierÍÍ™«imageSourceS®CallExpressionÍœÍ»T°MemberExpressionÍœÍ³LªIdentifierÍœÍ¡¥imageLªIdentifierÍ¢Í³±createImageSourceÂÂ‘LªIdentifierÍ´Íº¦resBufÂ£let\«IfStatementÍÆÍ	×]°BinaryExpressionÍÊÍãLªIdentifierÍÊÍÕ«imageSource£===LªIdentifierÍÚÍã©undefinedM®BlockStatementÍåÍ	×’R³ExpressionStatementÍôÍ	·S®CallExpressionÍôÍ	¶T°MemberExpressionÍôÍ	LªIdentifierÍôÍ	°ImageKnifeLoaderLªIdentifierÍ	Í	¯makeEmptyResultÂÂ“LªIdentifierÍ	Í	§requestU§LiteralÍ	Í	>¾image.createImageSource failedÙ 'image.createImageSource failed'S®CallExpressionÍ	@Í	µT°MemberExpressionÍ	@Í	^LªIdentifierÍ	@Í	P°ImageKnifeLoaderLªIdentifierÍ	QÍ	^­assembleErrorÂÂ“LªIdentifierÍ	_Í	k¬callBackDataT°MemberExpressionÍ	mÍ	ŠLªIdentifierÍ	mÍ	v©LoadPhaseLªIdentifierÍ	wÍ	Š³PHASE_CREATE_SOURCEÂÂT°MemberExpressionÍ	ŒÍ	´LªIdentifierÍ	ŒÍ	œ°LoadPixelMapCodeLªIdentifierÍ	Í	´·IMAGE_SOURCE_ERROR_CODEÂÂÂÂÔr^”¤type¥start£end¨argument¯ReturnStatementÍ	ÅÍ	ÌÀÀP³VariableDeclarationÍ	áÍ
+‘Q²VariableDeclaratorÍ	åÍ
+LªIdentifierÍ	åÍ	ò­imageInfoSyncS®CallExpressionÍ	õÍ
+T°MemberExpressionÍ	õÍ
+LªIdentifierÍ	õÍ
+ «imageSourceLªIdentifierÍ
+Í
+°getImageInfoSyncÂÂÂ£let\«IfStatementÍ
+Í
+×]°BinaryExpressionÍ
+"Í
+=LªIdentifierÍ
+"Í
+/­imageInfoSync£===LªIdentifierÍ
+4Í
+=©undefinedM®BlockStatementÍ
+?Í
+×“R³ExpressionStatementÍ
+NÍ
+dS®CallExpressionÍ
+NÍ
+cT°MemberExpressionÍ
+NÍ
+aLªIdentifierÍ
+NÍ
+Y«imageSourceLªIdentifierÍ
+ZÍ
+a§releaseÂÂÂR³ExpressionStatementÍ
+rÍ
+·S®CallExpressionÍ
+rÍ
+¶T°MemberExpressionÍ
+rÍ
+’LªIdentifierÍ
+rÍ
+‚°ImageKnifeLoaderLªIdentifierÍ
+ƒÍ
+’¯makeEmptyResultÂÂ’LªIdentifierÍ
+“Í
+š§requestU§LiteralÍ
+œÍ
+µ·getImageInfoSync failed¹'getImageInfoSync failed'Â^¯ReturnStatementÍ
+ÅÍ
+ÌÀÀP³VariableDeclarationÍ
+áÍ
+ÿ‘Q²VariableDeclaratorÍ
+åÍ
+şLªIdentifierÍ
+åÍ
+é¤sizeT°MemberExpressionÍ
+ìÍ
+şLªIdentifierÍ
+ìÍ
+ù­imageInfoSyncLªIdentifierÍ
+úÍ
+ş¤sizeÂÂ£letR³ExpressionStatementÍ	Í.X´AssignmentExpressionÍ	Í-¡=T°MemberExpressionÍ	Í LªIdentifierÍ	Í¬callBackDataLªIdentifierÍÍ ªimageWidthÂÂT°MemberExpressionÍ#Í-LªIdentifierÍ#Í'¤sizeLªIdentifierÍ(Í-¥widthÂÂR³ExpressionStatementÍ8Í_X´AssignmentExpressionÍ8Í^¡=T°MemberExpressionÍ8ÍPLªIdentifierÍ8ÍD¬callBackDataLªIdentifierÍEÍP«imageHeightÂÂT°MemberExpressionÍSÍ^LªIdentifierÍSÍW¤sizeLªIdentifierÍXÍ^¦heightÂÂ\«IfStatementÍiÍ$]±LogicalExpressionÍmÍ¼T°MemberExpressionÍmÍƒLªIdentifierÍmÍt§requestLªIdentifierÍuÍƒ®isAutoImageFitÂÂ¢&&]°BinaryExpressionÍ‡Í¼T°MemberExpressionÍ‡ÍœLªIdentifierÍ‡Í§requestLªIdentifierÍÍœ­requestSourceÂÂ£===T°MemberExpressionÍ¡Í¼LªIdentifierÍ¡Í¸·ImageKnifeRequestSourceLªIdentifierÍ¹Í¼£SRCÂÂM®BlockStatementÍ¾Í$‘R³ExpressionStatementÍÍÍX´AssignmentExpressionÍÍÍ¡=T°MemberExpressionÍÍÍäLªIdentifierÍÍÍÔ§requestLªIdentifierÍÕÍä¯componentHeightÂÂ]°BinaryExpressionÍçÍ]°BinaryExpressionÍçÍT°MemberExpressionÍçÍıLªIdentifierÍçÍî§requestLªIdentifierÍïÍı®componentWidthÂÂ¡*T°MemberExpressionÍ ÍLªIdentifierÍ Í¤sizeLªIdentifierÍÍ¦heightÂÂ¡/T°MemberExpressionÍÍLªIdentifierÍÍ¤sizeLªIdentifierÍÍ¥widthÂÂÀÔr_–¤type¥start£end¥block§handler©finalizer¬TryStatementÍ.ÍKM®BlockStatementÍ2Í‰‘\«IfStatementÍAÍ~]±LogicalExpressionÍEÍÁ]°BinaryExpressionÍFÍvT°MemberExpressionÍFÍZLªIdentifierÍFÍM§requestLªIdentifierÍNÍZ¬downsampTypeÂÂ£!==T°MemberExpressionÍ_ÍvLªIdentifierÍ_Íq²DownsampleStrategyLªIdentifierÍrÍv¤NONEÂÂ¢&&]°BinaryExpressionÍŒÍÁT°MemberExpressionÍŒÍ¡LªIdentifierÍŒÍ“§requestLªIdentifierÍ”Í¡­requestSourceÂÂ£===T°MemberExpressionÍ¦ÍÁLªIdentifierÍ¦Í½·ImageKnifeRequestSourceLªIdentifierÍ¾ÍÁ£SRCÂÂM®BlockStatementÍÃÍ~‘R³ExpressionStatementÍÖÍoX´AssignmentExpressionÍÖÍn¡=T°MemberExpressionÍÖÍñLªIdentifierÍÖÍå¯decodingOptionsLªIdentifierÍæÍñ«desiredSizeÂÂS®CallExpressionÍ	ÍnT°MemberExpressionÍ	Í7LªIdentifierÍ	Í°ImageKnifeLoaderLªIdentifierÍÍ7½getDownsamplerDecodingOptionsÂÂ”LªIdentifierÍ8ÍA©typeValueLªIdentifierÍCÍJ§requestLªIdentifierÍLÍP¤sizeT°MemberExpressionÍRÍmLªIdentifierÍRÍi·ImageKnifeRequestSourceLªIdentifierÍjÍm£SRCÂÂÂÀÔr`•¤type¥start£end¥param¤body«CatchClauseÍ“ÍKLªIdentifierÍšÍ£errM®BlockStatementÍŸÍK“R³ExpressionStatementÍ®ÍÄS®CallExpressionÍ®ÍÃT°MemberExpressionÍ®ÍÁLªIdentifierÍ®Í¹«imageSourceLªIdentifierÍºÍÁ§releaseÂÂÂR³ExpressionStatementÍÒÍ+S®CallExpressionÍÒÍ*T°MemberExpressionÍÒÍòLªIdentifierÍÒÍâ°ImageKnifeLoaderLªIdentifierÍãÍò¯makeEmptyResultÂÂ’LªIdentifierÍóÍú§request]°BinaryExpressionÍüÍ)U§LiteralÍüÍ#Ù%getDownsamplerDecodingOptions failed:Ù''getDownsamplerDecodingOptions failed:'¡+LªIdentifierÍ&Í)£errÂ^¯ReturnStatementÍ9Í@ÀÀ\«IfStatementÍ Í]±LogicalExpressionÍ¤Íò]±LogicalExpressionÍ¤ÍÛT°MemberExpressionÍ¤ÍÀLªIdentifierÍ¤Í«§requestLªIdentifierÍ¬ÍÀ´jpegOptimizeDecodingÂÂ¢&&Ôra–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍÄÍÛ¡!ÃT°MemberExpressionÍÅÍÛLªIdentifierÍÅÍÌ§requestLªIdentifierÍÍÍÛ®transformationÂÂ¢&&]°BinaryExpressionÍßÍòLªIdentifierÍßÍè©typeValue£===U§LiteralÍíÍò£jpg¥'jpg'M®BlockStatementÍôÍ’R³ExpressionStatementÍÍBX´AssignmentExpressionÍÍA¡=T°MemberExpressionÍÍ%LªIdentifierÍÍ¯decodingOptionsLªIdentifierÍÍ%²desiredPixelFormatÂÂT°MemberExpressionÍ(ÍAT°MemberExpressionÍ(Í<LªIdentifierÍ(Í-¥imageLªIdentifierÍ.Í<®PixelMapFormatÂÂLªIdentifierÍ=ÍA¤NV12ÂÂR³ExpressionStatementÍPÍöS®CallExpressionÍPÍõT°MemberExpressionÍPÍ[LªIdentifierÍPÍW§LogUtilLªIdentifierÍXÍ[£logÂÂ‘Ôrb•¤type¥start£end«expressions¦quasis¯TemplateLiteralÍ\Íô“T°MemberExpressionÍ¡Í´LªIdentifierÍ¡Í¨§requestLªIdentifierÍ©Í´«componentIdÂÂT°MemberExpressionÍÀÍÕLªIdentifierÍÀÍÇ§requestLªIdentifierÍÈÍÕ­requestSourceÂÂT°MemberExpressionÍÚÍòLªIdentifierÍÚÍá§requestLªIdentifierÍâÍò°componentVersionÂÂ”Ôrc•¤type¥start£end¥value¤tail¯TemplateElementÍ]ÍŸÔrd’£raw¦cookedÙBdecodingOptions.desiredPixelFormat is image.PixelMapFormat.NV12 : ÙBdecodingOptions.desiredPixelFormat is image.PixelMapFormat.NV12 : Âc¯TemplateElementÍµÍ¾d©,srcType:©,srcType:Âc¯TemplateElementÍÖÍØd¢, ¢, Âc¯TemplateElementÍóÍód  ÃÂÀR³ExpressionStatementÍÍ1X´AssignmentExpressionÍÍ0¡=T°MemberExpressionÍÍ#LªIdentifierÍÍ¨timeInfoLªIdentifierÍÍ#¯decodeStartTimeÂÂS®CallExpressionÍ&Í0T°MemberExpressionÍ&Í.LªIdentifierÍ&Í*¤DateLªIdentifierÍ+Í.£nowÂÂÂP³VariableDeclarationÍNÍc‘Q²VariableDeclaratorÍRÍbLªIdentifierÍRÍV¤exifLªIdentifierÍYÍb©undefined£letR³ExpressionStatementÍmÍd^¯AwaitExpressionÍmÍcS®CallExpressionÍsÍcT°MemberExpressionÍsÍéS®CallExpressionÍsÍãT°MemberExpressionÍsÍ³S®CallExpressionÍsÍ®T°MemberExpressionÍsÍLªIdentifierÍsÍ~«imageSourceLªIdentifierÍÍ°getImagePropertyÂÂ‘T°MemberExpressionÍÍ­T°MemberExpressionÍÍ¡LªIdentifierÍÍ•¥imageLªIdentifierÍ–Í¡«PropertyKeyÂÂLªIdentifierÍ¢Í­«ORIENTATIONÂÂÂLªIdentifierÍ¯Í³¤thenÂÂ‘O·ArrowFunctionExpressionÍ´ÍâÀÂÂÂ‘LªIdentifierÍµÍ¸£resM®BlockStatementÍ½Íâ‘R³ExpressionStatementÍÌÍ×X´AssignmentExpressionÍÌÍÖ¡=LªIdentifierÍÌÍĞ¤exifLªIdentifierÍÓÍÖ£resÂLªIdentifierÍäÍé¥catchÂÂ‘O·ArrowFunctionExpressionÍêÍbÀÂÂÂ‘LªIdentifierÍëÍğ¥errorM®BlockStatementÍõÍb‘R³ExpressionStatementÍÍWS®CallExpressionÍÍVT°MemberExpressionÍÍLªIdentifierÍÍ§LogUtilLªIdentifierÍÍ¤infoÂÂ‘]°BinaryExpressionÍÍUU§LiteralÍÍEÙ2The normal image don't have rotation information, Ù4"The normal image don't have rotation information, "¡+T°MemberExpressionÍHÍULªIdentifierÍHÍM¥errorLªIdentifierÍNÍU§messageÂÂÂÂR³ExpressionStatementÍnÍ¸^¯AwaitExpressionÍnÍ·S®CallExpressionÍtÍ·T°MemberExpressionÍtÍOS®CallExpressionÍtÍIT°MemberExpressionÍtÍ²S®CallExpressionÍtÍŸT°MemberExpressionÍtÍLªIdentifierÍtÍ«imageSourceLªIdentifierÍ€Í®createPixelMapÂÂ‘LªIdentifierÍÍ¯decodingOptionsÂLªIdentifierÍ®Í²¤thenÂÂ‘O·ArrowFunctionExpressionÍ³ÍHÀÂÂÂ‘LªIdentifierÍ´Í¼¨pixelmapM®BlockStatementÍÁÍH“R³ExpressionStatementÍĞÍôX´AssignmentExpressionÍĞÍó¡=T°MemberExpressionÍĞÍæLªIdentifierÍĞÍØ¨timeInfoLªIdentifierÍÙÍæ­decodeEndTimeÂÂS®CallExpressionÍéÍóT°MemberExpressionÍéÍñLªIdentifierÍéÍí¤DateLªIdentifierÍîÍñ£nowÂÂÂR³ExpressionStatementÍÍX´AssignmentExpressionÍÍ¡=LªIdentifierÍÍ«resPixelmapLªIdentifierÍÍ¨pixelmapR³ExpressionStatementÍ'Í=S®CallExpressionÍ'Í<T°MemberExpressionÍ'Í:LªIdentifierÍ'Í2«imageSourceLªIdentifierÍ3Í:§releaseÂÂÂÂLªIdentifierÍJÍO¥catchÂÂ‘O·ArrowFunctionExpressionÍPÍ¶ÀÂÂÂ‘LªIdentifierÍQÍV¥errorM®BlockStatementÍ[Í¶”R³ExpressionStatementÍjÍX´AssignmentExpressionÍjÍ¡=T°MemberExpressionÍjÍ€LªIdentifierÍjÍr¨timeInfoLªIdentifierÍsÍ€­decodeEndTimeÂÂS®CallExpressionÍƒÍT°MemberExpressionÍƒÍ‹LªIdentifierÍƒÍ‡¤DateLªIdentifierÍˆÍ‹£nowÂÂÂR³ExpressionStatementÍœÍ²S®CallExpressionÍœÍ±T°MemberExpressionÍœÍ¯LªIdentifierÍœÍ§«imageSourceLªIdentifierÍ¨Í¯§releaseÂÂÂR³ExpressionStatementÍÀÍ–S®CallExpressionÍÀÍ•T°MemberExpressionÍÀÍàLªIdentifierÍÀÍĞ°ImageKnifeLoaderLªIdentifierÍÑÍà¯makeEmptyResultÂÂ“LªIdentifierÍáÍè§request]°BinaryExpressionÍêÍU§LiteralÍêÍ¶createPixelMap failed:¸'createPixelMap failed:'¡+S®CallExpressionÍÍT°MemberExpressionÍÍLªIdentifierÍÍ	¤JSONLªIdentifierÍ
+Í©stringifyÂÂ‘LªIdentifierÍÍ¥errorÂS®CallExpressionÍÍ”T°MemberExpressionÍÍ:LªIdentifierÍÍ,°ImageKnifeLoaderLªIdentifierÍ-Í:­assembleErrorÂÂ“LªIdentifierÍ;ÍG¬callBackDataT°MemberExpressionÍIÍiLªIdentifierÍIÍR©LoadPhaseLªIdentifierÍSÍi¶PHASE_CREATE_PIXEL_MAPÂÂT°MemberExpressionÍkÍ“LªIdentifierÍkÍ{°LoadPixelMapCodeLªIdentifierÍ|Í“·IMAGE_DECODE_ERROR_CODEÂÂÂÂ^¯ReturnStatementÍ¤Í«ÀÂ\«IfStatementÍÂÍ:]±LogicalExpressionÍÆÍM]±LogicalExpressionÍÆÍ#]°BinaryExpressionÍÆÍûT°MemberExpressionÍÆÍÛLªIdentifierÍÆÍÍ§requestLªIdentifierÍÎÍÛ­requestSourceÂÂ£===T°MemberExpressionÍàÍûLªIdentifierÍàÍ÷·ImageKnifeRequestSourceLªIdentifierÍøÍû£SRCÂÂ¢&&]°BinaryExpressionÍÿÍ#T°MemberExpressionÍÿÍLªIdentifierÍÿÍ§requestLªIdentifierÍÍ®transformationÂÂ£!==LªIdentifierÍÍ#©undefined¢&&]°BinaryExpressionÍ4ÍMLªIdentifierÍ4Í?«resPixelmap£!==LªIdentifierÍDÍM©undefinedM®BlockStatementÍOÍ:“R³ExpressionStatementÍ^Í÷S®CallExpressionÍ^ÍöT°MemberExpressionÍ^ÍiLªIdentifierÍ^Íe§LogUtilLªIdentifierÍfÍi£logÂÂ‘]°BinaryExpressionÍjÍõ]°BinaryExpressionÍjÍÉ]°BinaryExpressionÍjÍÃ]°BinaryExpressionÍjÍ«]°BinaryExpressionÍjÍU§LiteralÍjÍ‡»requestJob.transform.start:½'requestJob.transform.start:'¡+T°MemberExpressionÍŠÍLªIdentifierÍŠÍ‘§requestLªIdentifierÍ’Í«componentIdÂÂ¡+U§LiteralÍ Í«©,srcType:«',srcType:'¡+T°MemberExpressionÍ®ÍÃLªIdentifierÍ®Íµ§requestLªIdentifierÍ¶ÍÃ­requestSourceÂÂ¡+U§LiteralÍÆÍÉ¡,£','¡+T°MemberExpressionÍİÍõLªIdentifierÍİÍä§requestLªIdentifierÍåÍõ°componentVersionÂÂÂR³ExpressionStatementÍÍŠX´AssignmentExpressionÍÍ‰¡=LªIdentifierÍÍ«resPixelmap^¯AwaitExpressionÍÍ‰R¯ChainExpressionÍÍ‰S®CallExpressionÍÍ‰T°MemberExpressionÍÍ:T°MemberExpressionÍÍ/LªIdentifierÍÍ §requestLªIdentifierÍ!Í/®transformationÂÂLªIdentifierÍ1Í:©transformÂÃ”T°MemberExpressionÍ;ÍJLªIdentifierÍ;ÍB§requestLªIdentifierÍCÍJ§contextÂÂLªIdentifierÍLÍW«resPixelmapT°MemberExpressionÍYÍoLªIdentifierÍYÍ`§requestLªIdentifierÍaÍo®componentWidthÂÂT°MemberExpressionÍqÍˆLªIdentifierÍqÍx§requestLªIdentifierÍyÍˆ¯componentHeightÂÂÂR³ExpressionStatementÍ˜Í/S®CallExpressionÍ˜Í.T°MemberExpressionÍ˜Í£LªIdentifierÍ˜ÍŸ§LogUtilLªIdentifierÍ Í££logÂÂ‘]°BinaryExpressionÍ¤Í-]°BinaryExpressionÍ¤Í]°BinaryExpressionÍ¤Íû]°BinaryExpressionÍ¤Íã]°BinaryExpressionÍ¤ÍÕU§LiteralÍ¤Í¿¹requestJob.transform.end:»'requestJob.transform.end:'¡+T°MemberExpressionÍÂÍÕLªIdentifierÍÂÍÉ§requestLªIdentifierÍÊÍÕ«componentIdÂÂ¡+U§LiteralÍØÍã©,srcType:«',srcType:'¡+T°MemberExpressionÍæÍûLªIdentifierÍæÍí§requestLªIdentifierÍîÍû­requestSourceÂÂ¡+U§LiteralÍşÍ¡,£','¡+T°MemberExpressionÍÍ-LªIdentifierÍÍ§requestLªIdentifierÍÍ-°componentVersionÂÂÂÀ_¬TryStatementÍDÍM®BlockStatementÍHÍ‰‘R³ExpressionStatementÍWÍ~R¯ChainExpressionÍWÍ}S®CallExpressionÍWÍ}T°MemberExpressionÍWÍwLªIdentifierÍWÍb«resPixelmapLªIdentifierÍdÍw³setTransferDetachedÂÃ‘U§LiteralÍxÍ|Ã¤trueÂ`«CatchClauseÍ“ÍLªIdentifierÍšÍ›¡eM®BlockStatementÍÍ‘R³ExpressionStatementÍ¬ÍöS®CallExpressionÍ¬ÍõT°MemberExpressionÍ¬Í¹LªIdentifierÍ¬Í³§LogUtilLªIdentifierÍ´Í¹¥errorÂÂ‘]°BinaryExpressionÍºÍôU§LiteralÍºÍàÙ$PixelMap setTransferDetached failed:Ù&'PixelMap setTransferDetached failed:'¡+S®CallExpressionÍãÍôT°MemberExpressionÍãÍñLªIdentifierÍãÍç¤JSONLªIdentifierÍèÍñ©stringifyÂÂ‘LªIdentifierÍòÍó¡eÂÂÀ\«IfStatementÍ!Í;]±LogicalExpressionÍ%Í@LªIdentifierÍ%Í)¤exif¢&&]°BinaryExpressionÍ-Í@LªIdentifierÍ-Í1¤exif£!==U§LiteralÍ6Í@¨Top-leftª'Top-left'M®BlockStatementÍBÍ;”P³VariableDeclarationÍQÍ„‘Q²VariableDeclaratorÍUÍƒLªIdentifierÍUÍ[¦resultS®CallExpressionÍ^ÍƒT°MemberExpressionÍ^Í}LªIdentifierÍ^Ín°ImageKnifeLoaderLªIdentifierÍoÍ}®getOrientationÂÂ‘LªIdentifierÍ~Í‚¤exifÂ£let\«IfStatementÍ’Í]±LogicalExpressionÍ–ÍºT°MemberExpressionÍ–Í§LªIdentifierÍ–Íœ¦resultLªIdentifierÍÍ§ªhorizontalÂÂ¢||T°MemberExpressionÍ«ÍºLªIdentifierÍ«Í±¦resultLªIdentifierÍ²Íº¨verticalÂÂM®BlockStatementÍ¼Í‘R³ExpressionStatementÍÏÍ	R¯ChainExpressionÍÏÍS®CallExpressionÍÏÍT°MemberExpressionÍÏÍäLªIdentifierÍÏÍÚ«resPixelmapLªIdentifierÍÜÍä¨flipSyncÂÃ’T°MemberExpressionÍåÍöLªIdentifierÍåÍë¦resultLªIdentifierÍìÍöªhorizontalÂÂT°MemberExpressionÍøÍLªIdentifierÍøÍş¦resultLªIdentifierÍÿÍ¨verticalÂÂÂÀ\«IfStatementÍ&Í†]°BinaryExpressionÍ*Í;T°MemberExpressionÍ*Í7LªIdentifierÍ*Í0¦resultLªIdentifierÍ1Í7¦rotateÂÂ¡>U§LiteralÍ:Í; ¡0M®BlockStatementÍ=Í†‘R³ExpressionStatementÍPÍwR¯ChainExpressionÍPÍvS®CallExpressionÍPÍvT°MemberExpressionÍPÍgLªIdentifierÍPÍ[«resPixelmapLªIdentifierÍ]ÍgªrotateSyncÂÃ‘T°MemberExpressionÍhÍuLªIdentifierÍhÍn¦resultLªIdentifierÍoÍu¦rotateÂÂÂÀR³ExpressionStatementÍ”Í0S®CallExpressionÍ”Í/T°MemberExpressionÍ”ÍŸLªIdentifierÍ”Í›§LogUtilLªIdentifierÍœÍŸ£logÂÂ‘]°BinaryExpressionÍ Í.]°BinaryExpressionÍ Í]°BinaryExpressionÍ Íÿ]°BinaryExpressionÍ Íí]°BinaryExpressionÍ ÍİU§LiteralÍ ÍÉÙ'The normal image set flip , horizontal=Ù)'The normal image set flip , horizontal='¡+T°MemberExpressionÍÌÍİLªIdentifierÍÌÍÒ¦resultLªIdentifierÍÓÍİªhorizontalÂÂ¡+U§LiteralÍàÍí«, vertical=­', vertical='¡+T°MemberExpressionÍğÍÿLªIdentifierÍğÍö¦resultLªIdentifierÍ÷Íÿ¨verticalÂÂ¡+U§LiteralÍÍ©, rotate=«', rotate='¡+T°MemberExpressionÍ!Í.LªIdentifierÍ!Í'¦resultLªIdentifierÍ(Í.¦rotateÂÂÂÀ\«IfStatementÍEÍ^]°BinaryExpressionÍIÍhT°MemberExpressionÍIÍZLªIdentifierÍIÍP§requestLªIdentifierÍQÍZ©pixelNameÂÂ£!==LªIdentifierÍ_Íh©undefinedM®BlockStatementÍjÍ^‘\«IfStatementÍyÍS]°BinaryExpressionÍ}ÍšT°MemberExpressionÍ}Í•LªIdentifierÍ}Í‡ªdeviceInfoLªIdentifierÍˆÍ•­sdkApiVersionÂÂ¡<U§LiteralÍ˜Íš¢13M®BlockStatementÍœÍì‘R³ExpressionStatementÍ¯ÍİS®CallExpressionÍ¯ÍÜT°MemberExpressionÍ¯Í¼LªIdentifierÍ¯Í¶§LogUtilLªIdentifierÍ·Í¼¥errorÂÂ‘U§LiteralÍ½ÍÛ¼api not support setPixelName¾'api not support setPixelName'ÂM®BlockStatementÍÿÍS‘R³ExpressionStatementÍÍDR¯ChainExpressionÍÍCS®CallExpressionÍÍCT°MemberExpressionÍÍ0LªIdentifierÍÍ«resPixelmapLªIdentifierÍÍ0±setMemoryNameSyncÂÃ‘T°MemberExpressionÍ1ÍBLªIdentifierÍ1Í8§requestLªIdentifierÍ9ÍB©pixelNameÂÂÂÀ\«IfStatementÍƒÍ]°BinaryExpressionÍ‡Í LªIdentifierÍ‡Í’«resPixelmap£!==LªIdentifierÍ—Í ©undefinedM®BlockStatementÍ¢Í–P³VariableDeclarationÍ±ÍÇ‘Q²VariableDeclaratorÍµÍÆLªIdentifierÍµÍÁ¬decodeImagesÔre”¤type¥start£end¨elements¯ArrayExpressionÍÄÍÆ£letP³VariableDeclarationÍÕÍ‘Q²VariableDeclaratorÍÙÍLªIdentifierÍÙÍİ¤sizeT°MemberExpressionÍàÍS®CallExpressionÍàÍşT°MemberExpressionÍàÍüLªIdentifierÍàÍë«resPixelmapLªIdentifierÍìÍü°getImageInfoSyncÂÂÂLªIdentifierÍÿÍ¤sizeÂÂ£letP³VariableDeclarationÍÍÍ‘Q²VariableDeclaratorÍÍÌLªIdentifierÍÍ!«decodeImageZ°ObjectExpressionÍ$ÍÌ“[¨PropertyÍ7ÍOÂÂÂLªIdentifierÍ7ÍC¬contentWidthT°MemberExpressionÍEÍOLªIdentifierÍEÍI¤sizeLªIdentifierÍJÍO¥widthÂÂ¤init[¨PropertyÍbÍ|ÂÂÂLªIdentifierÍbÍo­contentHeightT°MemberExpressionÍqÍ|LªIdentifierÍqÍu¤sizeLªIdentifierÍvÍ|¦heightÂÂ¤init[¨PropertyÍÍ½ÂÂÂLªIdentifierÍÍš«contentSizeS®CallExpressionÍœÍ½T°MemberExpressionÍœÍ»LªIdentifierÍœÍ§«resPixelmapLªIdentifierÍ¨Í»³getPixelBytesNumberÂÂÂ¤init£letR³ExpressionStatementÍÛÍúS®CallExpressionÍÛÍùT°MemberExpressionÍÛÍìLªIdentifierÍÛÍç¬decodeImagesLªIdentifierÍèÍì¤pushÂÂ‘LªIdentifierÍíÍø«decodeImageÂR³ExpressionStatementÍÍ1X´AssignmentExpressionÍÍ0¡=T°MemberExpressionÍÍ!LªIdentifierÍÍ¬callBackDataLªIdentifierÍÍ!¬decodeImagesÂÂLªIdentifierÍ$Í0¬decodeImagesR³ExpressionStatementÍ?ÍvX´AssignmentExpressionÍ?Íu¡=LªIdentifierÍ?ÍD¥pixelS®CallExpressionÍGÍuT°MemberExpressionÍGÍhLªIdentifierÍGÍT­sendableImageLªIdentifierÍUÍh³convertFromPixelMapÂÂ‘LªIdentifierÍiÍt«resPixelmapÂÀR³ExpressionStatementÍ‹ÍS®CallExpressionÍ‹ÍT°MemberExpressionÍ‹Í–LªIdentifierÍ‹Í’§LogUtilLªIdentifierÍ“Í–£logÂÂ‘]°BinaryExpressionÍ—Í]°BinaryExpressionÍ—Íô]°BinaryExpressionÍ—Íî]°BinaryExpressionÍ—ÍÖ]°BinaryExpressionÍ—ÍÈU§LiteralÍ—Í²¹image parse pixelmap end:»'image parse pixelmap end:'¡+T°MemberExpressionÍµÍÈLªIdentifierÍµÍ¼§requestLªIdentifierÍ½ÍÈ«componentIdÂÂ¡+U§LiteralÍËÍÖ©,srcType:«',srcType:'¡+T°MemberExpressionÍÙÍîLªIdentifierÍÙÍà§requestLªIdentifierÍáÍî­requestSourceÂÂ¡+U§LiteralÍñÍô¡,£','¡+T°MemberExpressionÍÍLªIdentifierÍÍ§requestLªIdentifierÍÍ°componentVersionÂÂÂR³ExpressionStatementÍ(ÍdS®CallExpressionÍ(ÍcT°MemberExpressionÍ(Í@LªIdentifierÍ(Í4¬hiTraceMeterLªIdentifierÍ5Í@«finishTraceÂÂ’U§LiteralÍAÍMªparseImage¬'parseImage'T°MemberExpressionÍOÍbLªIdentifierÍOÍV§requestLªIdentifierÍWÍb«componentIdÂÂÂ^¯ReturnStatementÍnÍLZ°ObjectExpressionÍuÍK–[¨PropertyÍ„Í“ÂÂÂLªIdentifierÍ„ÍŒ¨pixelMapLªIdentifierÍÍ“¥pixel¤init[¨PropertyÍ¢Í¿ÂÂÂLªIdentifierÍ¢Í¬ªbufferSizeT°MemberExpressionÍ®Í¿LªIdentifierÍ®Í´¦resBufLªIdentifierÍµÍ¿ªbyteLengthÂÂ¤init[¨PropertyÍÎÍŞÂÂÂLªIdentifierÍÎÍÕ§fileKeyLªIdentifierÍ×ÍŞ§fileKey¤init[¨PropertyÍíÍ÷ÂÂÂLªIdentifierÍíÍñ¤sizeLªIdentifierÍóÍ÷¤size¤init[¨PropertyÍÍÂÂÂLªIdentifierÍÍ
+¤typeLªIdentifierÍÍ©typeValue¤init[¨PropertyÍ$Í@ÂÂÂLªIdentifierÍ$Í2®imageKnifeDataLªIdentifierÍ4Í@¬callBackData¤initÀ™Ôrf•¤type¥start£endªspecifiers¦source±ImportDeclarationÍzÍ±‘Ôrg•¤type¥start£end¨imported¥local¯ImportSpecifierÍƒÍ“LªIdentifierÍƒÍ“°ImageKnifeLoaderLªIdentifierÍƒÍ“°ImageKnifeLoaderU§LiteralÍ›Í°³../ImageKnifeLoaderµ"../ImageKnifeLoader"f±ImportDeclarationÍ³Íõ‘g¯ImportSpecifierÍ¼ÍÓLªIdentifierÍ¼ÍÓ·ImageKnifeRequestSourceLªIdentifierÍ¼ÍÓ·ImageKnifeRequestSourceU§LiteralÍÛÍô·../model/ImageKnifeData¹"../model/ImageKnifeData"f±ImportDeclarationÍ÷Í8’g¯ImportSpecifierÍ Í	LªIdentifierÍ Í	©LoadPhaseLªIdentifierÍ Í	©LoadPhaseg¯ImportSpecifierÍÍLªIdentifierÍÍ°LoadPixelMapCodeLªIdentifierÍÍ°LoadPixelMapCodeU§LiteralÍ#Í7²../utils/Constants´"../utils/Constants"f±ImportDeclarationÍ:Íe‘Ôrh”¤type¥start£end¥local¶ImportDefaultSpecifierÍAÍFLªIdentifierÍAÍF¥imageU§LiteralÍLÍd¶@ohos.multimedia.image¸"@ohos.multimedia.image"f±ImportDeclarationÍgÍ¢‘h¶ImportDefaultSpecifierÍnÍ{LªIdentifierÍnÍ{­sendableImageU§LiteralÍÍ¡¾@ohos.multimedia.sendableImageÙ "@ohos.multimedia.sendableImage"f±ImportDeclarationÍ¤ÍÎ‘h¶ImportDefaultSpecifierÍ«ÍµLªIdentifierÍ«ÍµªdeviceInfoU§LiteralÍ»ÍÍ°@ohos.deviceInfo²"@ohos.deviceInfo"f±ImportDeclarationÍĞÍû‘g¯ImportSpecifierÍÙÍàLªIdentifierÍÙÍà§LogUtilLªIdentifierÍÙÍà§LogUtilU§LiteralÍèÍú°../utils/LogUtil²"../utils/LogUtil"f±ImportDeclarationÍıÍE‘g¯ImportSpecifierÍÍLªIdentifierÍÍ²DownsampleStrategyLªIdentifierÍÍ²DownsampleStrategyU§LiteralÍ ÍDÙ"../downsampling/DownsampleStartegyÙ$"../downsampling/DownsampleStartegy"f±ImportDeclarationÍGÍu‘h¶ImportDefaultSpecifierÍNÍZLªIdentifierÍNÍZ¬hiTraceMeterU§LiteralÍ`Ít²@ohos.hiTraceMeter´"@ohos.hiTraceMeter"

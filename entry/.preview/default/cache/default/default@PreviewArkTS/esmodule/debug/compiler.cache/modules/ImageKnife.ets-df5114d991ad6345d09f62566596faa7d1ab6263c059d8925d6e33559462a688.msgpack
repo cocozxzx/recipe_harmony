@@ -1,0 +1,1443 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚT/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { ImageKnifeRequest, ImageKnifeRequestState } from './model/ImageKnifeRequest';
+import { CacheStrategy, ImageKnifeRequestSource } from './model/ImageKnifeData';
+import { MemoryLruCache } from './cache/MemoryLruCache';
+import { FileCache } from './cache/FileCache';
+import { ImageKnifeDispatcher } from './ImageKnifeDispatcher';
+import { ImageKnifeOption } from './model/ImageKnifeOption';
+import { FileTypeUtil } from './utils/FileTypeUtil';
+import util from "@ohos.util";
+import image from "@ohos.multimedia.image";
+import { LogUtil } from './utils/LogUtil';
+import emitter from "@ohos.events.emitter";
+export class ImageKnife {
+    static getInstance() {
+        if (!ImageKnife.instance) {
+            ImageKnife.instance = new ImageKnife();
+        }
+        return ImageKnife.instance;
+    }
+    constructor() {
+        // å†…å­˜ç¼“å­˜
+        this.memoryCache = new MemoryLruCache(256, 128 * 1024 * 1024);
+        this.dispatcher = new ImageKnifeDispatcher();
+        // é…ç½®å…¨å±€æ˜¯å¦åœ¨å­çº¿ç¨‹åŠ è½½å›¾ç‰‡è¯·æ±‚
+        this._isRequestInSubThread = true;
+        //å®šä¹‰å…¨å±€ç½‘ç»œè¯·æ±‚header map
+        this.headerMap = new Map();
+        this.customGetImage = undefined;
+        // JPEGä¼˜åŒ–è§£ç å¼€å…³ï¼Œå¯ç”¨åä½¿ç”¨YUVæ ¼å¼è§£ç ä»¥å‡å°‘å†…å­˜å ç”¨
+        this.enableJpegOptimizeDecoding = false;
+    }
+    getConnectTimeout() {
+        return this.connectTimeout;
+    }
+    getReadTimeout() {
+        return this.readTimeout;
+    }
+    /**
+     * è®¾ç½®è¿æ¥è¶…æ—¶æ—¶é•¿
+     * @param timeout
+     */
+    setConnectTimeout(timeout) {
+        this.connectTimeout = timeout;
+    }
+    /**
+     * è®¾ç½®è¯»å–è¶…æ—¶æ—¶é•¿
+     * @param timeout
+     */
+    setReadTimeout(timeout) {
+        this.readTimeout = timeout;
+    }
+    set isRequestInSubThread(value) {
+        this._isRequestInSubThread = value;
+    }
+    get isRequestInSubThread() {
+        return this._isRequestInSubThread;
+    }
+    /**
+     * åˆå§‹åŒ–æ–‡ä»¶ç¼“å­˜ä¸ªæ•°ï¼Œå¤§å°ï¼Œä»¥åŠè·¯å¾„
+     * @param context ä¸Šä¸‹æ–‡
+     * @param size ç¼“å­˜æ•°é‡
+     * @param memory å†…å­˜å¤§å°
+     * @param path æ–‡ä»¶ç›®å½•
+     */
+    async initFileCache(context, size = 256, memory = 256 * 1024 * 1024, path) {
+        this.fileCache = new FileCache(context, size, memory);
+        try {
+            if (path != undefined) {
+                await this.fileCache.initFileCache(path);
+            }
+            else {
+                await this.fileCache.initFileCache();
+            }
+        }
+        catch (err) {
+            LogUtil.error(`initFileCache err: ${err}`);
+        }
+    }
+    /**
+     * åˆ¤æ–­æ–‡ä»¶ç¼“å­˜æ˜¯å¦å·²å®Œæˆåˆå§‹åŒ–
+     * @returns æ˜¯å¦åˆå§‹åŒ–
+     */
+    isFileCacheInit() {
+        return this.fileCache === undefined ? false : this.fileCache.isFileCacheInit();
+    }
+    /**
+     * é‡æ–°åŠ è½½
+     */
+    reload(request) {
+        if (request.requestState == ImageKnifeRequestState.ERROR) {
+            request.requestState = ImageKnifeRequestState.PROGRESS;
+            ImageKnife.getInstance().execute(request);
+        }
+    }
+    /**
+     * å…¨å±€æ·»åŠ å•ä¸ªè¯·æ±‚å¤´header
+     * @param key è¯·æ±‚å¤´å±æ€§
+     * @param value è¯·æ±‚å¤´å€¼
+     */
+    addHeader(key, value) {
+        this.headerMap.set(key, value);
+    }
+    /**
+     * å…¨å±€è®¾ç½®è¯·æ±‚å¤´header
+     * @param options è¯·æ±‚å¤´æ•°ç»„
+     */
+    serHeaderOptions(options) {
+        options.forEach((value) => {
+            this.headerMap.set(value.key, value.value);
+        });
+    }
+    /**
+     * åˆ é™¤å•ä¸ªè¯·æ±‚å¤´header
+     * @param key è¯·æ±‚å¤´å±æ€§
+     */
+    deleteHeader(key) {
+        this.headerMap.delete(key);
+    }
+    /**
+     * è®¾ç½®è‡ªå®šä¹‰çš„å†…å­˜ç¼“å­˜
+     * @param newMemoryCache è‡ªå®šä¹‰å†…å­˜ç¼“å­˜
+     */
+    initMemoryCache(newMemoryCache) {
+        this.memoryCache = newMemoryCache;
+    }
+    /**
+     * æ¸…é™¤æ‰€æœ‰å†…å­˜ç¼“å­˜
+     */
+    removeAllMemoryCache() {
+        this.memoryCache.removeAll();
+    }
+    /**
+     * æ¸…é™¤æŒ‡å®šå†…å­˜ç¼“å­˜
+     * @param url å¾…æ¸…é™¤çš„urlè·¯å¾„æˆ–ImageKnifeOption
+     */
+    removeMemoryCache(url) {
+        let imageKnifeOption = new ImageKnifeOption();
+        if (typeof url == 'string') {
+            imageKnifeOption.loadSrc = url;
+        }
+        else {
+            imageKnifeOption = url;
+        }
+        let key = this.getEngineKeyImpl()
+            .generateMemoryKey(imageKnifeOption.loadSrc, ImageKnifeRequestSource.SRC, imageKnifeOption);
+        this.memoryCache.remove(key);
+    }
+    /**
+     * é¢„åŠ è½½
+     * @param loadSrc å›¾ç‰‡åœ°å€url
+     * @returns å›¾ç‰‡è¯·æ±‚request
+     */
+    preload(loadSrc) {
+        let imageKnifeOption = new ImageKnifeOption();
+        if (typeof loadSrc == 'string') {
+            imageKnifeOption.loadSrc = loadSrc;
+        }
+        else {
+            imageKnifeOption = loadSrc;
+        }
+        let request = new ImageKnifeRequest(imageKnifeOption, imageKnifeOption.context !== undefined ? imageKnifeOption.context :
+            this.fileCache?.context, 0, 0, 0, {
+            showPixelMap(version, pixelMap) {
+            }
+        });
+        this.execute(request);
+        return request;
+    }
+    /**
+     * å–æ¶ˆå›¾ç‰‡è¯·æ±‚
+     * @param request å›¾ç‰‡è¯·æ±‚request
+     */
+    cancel(request) {
+        if (typeof request?.imageKnifeOption.loadSrc === 'string' && !request?.drawMainSuccess) {
+            emitter.emit(request.imageKnifeOption.loadSrc + request.componentId);
+        }
+        request.requestState = ImageKnifeRequestState.DESTROY;
+    }
+    /**
+     * é¢„åŠ è½½å›¾ç‰‡åˆ°æ–‡ä»¶ç¼“å­˜
+     * @param loadSrc å›¾ç‰‡åœ°å€url
+     * @returns è¿”å›æ–‡ä»¶ç¼“å­˜è·¯å¾„
+     */
+    preLoadCache(loadSrc) {
+        return new Promise((resolve, reject) => {
+            let imageKnifeOption = new ImageKnifeOption();
+            if (typeof loadSrc == 'string') {
+                imageKnifeOption.loadSrc = loadSrc;
+            }
+            else {
+                imageKnifeOption = loadSrc;
+            }
+            LogUtil.log('ImageKnife_DataTime_preLoadCache-imageKnifeOption:' + loadSrc);
+            let fileKey = this.getEngineKeyImpl().generateFileKey(imageKnifeOption.loadSrc, imageKnifeOption.signature);
+            let cachePath = ImageKnife.getInstance().getFileCache().getFileToPath(fileKey);
+            if (cachePath == null || cachePath == '' || cachePath == undefined) {
+                let request = new ImageKnifeRequest(imageKnifeOption, imageKnifeOption.context !== undefined ? imageKnifeOption.context :
+                    this.fileCache?.context, 0, 0, 0, {
+                    showPixelMap(version, pixelMap, requestSource, size) {
+                        if (requestSource === ImageKnifeRequestSource.SRC) {
+                            resolve(ImageKnife.getInstance().getFileCache().getFileToPath(fileKey));
+                        }
+                    },
+                    mainLoadError: (err) => {
+                        reject(err);
+                    }
+                });
+                this.execute(request);
+            }
+            else {
+                resolve(cachePath);
+            }
+        });
+    }
+    getOption(loadSrc, signature) {
+        let option = {
+            loadSrc: '',
+            signature: signature
+        };
+        if (typeof loadSrc === 'string') {
+            option.loadSrc = loadSrc;
+        }
+        else {
+            option = loadSrc;
+        }
+        return option;
+    }
+    /**
+     * ä»å†…å­˜æˆ–æ–‡ä»¶ç¼“å­˜ä¸­è·å–å›¾ç‰‡æ•°æ®
+     * @param url å›¾ç‰‡åœ°å€url
+     * @param cacheType ç¼“å­˜ç­–ç•¥
+     * @returns å›¾ç‰‡æ•°æ®
+     * @param signature keyè‡ªå®šä¹‰ä¿¡æ¯
+     */
+    getCacheImage(loadSrc, cacheType = CacheStrategy.Default, signature) {
+        let option = this.getOption(loadSrc, signature);
+        return new Promise((resolve, reject) => {
+            if (cacheType === CacheStrategy.Memory) {
+                resolve(this.readMemoryCache(option));
+            }
+            else if (cacheType === CacheStrategy.File) {
+                this.readFileCache(option.loadSrc, resolve);
+            }
+            else {
+                let data = this.readMemoryCache(option);
+                data == undefined ? this.readFileCache(option.loadSrc, resolve) : resolve(data);
+            }
+        });
+    }
+    /**
+     * ä»å†…å­˜æˆ–æ–‡ä»¶ç¼“å­˜ä¸­è·å–å›¾ç‰‡æ•°æ®åŒæ­¥æ¥å£
+     * @param url å›¾ç‰‡åœ°å€url
+     * @param cacheType ç¼“å­˜ç­–ç•¥
+     * @returns å›¾ç‰‡æ•°æ®
+     * @param signature keyè‡ªå®šä¹‰ä¿¡æ¯
+     */
+    getCacheImageSync(loadSrc, cacheType = CacheStrategy.Default, signature) {
+        let option = this.getOption(loadSrc, signature);
+        if (cacheType === CacheStrategy.Memory) {
+            return this.readMemoryCache(option);
+        }
+        else if (cacheType === CacheStrategy.File) {
+            return this.readFileCacheSync(option);
+        }
+        else {
+            let data = this.readMemoryCache(option);
+            return data == undefined ? this.readFileCacheSync(option) : data;
+        }
+    }
+    /**
+     * é¢„åŠ è½½ç¼“å­˜ï¼ˆç”¨äºå¤–éƒ¨å·²è·å–pixelmapï¼Œéœ€è¦åŠ å…¥imageknifeç¼“å­˜çš„åœºæ™¯ï¼‰
+     * @param url  å›¾ç‰‡åœ°å€url
+     * @param pixelMap å›¾ç‰‡
+     * @param cacheType ç¼“å­˜ç­–ç•¥
+     * @param signature keyè‡ªå®šä¹‰ä¿¡æ¯
+     */
+    putCacheImage(url, pixelMap, cacheType = CacheStrategy.Default, packOption, signature) {
+        let memoryKey = this.getEngineKeyImpl()
+            .generateMemoryKey(url, ImageKnifeRequestSource.SRC, { loadSrc: url, signature: signature });
+        let fileKey = this.getEngineKeyImpl().generateFileKey(url, signature);
+        let imageKnifeData = { source: pixelMap, imageWidth: 0, imageHeight: 0 };
+        switch (cacheType) {
+            case CacheStrategy.Default:
+                this.saveMemoryCache(memoryKey, imageKnifeData);
+                if (packOption) {
+                    this.pixelMapToOriginal(pixelMap, packOption, (buffer) => {
+                        this.saveFileCache(fileKey, buffer);
+                    });
+                }
+                else {
+                    this.saveFileCache(fileKey, this.pixelMapToArrayBuffer(pixelMap));
+                }
+                break;
+            case CacheStrategy.File:
+                if (packOption) {
+                    this.pixelMapToOriginal(pixelMap, packOption, (buffer) => {
+                        this.saveFileCache(fileKey, buffer);
+                    });
+                }
+                else {
+                    this.saveFileCache(fileKey, this.pixelMapToArrayBuffer(pixelMap));
+                }
+                break;
+            case CacheStrategy.Memory:
+                this.saveMemoryCache(memoryKey, imageKnifeData);
+                break;
+        }
+    }
+    /**
+     * æ¸…é™¤æ‰€æœ‰æ–‡ä»¶ç¼“å­˜
+     * @returns
+     */
+    async removeAllFileCache() {
+        if (this.fileCache !== undefined) {
+            await this.fileCache.removeAll();
+        }
+    }
+    /**
+     * æ¸…é™¤æŒ‡å®šæ–‡ä»¶ç¼“å­˜
+     * @param url
+     */
+    removeFileCache(url) {
+        let imageKnifeOption = new ImageKnifeOption();
+        if (typeof url == 'string') {
+            imageKnifeOption.loadSrc = url;
+        }
+        else {
+            imageKnifeOption = url;
+        }
+        let key = this.getEngineKeyImpl().generateFileKey(imageKnifeOption.loadSrc, imageKnifeOption.signature);
+        if (this.fileCache !== undefined) {
+            this.fileCache.remove(key);
+        }
+    }
+    /**
+     * è®¾ç½®taskpoolé»˜è®¤å¹¶å‘æ•°é‡
+     * @param concurrency é»˜è®¤å¹¶å‘æ•°é‡ï¼Œé»˜è®¤ä¸º8
+     */
+    setMaxRequests(concurrency) {
+        this.dispatcher.setMaxRequests(concurrency);
+    }
+    getFileCacheByFile(context, key) {
+        if (this.fileCache !== undefined) {
+            return FileCache.getFileCacheByFile(context, key);
+        }
+        return undefined;
+    }
+    loadFromMemoryCache(key) {
+        if (key !== '') {
+            return this.memoryCache.get(key);
+        }
+        return undefined;
+    }
+    saveMemoryCache(key, data) {
+        if (key !== '') {
+            this.memoryCache.put(key, data);
+        }
+    }
+    loadFromFileCache(key) {
+        return this.fileCache?.get(key);
+    }
+    saveFileCache(key, data) {
+        this.fileCache?.put(key, data);
+    }
+    getFileCache() {
+        return this.fileCache;
+    }
+    /**
+     * get cache upper limit
+     * @param cacheType
+     * @returns
+     */
+    getCacheLimitSize(cacheType) {
+        if (cacheType == undefined || cacheType == CacheStrategy.Default) {
+            cacheType = CacheStrategy.Memory;
+        }
+        if (cacheType == CacheStrategy.Memory) {
+            return this.memoryCache.maxMemory;
+        }
+        else {
+            if (this.isFileCacheInit()) {
+                return this.fileCache?.maxMemory;
+            }
+            else {
+                throw new Error('the disk cache not init');
+            }
+        }
+    }
+    /**
+     * gets the number of images currently cached
+     * @param cacheType
+     * @returns
+     */
+    getCurrentCacheNum(cacheType) {
+        if (cacheType == undefined || cacheType == CacheStrategy.Default) {
+            cacheType = CacheStrategy.Memory;
+        }
+        if (cacheType == CacheStrategy.Memory) {
+            return this.memoryCache.size();
+        }
+        else {
+            if (this.isFileCacheInit()) {
+                return this.fileCache?.size();
+            }
+            else {
+                throw new Error('the disk cache not init');
+            }
+        }
+    }
+    /**
+     * gets the current cache size
+     * @param cacheType
+     * @returns
+     */
+    getCurrentCacheSize(cacheType) {
+        if (cacheType == undefined || cacheType == CacheStrategy.Default) {
+            cacheType = CacheStrategy.Memory;
+        }
+        if (cacheType == CacheStrategy.Memory) {
+            return this.memoryCache.currentMemory;
+        }
+        else {
+            if (this.isFileCacheInit()) {
+                return this.fileCache?.currentMemory;
+            }
+            else {
+                throw new Error('the disk cache not init');
+            }
+        }
+    }
+    pixelMapToArrayBuffer(pixelMap) {
+        let imageInfo = pixelMap.getImageInfoSync();
+        let readBuffer = new ArrayBuffer(imageInfo.size.height * imageInfo.size.width * 4);
+        pixelMap.readPixelsToBufferSync(readBuffer);
+        return readBuffer;
+    }
+    pixelMapToOriginal(pixelMap, packOption, onComplete) {
+        const imagePackObj = image.createImagePacker();
+        imagePackObj.packToData(pixelMap, packOption)
+            .then((data) => {
+            onComplete(data);
+        }).catch((err) => {
+            LogUtil.error(`Fail to pack the image.code ${err.code} ,message is ${err.message}`);
+        }).finally(() => {
+            imagePackObj.release().catch((err) => {
+                LogUtil.error(`Fail to pack the imagePackObj.release ${err.code} ,message is ${err.message}`);
+            });
+        });
+    }
+    readMemoryCache(option) {
+        let memoryKey = this.getEngineKeyImpl().generateMemoryKey(option.loadSrc, ImageKnifeRequestSource.SRC, option);
+        return ImageKnife.getInstance()
+            .loadFromMemoryCache(memoryKey);
+    }
+    readFileCache(loadSrc, onComplete) {
+        let keys = this.getEngineKeyImpl().generateFileKey(loadSrc);
+        let buffer = ImageKnife.getInstance().loadFromFileCache(keys);
+        if (buffer != undefined) {
+            let fileTypeUtil = new FileTypeUtil();
+            let typeValue = fileTypeUtil.getFileType(buffer);
+            if (typeValue === 'gif' || typeValue === 'webp') {
+                let base64Help = new util.Base64Helper();
+                let base64str = 'data:image/' + typeValue + ';base64,' + base64Help.encodeToStringSync(new Uint8Array(buffer));
+                onComplete({
+                    source: base64str,
+                    imageWidth: 0,
+                    imageHeight: 0
+                });
+                return;
+            }
+            let imageSource = image.createImageSource(buffer);
+            let decodingOptions = {
+                editable: true,
+            };
+            imageSource.createPixelMap(decodingOptions)
+                .then((pixelmap) => {
+                onComplete({
+                    source: pixelmap,
+                    imageWidth: 0,
+                    imageHeight: 0
+                });
+            }).catch((err) => {
+                LogUtil.error(`readFileCache; imageSource.createPixelMap err: ${err}`);
+                onComplete(undefined);
+            }).finally(() => {
+                imageSource.release().catch((err) => {
+                    LogUtil.error(`readFileCache; imageSource.release err: ${err}`);
+                });
+            });
+        }
+        else {
+            onComplete(undefined);
+        }
+    }
+    readFileCacheSync(option) {
+        let keys = this.getEngineKeyImpl().generateFileKey(option.loadSrc);
+        let buffer = ImageKnife.getInstance().loadFromFileCache(keys);
+        if (buffer != undefined) {
+            let fileTypeUtil = new FileTypeUtil();
+            let typeValue = fileTypeUtil.getFileType(buffer);
+            if (typeValue === 'gif' || typeValue === 'webp') {
+                let base64Help = new util.Base64Helper();
+                let base64str = 'data:image/' + typeValue + ';base64,' + base64Help.encodeToStringSync(new Uint8Array(buffer));
+                return {
+                    source: base64str,
+                    imageWidth: 0,
+                    imageHeight: 0
+                };
+            }
+            let imageSource = image.createImageSource(buffer);
+            try {
+                let decodingOptions = {
+                    editable: false,
+                };
+                let size = imageSource.getImageInfoSync().size;
+                let pixel = imageSource.createPixelMapSync(decodingOptions);
+                return {
+                    source: pixel,
+                    imageWidth: size.width,
+                    imageHeight: size.height
+                };
+            }
+            catch (err) {
+                LogUtil.error(`readFileCacheSync; imageSource.createPixelMapSync err: ${err}`);
+                return;
+            }
+            finally {
+                imageSource.release().catch((err) => {
+                    LogUtil.error(`readFileCacheSync; imageSource.release err: ${err}`);
+                });
+            }
+        }
+        else {
+            return;
+        }
+    }
+    saveWithoutWriteFile(key, bufferSize) {
+        this.fileCache?.putWithoutWriteFile(key, bufferSize);
+    }
+    saveFileCacheOnlyFile(context, key, value) {
+        if (this.fileCache !== undefined) {
+            return FileCache.saveFileCacheOnlyFile(context, key, value);
+        }
+        return false;
+    }
+    async execute(request) {
+        LogUtil.log('ImageKnife_DataTime_execute.start:' + request.imageKnifeOption.loadSrc);
+        if (this.headerMap.size > 0) {
+            request.addHeaderMap(this.headerMap);
+        }
+        this.dispatcher.enqueue(request);
+        LogUtil.log('ImageKnife_DataTime_execute.end:' + request.imageKnifeOption.loadSrc);
+    }
+    setEngineKeyImpl(impl) {
+        this.dispatcher.setEngineKeyImpl(impl);
+    }
+    getEngineKeyImpl() {
+        return this.dispatcher.getEngineKeyImpl();
+    }
+    /**
+     * å…¨å±€è®¾ç½®è‡ªå®šä¹‰ä¸‹è½½
+     * @param customGetImage è‡ªå®šä¹‰è¯·æ±‚å‡½æ•°
+     */
+    setCustomGetImage(customGetImage) {
+        this.customGetImage = customGetImage;
+    }
+    getCustomGetImage() {
+        return this.customGetImage;
+    }
+    /**
+     * è®¾ç½®é»˜è®¤è§£ç æ˜¯å¦ä½¿ç”¨ä¼˜åŒ–jpegå›¾ç‰‡è§£ç 
+     * æ²¡æœ‰è°ƒç”¨æ—¶ï¼Œé»˜è®¤ä¸å¯ç”¨
+     * è®¾ç½®ä¸ºtrueåï¼Œä¼šä¼˜åŒ–Jpegè§£ç ï¼Œä»¥å‡å°è§£ç åçš„å›¾ç‰‡å†…å­˜å ç”¨
+     * å¦‚æœJpegå›¾ç‰‡è®¾ç½®äº†å›¾å½¢å˜æ¢ï¼Œåˆ™ä¸ä¼šåº”ç”¨è¯¥è§£ç ä¼˜åŒ–ï¼Œä»ç„¶ä½¿ç”¨é»˜è®¤çš„è§£ç æ–¹å¼
+     * å¯ç”¨åï¼ŒgetCacheImageæ¥å£å¯èƒ½è·å–åˆ°éRGBAåƒç´ æ ¼å¼çš„pixelmap
+     * @param enable æ˜¯å¦å¼€å¯jpegè§£ç ä¼˜åŒ–
+     */
+    setJpegOptimizeDecoding(enable) {
+        this.enableJpegOptimizeDecoding = enable;
+    }
+    /**
+     * è·å–é»˜è®¤è§£ç æ˜¯å¦å¼€å¯äº†jpegè§£ç ä¼˜åŒ–
+     * @return è¿”å›trueè¡¨ç¤ºå¼€å¯äº†ä¼˜åŒ–è§£ç ï¼Œè¿”å›falseè¡¨ç¤ºæ²¡æœ‰å¼€å¯
+     */
+    getJpegOptimizeDecoding() {
+        return this.enableJpegOptimizeDecoding;
+    }
+}
+//# sourceMappingURL=ImageKnife.js.mapÂ›Ù“C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeRequest.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\MemoryLruCache.etsÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\FileCache.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnifeDispatcher.etsÙ’C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeOption.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\FileTypeUtil.etsÙV hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.util.d.tsÙb hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.multimedia.image.d.tsÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsÙ` hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.events.emitter.d.tsÙ†C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnife.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚW(/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { ImageKnifeRequest, ImageKnifeRequestState } from './model/ImageKnifeRequest';
+import { CacheStrategy, ImageKnifeData, ImageKnifeRequestSource } from './model/ImageKnifeData';
+import { MemoryLruCache } from './cache/MemoryLruCache';
+import { IMemoryCache } from './cache/IMemoryCache'
+import { FileCache } from './cache/FileCache';
+import { ImageKnifeDispatcher } from './ImageKnifeDispatcher';
+import { IEngineKey } from './key/IEngineKey';
+import { HeaderOptions, ImageKnifeOption, ImageKnifeOptionV2 } from './model/ImageKnifeOption';
+import { FileTypeUtil } from './utils/FileTypeUtil';
+import { util } from '@kit.ArkTS';
+import { image } from '@kit.ImageKit';
+import { common } from '@kit.AbilityKit';
+import { LogUtil } from './utils/LogUtil';
+import { BusinessError, emitter } from '@kit.BasicServicesKit';
+
+
+export class ImageKnife {
+  private static instance: ImageKnife;
+  // å†…å­˜ç¼“å­˜
+  private memoryCache: IMemoryCache = new MemoryLruCache(256, 128 * 1024 * 1024);
+  // æ–‡ä»¶ç¼“å­˜
+  private fileCache?: FileCache
+  private dispatcher: ImageKnifeDispatcher = new ImageKnifeDispatcher()
+  // é…ç½®å…¨å±€æ˜¯å¦åœ¨å­çº¿ç¨‹åŠ è½½å›¾ç‰‡è¯·æ±‚
+  private _isRequestInSubThread: boolean = true;
+  //å®šä¹‰å…¨å±€ç½‘ç»œè¯·æ±‚header map
+  headerMap: Map<string, Object> = new Map<string, Object>();
+  customGetImage: ((context: Context, src: string | PixelMap | Resource,
+    headers?: Record<string, Object>) => Promise<ArrayBuffer | undefined>) | undefined = undefined
+  readTimeout?: number
+  connectTimeout?: number
+  // JPEGä¼˜åŒ–è§£ç å¼€å…³ï¼Œå¯ç”¨åä½¿ç”¨YUVæ ¼å¼è§£ç ä»¥å‡å°‘å†…å­˜å ç”¨
+  private enableJpegOptimizeDecoding: boolean = false;
+
+  public static getInstance(): ImageKnife {
+    if (!ImageKnife.instance) {
+      ImageKnife.instance = new ImageKnife();
+    }
+    return ImageKnife.instance;
+  }
+
+  private constructor() {
+  }
+
+  getConnectTimeout() {
+    return this.connectTimeout
+  }
+
+  getReadTimeout() {
+    return this.readTimeout
+  }
+
+  /**
+   * è®¾ç½®è¿æ¥è¶…æ—¶æ—¶é•¿
+   * @param timeout
+   */
+  setConnectTimeout(timeout: number) {
+    this.connectTimeout = timeout
+  }
+
+  /**
+   * è®¾ç½®è¯»å–è¶…æ—¶æ—¶é•¿
+   * @param timeout
+   */
+  setReadTimeout(timeout: number) {
+    this.readTimeout = timeout
+  }
+
+  public set isRequestInSubThread(value: boolean) {
+    this._isRequestInSubThread = value;
+  }
+
+  public get isRequestInSubThread(): boolean {
+    return this._isRequestInSubThread;
+  }
+
+  /**
+   * åˆå§‹åŒ–æ–‡ä»¶ç¼“å­˜ä¸ªæ•°ï¼Œå¤§å°ï¼Œä»¥åŠè·¯å¾„
+   * @param context ä¸Šä¸‹æ–‡
+   * @param size ç¼“å­˜æ•°é‡
+   * @param memory å†…å­˜å¤§å°
+   * @param path æ–‡ä»¶ç›®å½•
+   */
+  async initFileCache(context: Context, size: number = 256, memory: number = 256 * 1024 * 1024, path?: string) {
+    this.fileCache = new FileCache(context, size, memory)
+    try {
+      if (path != undefined) {
+        await this.fileCache.initFileCache(path)
+      } else {
+        await this.fileCache.initFileCache()
+      }
+    } catch (err) {
+      LogUtil.error(`initFileCache err: ${err}`)
+    }
+  }
+
+  /**
+   * åˆ¤æ–­æ–‡ä»¶ç¼“å­˜æ˜¯å¦å·²å®Œæˆåˆå§‹åŒ–
+   * @returns æ˜¯å¦åˆå§‹åŒ–
+   */
+  public isFileCacheInit(): boolean {
+    return this.fileCache === undefined ? false : this.fileCache.isFileCacheInit()
+  }
+
+  /**
+   * é‡æ–°åŠ è½½
+   */
+  reload(request: ImageKnifeRequest) {
+    if (request.requestState == ImageKnifeRequestState.ERROR) {
+      request.requestState = ImageKnifeRequestState.PROGRESS
+      ImageKnife.getInstance().execute(request)
+    }
+  }
+
+  /**
+   * å…¨å±€æ·»åŠ å•ä¸ªè¯·æ±‚å¤´header
+   * @param key è¯·æ±‚å¤´å±æ€§
+   * @param value è¯·æ±‚å¤´å€¼
+   */
+  addHeader(key: string, value: Object) {
+    this.headerMap.set(key, value)
+  }
+
+  /**
+   * å…¨å±€è®¾ç½®è¯·æ±‚å¤´header
+   * @param options è¯·æ±‚å¤´æ•°ç»„
+   */
+  serHeaderOptions(options: Array<HeaderOptions>) {
+    options.forEach((value) => {
+      this.headerMap.set(value.key, value.value)
+    })
+  }
+
+  /**
+   * åˆ é™¤å•ä¸ªè¯·æ±‚å¤´header
+   * @param key è¯·æ±‚å¤´å±æ€§
+   */
+  deleteHeader(key: string) {
+    this.headerMap.delete(key)
+  }
+
+  /**
+   * è®¾ç½®è‡ªå®šä¹‰çš„å†…å­˜ç¼“å­˜
+   * @param newMemoryCache è‡ªå®šä¹‰å†…å­˜ç¼“å­˜
+   */
+  initMemoryCache(newMemoryCache: IMemoryCache): void {
+    this.memoryCache = newMemoryCache
+  }
+
+  /**
+   * æ¸…é™¤æ‰€æœ‰å†…å­˜ç¼“å­˜
+   */
+  removeAllMemoryCache(): void {
+    this.memoryCache.removeAll()
+  }
+
+  /**
+   * æ¸…é™¤æŒ‡å®šå†…å­˜ç¼“å­˜
+   * @param url å¾…æ¸…é™¤çš„urlè·¯å¾„æˆ–ImageKnifeOption
+   */
+  removeMemoryCache(url: string | ImageKnifeOption | ImageKnifeOptionV2) {
+    let imageKnifeOption: ImageKnifeOption | ImageKnifeOptionV2 = new ImageKnifeOption();
+    if (typeof url == 'string') {
+      imageKnifeOption.loadSrc = url;
+    } else {
+      imageKnifeOption = url;
+    }
+    let key = this.getEngineKeyImpl()
+      .generateMemoryKey(imageKnifeOption.loadSrc, ImageKnifeRequestSource.SRC, imageKnifeOption);
+    this.memoryCache.remove(key);
+  }
+
+  /**
+   * é¢„åŠ è½½
+   * @param loadSrc å›¾ç‰‡åœ°å€url
+   * @returns å›¾ç‰‡è¯·æ±‚request
+   */
+  preload(loadSrc: string | ImageKnifeOption | ImageKnifeOptionV2): ImageKnifeRequest {
+    let imageKnifeOption: ImageKnifeOption | ImageKnifeOptionV2 = new ImageKnifeOption()
+    if (typeof loadSrc == 'string') {
+      imageKnifeOption.loadSrc = loadSrc
+    } else {
+      imageKnifeOption = loadSrc;
+    }
+    let request = new ImageKnifeRequest(
+      imageKnifeOption,
+      imageKnifeOption.context !== undefined ? imageKnifeOption.context :
+        this.fileCache?.context as common.UIAbilityContext,
+      0,
+      0,
+      0,
+      {
+        showPixelMap(version: number, pixelMap: PixelMap | string | Resource) {
+        }
+      }
+    )
+    this.execute(request)
+    return request
+  }
+
+  /**
+   * å–æ¶ˆå›¾ç‰‡è¯·æ±‚
+   * @param request å›¾ç‰‡è¯·æ±‚request
+   */
+  cancel(request: ImageKnifeRequest) {
+    if (typeof request?.imageKnifeOption.loadSrc === 'string' && !request?.drawMainSuccess) {
+      emitter.emit(request.imageKnifeOption.loadSrc + request.componentId)
+    }
+    request.requestState = ImageKnifeRequestState.DESTROY
+  }
+
+  /**
+   * é¢„åŠ è½½å›¾ç‰‡åˆ°æ–‡ä»¶ç¼“å­˜
+   * @param loadSrc å›¾ç‰‡åœ°å€url
+   * @returns è¿”å›æ–‡ä»¶ç¼“å­˜è·¯å¾„
+   */
+  preLoadCache(loadSrc: string | ImageKnifeOption | ImageKnifeOptionV2): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let imageKnifeOption: ImageKnifeOption | ImageKnifeOptionV2 = new ImageKnifeOption()
+      if (typeof loadSrc == 'string') {
+        imageKnifeOption.loadSrc = loadSrc
+      } else {
+        imageKnifeOption = loadSrc;
+      }
+      LogUtil.log('ImageKnife_DataTime_preLoadCache-imageKnifeOption:' + loadSrc)
+      let fileKey = this.getEngineKeyImpl().generateFileKey(imageKnifeOption.loadSrc, imageKnifeOption.signature)
+      let cachePath = ImageKnife.getInstance().getFileCache().getFileToPath(fileKey)
+      if (cachePath == null || cachePath == '' || cachePath == undefined) {
+        let request = new ImageKnifeRequest(
+          imageKnifeOption,
+          imageKnifeOption.context !== undefined ? imageKnifeOption.context :
+            this.fileCache?.context as common.UIAbilityContext,
+          0,
+          0,
+          0,
+          {
+            showPixelMap(version: number, pixelMap: PixelMap | string | Resource,
+              requestSource: ImageKnifeRequestSource, size?: Size) {
+              if (requestSource === ImageKnifeRequestSource.SRC) {
+                resolve(ImageKnife.getInstance().getFileCache().getFileToPath(fileKey))
+              }
+            },
+            mainLoadError: (err: string) => {
+              reject(err)
+            }
+          }
+        )
+        this.execute(request)
+      } else {
+        resolve(cachePath)
+      }
+    })
+  }
+
+  private getOption(loadSrc: string | ImageKnifeOption | ImageKnifeOptionV2,
+    signature?: string): ImageKnifeOption | ImageKnifeOptionV2 {
+    let option: ImageKnifeOption | ImageKnifeOptionV2 = {
+      loadSrc: '',
+      signature: signature
+    }
+    if (typeof loadSrc === 'string') {
+      option.loadSrc = loadSrc
+    } else {
+      option = loadSrc
+    }
+    return option
+  }
+
+  /**
+   * ä»å†…å­˜æˆ–æ–‡ä»¶ç¼“å­˜ä¸­è·å–å›¾ç‰‡æ•°æ®
+   * @param url å›¾ç‰‡åœ°å€url
+   * @param cacheType ç¼“å­˜ç­–ç•¥
+   * @returns å›¾ç‰‡æ•°æ®
+   * @param signature keyè‡ªå®šä¹‰ä¿¡æ¯
+   */
+  getCacheImage(loadSrc: string | ImageKnifeOption | ImageKnifeOptionV2,
+    cacheType: CacheStrategy = CacheStrategy.Default, signature?: string): Promise<ImageKnifeData | undefined> {
+    let option = this.getOption(loadSrc, signature)
+    return new Promise((resolve, reject) => {
+      if (cacheType === CacheStrategy.Memory) {
+        resolve(this.readMemoryCache(option))
+      } else if (cacheType === CacheStrategy.File) {
+        this.readFileCache(option.loadSrc, resolve)
+      } else {
+        let data = this.readMemoryCache(option)
+        data == undefined ? this.readFileCache(option.loadSrc, resolve) : resolve(data)
+      }
+    })
+  }
+
+  /**
+   * ä»å†…å­˜æˆ–æ–‡ä»¶ç¼“å­˜ä¸­è·å–å›¾ç‰‡æ•°æ®åŒæ­¥æ¥å£
+   * @param url å›¾ç‰‡åœ°å€url
+   * @param cacheType ç¼“å­˜ç­–ç•¥
+   * @returns å›¾ç‰‡æ•°æ®
+   * @param signature keyè‡ªå®šä¹‰ä¿¡æ¯
+   */
+  getCacheImageSync(loadSrc: string | ImageKnifeOption | ImageKnifeOptionV2,
+    cacheType: CacheStrategy = CacheStrategy.Default, signature?: string): ImageKnifeData | undefined {
+    let option = this.getOption(loadSrc, signature)
+    if (cacheType === CacheStrategy.Memory) {
+      return this.readMemoryCache(option)
+    } else if (cacheType === CacheStrategy.File) {
+      return this.readFileCacheSync(option)
+    } else {
+      let data = this.readMemoryCache(option)
+      return data == undefined ? this.readFileCacheSync(option) : data
+    }
+  }
+
+  /**
+   * é¢„åŠ è½½ç¼“å­˜ï¼ˆç”¨äºå¤–éƒ¨å·²è·å–pixelmapï¼Œéœ€è¦åŠ å…¥imageknifeç¼“å­˜çš„åœºæ™¯ï¼‰
+   * @param url  å›¾ç‰‡åœ°å€url
+   * @param pixelMap å›¾ç‰‡
+   * @param cacheType ç¼“å­˜ç­–ç•¥
+   * @param signature keyè‡ªå®šä¹‰ä¿¡æ¯
+   */
+  putCacheImage(url: string, pixelMap: PixelMap, cacheType: CacheStrategy = CacheStrategy.Default,
+    packOption?: image.PackingOption, signature?: string) {
+    let memoryKey = this.getEngineKeyImpl()
+      .generateMemoryKey(url, ImageKnifeRequestSource.SRC, { loadSrc: url, signature: signature });
+    let fileKey = this.getEngineKeyImpl().generateFileKey(url, signature);
+    let imageKnifeData: ImageKnifeData = { source: pixelMap, imageWidth: 0, imageHeight: 0 };
+    switch (cacheType) {
+      case CacheStrategy.Default:
+        this.saveMemoryCache(memoryKey, imageKnifeData);
+        if (packOption) {
+          this.pixelMapToOriginal(pixelMap, packOption, (buffer) => {
+            this.saveFileCache(fileKey, buffer);
+          })
+        } else {
+          this.saveFileCache(fileKey, this.pixelMapToArrayBuffer(pixelMap));
+        }
+        break;
+      case CacheStrategy.File:
+        if (packOption) {
+          this.pixelMapToOriginal(pixelMap, packOption, (buffer) => {
+            this.saveFileCache(fileKey, buffer);
+          })
+        } else {
+          this.saveFileCache(fileKey, this.pixelMapToArrayBuffer(pixelMap));
+        }
+        break
+      case CacheStrategy.Memory:
+        this.saveMemoryCache(memoryKey, imageKnifeData);
+        break
+    }
+  }
+
+  /**
+   * æ¸…é™¤æ‰€æœ‰æ–‡ä»¶ç¼“å­˜
+   * @returns
+   */
+  async removeAllFileCache(): Promise<void> {
+    if (this.fileCache !== undefined) {
+      await this.fileCache.removeAll()
+    }
+  }
+
+  /**
+   * æ¸…é™¤æŒ‡å®šæ–‡ä»¶ç¼“å­˜
+   * @param url
+   */
+  removeFileCache(url: string | ImageKnifeOption | ImageKnifeOptionV2) {
+    let imageKnifeOption: ImageKnifeOption | ImageKnifeOptionV2 = new ImageKnifeOption();
+    if (typeof url == 'string') {
+      imageKnifeOption.loadSrc = url;
+    } else {
+      imageKnifeOption = url;
+    }
+    let key = this.getEngineKeyImpl().generateFileKey(imageKnifeOption.loadSrc, imageKnifeOption.signature);
+    if (this.fileCache !== undefined) {
+      this.fileCache.remove(key);
+    }
+  }
+
+  /**
+   * è®¾ç½®taskpoolé»˜è®¤å¹¶å‘æ•°é‡
+   * @param concurrency é»˜è®¤å¹¶å‘æ•°é‡ï¼Œé»˜è®¤ä¸º8
+   */
+  setMaxRequests(concurrency: number): void {
+    this.dispatcher.setMaxRequests(concurrency)
+  }
+
+  getFileCacheByFile(context: Context, key: string): ArrayBuffer | undefined {
+    if (this.fileCache !== undefined) {
+      return FileCache.getFileCacheByFile(context, key)
+    }
+    return undefined
+  }
+
+  loadFromMemoryCache(key: string): ImageKnifeData | undefined {
+    if (key !== '') {
+      return this.memoryCache.get(key)
+    }
+    return undefined
+  }
+
+  saveMemoryCache(key: string, data: ImageKnifeData): void {
+    if (key !== '') {
+      this.memoryCache.put(key, data)
+    }
+  }
+
+  loadFromFileCache(key: string): ArrayBuffer | undefined {
+    return this.fileCache?.get(key)
+  }
+
+  saveFileCache(key: string, data: ArrayBuffer): void {
+    this.fileCache?.put(key, data)
+  }
+
+  getFileCache(): FileCache {
+    return this.fileCache as FileCache
+  }
+
+  /**
+   * get cache upper limit
+   * @param cacheType
+   * @returns
+   */
+  getCacheLimitSize(cacheType?: CacheStrategy): number | undefined {
+    if (cacheType == undefined || cacheType == CacheStrategy.Default) {
+      cacheType = CacheStrategy.Memory;
+    }
+    if (cacheType == CacheStrategy.Memory) {
+      return (this.memoryCache as MemoryLruCache).maxMemory;
+    } else {
+      if (this.isFileCacheInit()) {
+        return this.fileCache?.maxMemory;
+      } else {
+        throw new Error('the disk cache not init');
+      }
+    }
+  }
+
+  /**
+   * gets the number of images currently cached
+   * @param cacheType
+   * @returns
+   */
+  getCurrentCacheNum(cacheType: CacheStrategy): number | undefined {
+    if (cacheType == undefined || cacheType == CacheStrategy.Default) {
+      cacheType = CacheStrategy.Memory;
+    }
+    if (cacheType == CacheStrategy.Memory) {
+      return (this.memoryCache as MemoryLruCache).size();
+    } else {
+      if (this.isFileCacheInit()) {
+        return this.fileCache?.size();
+      } else {
+        throw new Error('the disk cache not init');
+      }
+    }
+  }
+
+  /**
+   * gets the current cache size
+   * @param cacheType
+   * @returns
+   */
+  getCurrentCacheSize(cacheType: CacheStrategy): number | undefined {
+    if (cacheType == undefined || cacheType == CacheStrategy.Default) {
+      cacheType = CacheStrategy.Memory;
+    }
+    if (cacheType == CacheStrategy.Memory) {
+      return (this.memoryCache as MemoryLruCache).currentMemory;
+    } else {
+      if (this.isFileCacheInit()) {
+        return this.fileCache?.currentMemory;
+      } else {
+        throw new Error('the disk cache not init');
+      }
+    }
+  }
+
+  private pixelMapToArrayBuffer(pixelMap: PixelMap): ArrayBuffer {
+    let imageInfo = pixelMap.getImageInfoSync();
+    let readBuffer: ArrayBuffer = new ArrayBuffer(imageInfo.size.height * imageInfo.size.width * 4);
+    pixelMap.readPixelsToBufferSync(readBuffer);
+    return readBuffer
+  }
+
+  private pixelMapToOriginal(pixelMap: PixelMap, packOption: image.PackingOption,
+    onComplete: (buffer: ArrayBuffer) => void) {
+    const imagePackObj = image.createImagePacker()
+    imagePackObj.packToData(pixelMap, packOption)
+      .then((data: ArrayBuffer) => {
+        onComplete(data)
+      }).catch((err: BusinessError) => {
+      LogUtil.error(`Fail to pack the image.code ${err.code} ,message is ${err.message}`)
+    }).finally(() => {
+      imagePackObj.release().catch((err: BusinessError) => {
+        LogUtil.error(`Fail to pack the imagePackObj.release ${err.code} ,message is ${err.message}`)
+      })
+    })
+  }
+
+  private readMemoryCache(option: ImageKnifeOption | ImageKnifeOptionV2): ImageKnifeData | undefined {
+    let memoryKey = this.getEngineKeyImpl().generateMemoryKey(option.loadSrc, ImageKnifeRequestSource.SRC, option)
+    return ImageKnife.getInstance()
+      .loadFromMemoryCache(memoryKey)
+  }
+
+  private readFileCache(loadSrc: string | image.PixelMap | Resource,
+    onComplete: (data: ImageKnifeData | undefined) => void) {
+    let keys = this.getEngineKeyImpl().generateFileKey(loadSrc)
+    let buffer = ImageKnife.getInstance().loadFromFileCache(keys)
+    if (buffer != undefined) {
+      let fileTypeUtil = new FileTypeUtil();
+      let typeValue = fileTypeUtil.getFileType(buffer);
+      if (typeValue === 'gif' || typeValue === 'webp') {
+        let base64Help = new util.Base64Helper()
+
+        let base64str = 'data:image/' + typeValue + ';base64,' + base64Help.encodeToStringSync(new Uint8Array(buffer))
+        onComplete({
+          source: base64str,
+          imageWidth: 0,
+          imageHeight: 0
+        })
+        return
+      }
+
+      let imageSource: image.ImageSource = image.createImageSource(buffer);
+      let decodingOptions: image.DecodingOptions = {
+        editable: true,
+      }
+
+      imageSource.createPixelMap(decodingOptions)
+        .then((pixelmap: PixelMap) => {
+          onComplete({
+            source: pixelmap,
+            imageWidth: 0,
+            imageHeight: 0
+          })
+        }).catch((err: BusinessError) => {
+          LogUtil.error(`readFileCache; imageSource.createPixelMap err: ${err}`)
+          onComplete(undefined)
+        }).finally(() => {
+          imageSource.release().catch((err: Error) => {
+            LogUtil.error(`readFileCache; imageSource.release err: ${err}`)
+          })
+        })
+    } else {
+      onComplete(undefined)
+    }
+  }
+
+  private readFileCacheSync(option: ImageKnifeOption | ImageKnifeOptionV2): ImageKnifeData | undefined {
+    let keys = this.getEngineKeyImpl().generateFileKey(option.loadSrc)
+    let buffer = ImageKnife.getInstance().loadFromFileCache(keys)
+    if (buffer != undefined) {
+      let fileTypeUtil = new FileTypeUtil();
+      let typeValue = fileTypeUtil.getFileType(buffer);
+      if (typeValue === 'gif' || typeValue === 'webp') {
+        let base64Help = new util.Base64Helper()
+
+        let base64str = 'data:image/' + typeValue + ';base64,' + base64Help.encodeToStringSync(new Uint8Array(buffer))
+        return {
+          source: base64str,
+          imageWidth: 0,
+          imageHeight: 0
+        }
+      }
+      let imageSource: image.ImageSource = image.createImageSource(buffer);
+      try {
+        let decodingOptions: image.DecodingOptions = {
+          editable: false,
+        }
+        let size = imageSource.getImageInfoSync().size
+        let pixel = imageSource.createPixelMapSync(decodingOptions)
+        return {
+          source: pixel,
+          imageWidth: size.width,
+          imageHeight: size.height
+        }
+      } catch (err) {
+        LogUtil.error(`readFileCacheSync; imageSource.createPixelMapSync err: ${err}`)
+        return
+      } finally {
+        imageSource.release().catch((err: Error) => {
+          LogUtil.error(`readFileCacheSync; imageSource.release err: ${err}`)
+        })
+      }
+    } else {
+      return
+    }
+  }
+
+  saveWithoutWriteFile(key: string, bufferSize: number): void {
+    this.fileCache?.putWithoutWriteFile(key, bufferSize)
+  }
+
+  saveFileCacheOnlyFile(context: Context, key: string, value: ArrayBuffer): boolean {
+    if (this.fileCache !== undefined) {
+      return FileCache.saveFileCacheOnlyFile(context, key, value)
+    }
+    return false
+  }
+
+  async execute(request: ImageKnifeRequest): Promise<void> {
+    LogUtil.log('ImageKnife_DataTime_execute.start:' + request.imageKnifeOption.loadSrc)
+    if (this.headerMap.size > 0) {
+      request.addHeaderMap(this.headerMap)
+    }
+    this.dispatcher.enqueue(request)
+    LogUtil.log('ImageKnife_DataTime_execute.end:' + request.imageKnifeOption.loadSrc)
+  }
+
+  setEngineKeyImpl(impl: IEngineKey): void {
+    this.dispatcher.setEngineKeyImpl(impl);
+  }
+
+  getEngineKeyImpl(): IEngineKey {
+    return this.dispatcher.getEngineKeyImpl();
+  }
+
+  /**
+   * å…¨å±€è®¾ç½®è‡ªå®šä¹‰ä¸‹è½½
+   * @param customGetImage è‡ªå®šä¹‰è¯·æ±‚å‡½æ•°
+   */
+  setCustomGetImage(customGetImage?: (context: Context, src: string | PixelMap | Resource,
+    headers?: Record<string, Object>) => Promise<ArrayBuffer | undefined>) {
+    this.customGetImage = customGetImage
+  }
+
+  getCustomGetImage(): undefined | ((context: Context, src: string | PixelMap | Resource,
+    headers?: Record<string, Object>) => Promise<ArrayBuffer | undefined>) {
+    return this.customGetImage
+  }
+
+  /**
+   * è®¾ç½®é»˜è®¤è§£ç æ˜¯å¦ä½¿ç”¨ä¼˜åŒ–jpegå›¾ç‰‡è§£ç 
+   * æ²¡æœ‰è°ƒç”¨æ—¶ï¼Œé»˜è®¤ä¸å¯ç”¨
+   * è®¾ç½®ä¸ºtrueåï¼Œä¼šä¼˜åŒ–Jpegè§£ç ï¼Œä»¥å‡å°è§£ç åçš„å›¾ç‰‡å†…å­˜å ç”¨
+   * å¦‚æœJpegå›¾ç‰‡è®¾ç½®äº†å›¾å½¢å˜æ¢ï¼Œåˆ™ä¸ä¼šåº”ç”¨è¯¥è§£ç ä¼˜åŒ–ï¼Œä»ç„¶ä½¿ç”¨é»˜è®¤çš„è§£ç æ–¹å¼
+   * å¯ç”¨åï¼ŒgetCacheImageæ¥å£å¯èƒ½è·å–åˆ°éRGBAåƒç´ æ ¼å¼çš„pixelmap
+   * @param enable æ˜¯å¦å¼€å¯jpegè§£ç ä¼˜åŒ–
+   */
+  setJpegOptimizeDecoding(enable: boolean): void {
+    this.enableJpegOptimizeDecoding = enable;
+  }
+
+  /**
+   * è·å–é»˜è®¤è§£ç æ˜¯å¦å¼€å¯äº†jpegè§£ç ä¼˜åŒ–
+   * @return è¿”å›trueè¡¨ç¤ºå¼€å¯äº†ä¼˜åŒ–è§£ç ï¼Œè¿”å›falseè¡¨ç¤ºæ²¡æœ‰å¼€å¯
+   */
+  getJpegOptimizeDecoding(): boolean {
+    return this.enableJpegOptimizeDecoding;
+  }
+}ÀÔrD›ª@ohos.util¶@ohos.multimedia.image´@ohos.events.emitter¹./model/ImageKnifeRequest¶./model/ImageKnifeData¸./model/ImageKnifeOption¶./ImageKnifeDispatcher¯./utils/LogUtil¶./cache/MemoryLruCache±./cache/FileCache´./utils/FileTypeUtilÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÃÙV hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.util.d.tsÔrF‘¯hostModulesInfo‘ÔrG’²hostDependencyName®hostModuleNameª@ohos.util¥entryÃªoh-resolveÂEAÃÙb hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.multimedia.image.d.tsAÃªoh-resolveÂEAÃÙ` hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.events.emitter.d.tsAÃªoh-resolveÂEAÂÙ“C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeRequest.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsAÃªoh-resolveÂEAÂÙ’C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeOption.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnifeDispatcher.etsAÃªoh-resolveÂEAÂÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\MemoryLruCache.etsAÃªoh-resolveÂEAÂÙ‹C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\cache\FileCache.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\FileTypeUtil.etsAÃªoh-resolveÂ“ÔrH–§version¤fileªsourceRoot§sources¥names¨mappings­ImageKnife.js ‘®ImageKnife.etsÜY‘”    ‘” š”   ” ”	 	” ” ”2 2”4 4”: :”ÌU ÌU”ÌV ÌVš”   ” ”	 	” ” (”/ ?”1 ÌA”7 ÌG”ÌO Ì_”ÌP Ì`˜”   ” ”	 	” ” ” ”7 7”8 8˜”   ” ”	 	” ” ” ”- -”. .˜”   ” ”	 	” ” ”% %”= =”> >˜”   ” ”	 ” (” >”! ÌD”; Ì^”< Ì_˜”   ” ”	 	” ” ” ”3 3”4 4–”   ” 	” ” ” !” "–”   ” 	” ” ”* %”+ &˜”   ” ”	 	” ” ” ”) )”* *–”   ” ” ” '”* >”+ ?””   ” ” ” ”” 0	”
+ 0” 0” 0—” 1” 1” 1	” 1” 1”  1”" 1™” 2” 2” 2” 2”" 2”& 2 ”0 2*”2 2,”3 2-‘”	 3–” 4” 4” 4” 4”" 4”# 4’” 5” 5‘” 7’”  ”  	Ÿ” !
+” !” !&” !*”- !8”. !9”1 !<”3 !>”6 !ÌA”9 !ÌD”= !ÌH”Ì@ !ÌK”ÌD !ÌO”ÌE !ÌP”ÌF !ÌQ—” $
+” $” $-” $1”2 $ÌE”4 $ÌG”5 $ÌG’” %” %•” &
+”" &”% &+”) &/”* &0’” '” '—” (” (” (#” ('”  (*”" (<”# (=•” )” )” *ÌY”' *Ìb”( *Ìb’” -”) -#•” .
+”' .$”* .0”/ .5”0 .6’” 8” 8’” :” :–” ;” ;” ;” ;”" ;”# ;’” <” <’” >” >–” ?” ?” ?” ?” ?”  ?’” Ì@” Ì@‘” ÌB‘” ÌE”” ÌF” ÌF” ÌF” ÌF#—” ÌG” ÌG” ÌG	” ÌG” ÌG”% ÌG!”& ÌG!’” ÌH” ÌH‘” ÌJ‘” ÌM”” ÌN” ÌN” ÌN” ÌN —” ÌO” ÌO” ÌO	” ÌO” ÌO”" ÌO”# ÌO’” ÌP” ÌP•” ÌR” ÌR” ÌR!” ÌR"”" ÌR0—” ÌS” ÌS” ÌS	”" ÌS”% ÌS!”* ÌS&”+ ÌS'’” ÌT” ÌT“” ÌV” ÌV” ÌV!–” ÌW” ÌW” ÌW” ÌW”) ÌW%”* ÌW&’” ÌX” ÌX‘” ÌZ‘” Ì`Ü ” Ìa”	 Ìa”
+ Ìa” Ìa” Ìa” Ìa&”! Ìa(”( Ìa7”+ Ìa:”- Ìa<”6 ÌaÌM”9 ÌaÌP”< ÌaÌS”Ì@ ÌaÌW”ÌC ÌaÌZ”ÌG ÌaÌ^”ÌI ÌaÌ`”ÌM ÌaÌmŸ” Ìb” Ìb” Ìb	” Ìb” Ìb” Ìb”& Ìb"”' Ìb#”. Ìb*”0 Ìb,”4 Ìb0”6 Ìb2”< Ìb8”= Ìb9”> Ìb9’” Ìc” Ìc–” Ìd” Ìd
+” Ìd” Ìd”! Ìd”# Ìd›” Ìe” Ìe” Ìe” Ìe”$ Ìe”% Ìe”2 Ìe*”3 Ìe+”7 Ìe/”8 Ìe0”9 Ìe0‘” Ìf‘” Ìf™” Ìg” Ìg” Ìg” Ìg”$ Ìg”% Ìg”2 Ìg*”4 Ìg,”5 Ìg,‘” Ìh‘”	 Ìi”” Ìi” Ìi” Ìi” Ìiš” Ìj” Ìj” Ìj” Ìj” Ìj”0 Ìj*”3 Ìj-”5 Ìj/”6 Ìj0”7 Ìj0‘”	 Ìk’” Ìl” Ìl‘” Ìn‘” Ìq’” Ìr	” ÌrÜ ” Ìs” Ìs” Ìs” Ìs” Ìs”" Ìs”+ Ìs'”, Ìs(”- Ìs)”. Ìs*”3 Ìs/”4 Ìs0”5 Ìs1”6 Ìs2”: Ìs6”; Ìs7”ÌD ÌsÌ@”ÌE ÌsÌA”ÌT ÌsÌP”ÌV ÌsÌR”ÌW ÌsÌR’” Ìt” Ìt‘” Ìv‘” Ìx”” Ìy”
+ Ìy” Ìy	” Ìy#š” Ìz” Ìz” Ìz” Ìz”  Ìz”$ Ìz ”: Ìz6”; Ìz7”Ì@ Ìz<”ÌB Ìz>™” Ì{” Ì{” Ì{”  Ì{”# Ì{”9 Ì{3”: Ì{4”ÌB Ì{<”ÌC Ì{<›” Ì|” Ì|” Ì|”" Ì|”$ Ì|”% Ì|”, Ì|&”- Ì|'”4 Ì|.”5 Ì|/”6 Ì|/‘”	 Ì}’” Ì~” Ì~‘” Ì€‘” Ì„–” Ì…” Ì…” Ì…” Ì…” Ì…” Ì…&œ” Ì†” Ì†” Ì†	” Ì†” Ì†” Ì†” Ì†” Ì†”  Ì†”% Ì†!”& Ì†"”' Ì†"’” Ì‡” Ì‡‘” Ì‰‘” ÌŒ”” Ì” Ì” Ì” Ì0™” Ì” Ì” Ì” Ì” Ì” Ì” Ì”  Ì”" ÌÜ ” Ì” Ì
+” Ì” Ì” Ì” Ì” Ì”$ Ì”% Ì”( Ì"”* Ì$”/ Ì)”0 Ì*”5 Ì/”6 Ì0”7 Ì0”” Ì”	 Ì”
+ Ì” Ì’” Ì‘” Ì‘‘” Ì“‘” Ì–”” Ì—” Ì—” Ì—” Ì—š” Ì˜” Ì˜” Ì˜	” Ì˜” Ì˜” Ì˜” Ì˜”! Ì˜”" Ì˜”# Ì˜’” Ì™” Ì™‘” Ì›‘” Ì”” ÌŸ” ÌŸ” ÌŸ”" ÌŸ.—” Ì ” Ì ” Ì 	” Ì ” Ì ”) Ì %”* Ì %’” Ì¡” Ì¡‘” Ì£‘” Ì¥’” Ì¦” Ì¦˜” Ì§” Ì§” Ì§	” Ì§” Ì§”" Ì§”$ Ì§ ”% Ì§ ’” Ì¨” Ì¨‘” Ìª‘” Ì­”” Ì®” Ì®” Ì®” Ì®ÌG˜” Ì¯” Ì¯” Ì¯” Ì¯ÌB”# Ì¯ÌF”3 Ì¯ÌV”5 Ì¯ÌX”6 Ì¯ÌY—” Ì°” Ì°” Ì°” Ì°” Ì°”" Ì°”$ Ì° —” Ì±” Ì±” Ì±”$ Ì±”' Ì±!”* Ì±$”+ Ì±%‘”	 Ì²‘” Ì²•” Ì³” Ì³” Ì³”" Ì³”# Ì³‘”	 Ì´˜” Ìµ” Ìµ” Ìµ” Ìµ” Ìµ” Ìµ”' Ìµ#”) Ìµ%” Ì¶” Ì¶” Ì¶”/ Ì¶)”0 Ì¶*”7 Ì¶1”9 Ì¶3”ÌP Ì¶ÌJ”ÌQ Ì¶ÌK”ÌT Ì¶ÌN”ÌV Ì¶ÌP”Ìf Ì¶Ì`”Ìg Ì¶Ìa”Ìh Ì¶Ìbš” Ì·” Ì·” Ì·	” Ì·” Ì·” Ì·”  Ì·”# Ì·”$ Ì· ”% Ì·!’” Ì¸” Ì¸‘” Ìº‘” Ì¾”” Ì¿” Ì¿	” Ì¿
+” Ì¿ÌA˜” ÌÀ” ÌÀ” ÌÀ” ÌÀÌB”# ÌÀÌF”3 ÌÀÌV”5 ÌÀÌX”6 ÌÀÌX—” ÌÁ” ÌÁ” ÌÁ” ÌÁ” ÌÁ”& ÌÁ"”( ÌÁ$—” ÌÂ” ÌÂ” ÌÂ”$ ÌÂ”' ÌÂ!”. ÌÂ(”/ ÌÂ(‘”	 ÌÃ‘” ÌÃ•” ÌÄ” ÌÄ” ÌÄ”& ÌÄ ”' ÌÄ!‘”	 ÌÅÜ ” ÌÆ” ÌÆ” ÌÆ” ÌÆ” ÌÆ”+ ÌÆ'”, ÌÇ”< ÌÇ”> ÌÈ”ÌN ÌÈ”ÌO ÌÈ”ÌV ÌÈ”Ì[ ÌÈ#”Ìd ÌÈ,”Ìe ÌÈ-”Ìf ÌÈ.”Ìg ÌÈ/”Ìw ÌÈ?”Ìx ÌÈÌ@”Ì ÌÈÌG”Ì€ ÌÈÌH”Ì ÌÈÌI” ÌÉ” ÌÉ” ÌÉ” ÌÉ” ÌÉ”# ÌÉ:”% ÌÊ”& ÌÊ”( ÌË”) ÌË”+ ÌÌ”, ÌÌ”. ÌÍ–” ÌÎ” ÌÎ” ÌÎ”  ÌÎ$”" ÌÎ&”* ÌÎÌL’” ÌÏ” ÌÏ	“”	 ÌĞ”
+ ÌÑ” ÌÑ˜” ÌÒ” ÌÒ” ÌÒ	” ÌÒ” ÌÒ” ÌÒ” ÌÒ” ÌÒ”” ÌÓ” ÌÓ” ÌÓ” ÌÓ’” ÌÔ” ÌÔ‘” ÌÖ‘” ÌÙ”” ÌÚ”
+ ÌÚ” ÌÚ	” ÌÚ#Ü ” ÌÛ” ÌÛ” ÌÛ” ÌÛ” ÌÛ”, ÌÛ(”- ÌÛ)”4 ÌÛ0”9 ÌÛ5”ÌA ÌÛ=”ÌE ÌÛÌA”ÌF ÌÛÌB”ÌM ÌÛÌI”ÌO ÌÛÌK”Ì^ ÌÛÌZ”Ì` ÌÛÌ\Ü ” ÌÜ” ÌÜ” ÌÜ” ÌÜ” ÌÜ”  ÌÜ”! ÌÜ”1 ÌÜ+”2 ÌÜ,”9 ÌÜ3”< ÌÜ6”ÌC ÌÜ=”ÌD ÌÜ>”ÌO ÌÜÌI”ÌP ÌÜÌJ”ÌQ ÌÜÌJ‘”	 Ìİ™” ÌŞ” ÌŞ” ÌŞ” ÌŞ” ÌŞ”5 ÌŞ1”6 ÌŞ2”= ÌŞ9”> ÌŞ9’” Ìß” Ìß‘” Ìá‘” Ìå”” Ìæ” Ìæ” Ìæ” ÌæÌF›” Ìç” Ìç” Ìç” Ìç” Ìç” Ìç”# Ìç”% Ìç!”+ Ìç'”- Ìç)”/ Ìç+˜” Ìè” Ìè
+”  Ìè”# ÌèÌD”' ÌèÌH”7 ÌèÌX”9 ÌèÌZ”: ÌèÌZ—” Ìé” Ìé
+” Ìé” Ìé”" Ìé”* Ìé$”, Ìé&—” Ìê”  Ìê”! Ìê”( Ìê ”+ Ìê#”2 Ìê*”3 Ìê*‘” Ìë‘” Ìë•” Ìì”  Ìì”# Ìì”* Ìì"”+ Ìì#‘” Ìíš” Ìî” Ìî” Ìî” Ìî” Ìî”ÌL ÌîÌF”ÌO ÌîÌI”ÌV ÌîÌP”ÌW ÌîÌQ”ÌX ÌîÌQÜ ” Ìï” Ìï
+” Ìï” Ìï” Ìï” Ìï”/ Ìï)”1 Ìï+”2 Ìï,”ÌA Ìï;”ÌB Ìï<”ÌR ÌïÌL”ÌS ÌïÌM”ÌZ ÌïÌT”Ì\ ÌïÌV”Ìl ÌïÌf”Ìm ÌïÌg”Ìv ÌïÌp”Ìw ÌïÌq”Ìx ÌïÌqÜ ” Ìğ” Ìğ
+” Ìğ” Ìğ”& Ìğ ”' Ìğ!”2 Ìğ,”4 Ìğ.”5 Ìğ/”ÌA Ìğ;”ÌC Ìğ=”ÌD Ìğ>”ÌQ ÌğÌK”ÌR ÌğÌL”ÌY ÌğÌS”ÌZ ÌğÌT”Ì[ ÌğÌT” Ìñ” Ìñ
+” Ìñ” Ìñ”! Ìñ”% Ìñ”. Ìñ(”2 Ìñ,”4 Ìñ.”8 Ìñ2”ÌA Ìñ;”ÌE Ìñ?”ÌN ÌñÌH”ÌP ÌñÌJÜ ” Ìò” Ìò” Ìò” Ìò”" Ìò”3 Ìò+”4 Ìó
+”ÌD Ìó”ÌF Ìô
+”ÌV Ìô”ÌW Ìô”Ì^ Ìô"”Ìc Ìô'”Ìl Ìô0”Ìm Ìô1”Ìn Ìô2”Ìo Ìô3”Ì ÌôÌC”Ì€ ÌôÌD”Ì‡ ÌôÌK”Ìˆ ÌôÌL”Ì‰ ÌôÌM” Ìõ” Ìõ” Ìõ”" Ìõ”$ Ìõ”+ Ìõ>”- Ìö
+”. Ìö”0 Ì÷
+”1 Ì÷”3 Ìø
+”4 Ìø”6 Ìù
+š” Ìú”  Ìú”! Ìú”( Ìú(”* Ìú*”2 ÌúÌP”4 Ìû”ÌA Ìû4”ÌC Ìû6”ÌG ÌûÌA˜” Ìü” Ìü”) Ìü”. Ìü$”ÌE Ìü;”ÌF Ìü<”ÌI Ìü?”ÌK ÌüÌAÜ ” Ìı”# Ìı”$ Ìı”. Ìı"”/ Ìı#”: Ìı.”< Ìı0”= Ìı1”ÌI Ìı=”ÌK Ìı?”ÌL ÌıÌ@”ÌY ÌıÌM”ÌZ ÌıÌN”Ìa ÌıÌU”Ìb ÌıÌV”Ìc ÌıÌW”Ìd ÌıÌW‘” Ìş’” Ìÿ” Ìÿ—” Í ”! Í ”# Í ”$ Í ”' Í '”) Í )”+ Í +–” Í” Í” Í”" Í”# Í”$ Í’” Í” Í“” Í” Í	” Í	˜” Í” Í” Í” Í” Í”$ Í”% Í”& Í‘” Í‘” Í–” Í” Í” Í”! Í”" Í”# Í‘” Í”” Í	”	 Í	”
+ Í	” Í	’” Í
+” Í
+–” Í
+” Í” Í” ÍÌK” Í”  Í”” Í” Í” Í” Í8”” Í” Í” Í” Í”” Í” Í” Í”  Í’”	 Í”
+ Í—” Í” Í” Í” Í” Í”' Í#”) Í%—” Í” Í” Í” Í” Í”$ Í”% Í‘”	 Í‘” Í•” Í” Í” Í” Í” Í‘”	 Í”” Í” Í” Í” Í’” Í” Í‘” Í‘” Í ›” Í!” Í!” Í!” Í!ÌG” Í"”' Í"”4 Í",”5 Í"-”< Í"4”> Í"6”ÌG Í"ÌH” Í#” Í#” Í#” Í#” Í#” Í#”# Í#”$ Í# ”+ Í#'”- Í#)”6 Í#2”7 Í#3”8 Í#3›” Í$” Í$” Í$” Í$” Í$” Í$”# Í$”% Í$!”+ Í$'”- Í$)”/ Í$+˜” Í%” Í%
+” Í%” Í%”+ Í%%”, Í%&”2 Í%,”4 Í%.›” Í&” Í&” Í&” Í&” Í&”, Í&$”- Í&%”3 Í&+”4 Í&,”5 Í&-”6 Í&-‘” Í'˜” Í'” Í'” Í'”# Í'”0 Í',”1 Í'-”5 Í'1”7 Í'3œ” Í(” Í(” Í(”" Í(”# Í(”) Í(!”* Í("”1 Í()”3 Í(+”: Í(2”; Í(3”< Í(3‘” Í)‘” Í)›” Í*” Í*” Í*” Í*” Í*”  Í*”/ Í*'”0 Í*(”6 Í*.”7 Í*/”8 Í*/Ü ” Í+” Í+” Í+”! Í+”" Í+”# Í+”$ Í+”( Í+ ”) Í+!”6 Í+.”7 Í+/”= Í+5”> Í+6”ÌE Í+=”ÌG Í+?”ÌN Í+ÌF”ÌO Í+ÌG”ÌP Í+ÌH”ÌQ Í+ÌI”ÌR Í+ÌJ”ÌY Í+ÌQ”ÌZ Í+ÌR”Ì^ Í+ÌV”Ì_ Í+ÌW”Ì` Í+ÌW‘” Í,”” Í-”	 Í-”
+ Í-” Í-’” Í.” Í.‘” Í0‘” Í6›” Í7” Í7” Í7” Í7ÌK” Í8”+ Í8”8 Í8,”9 Í8-”Ì@ Í84”ÌB Í86”ÌK Í8ÌH” Í9” Í9” Í9” Í9” Í9” Í9”# Í9”$ Í9 ”+ Í9'”- Í9)”6 Í92”7 Í93”8 Í93˜” Í:” Í:” Í:” Í:”' Í:#”( Í:$”. Í:*”0 Í:,™” Í;” Í;” Í;” Í;”' Í;!”( Í;"”. Í;(”/ Í;)”0 Í;)‘”	 Í<˜” Í<” Í<” Í<” Í<”, Í<*”- Í<+”1 Í</”3 Í<1™” Í=” Í=” Í=” Í=”) Í=#”* Í=$”0 Í=*”1 Í=+”2 Í=+‘”	 Í>‘” Í>›” Í?” Í?
+” Í?” Í?” Í?” Í?”+ Í?%”, Í?&”2 Í?,”3 Í?-”4 Í?-Ü ” Í@” Í@” Í@” Í@”$ Í@”% Í@”& Í@ ”' Í@!”+ Í@%”, Í@&”= Í@7”> Í@8”ÌD Í@>”ÌE Í@?”ÌF Í@Ì@”ÌG Í@ÌA”ÌH Í@ÌB”ÌL Í@ÌF”ÌM Í@ÌF‘”	 ÍA’” ÍB” ÍB‘” ÍD‘” ÍJŸ” ÍK” ÍK” ÍK” ÍK” ÍK” ÍK/”! ÍK1”- ÍKÌL”: ÍKÌY”; ÍKÌZ”ÌB ÍKÌa”ÌD ÍL”ÌN ÍL$”ÌP ÍL&”ÌY ÍL8˜” ÍM” ÍM” ÍM” ÍM” ÍM” ÍM”- ÍM)”/ ÍM+Ü ” ÍN” ÍN” ÍN”" ÍN”$ ÍN”; ÍN5”< ÍN6”? ÍN9”ÌA ÍN;”ÌC ÍN=”ÌJ ÍNÌD”ÌL ÍNÌF”ÌO ÍNÌI”ÌQ ÍNÌK”ÌZ ÍNÌT”Ì\ ÍNÌV”Ìe ÍNÌ_”Ìg ÍNÌa”Ìh ÍNÌb”Ìi ÍNÌcÜ ” ÍO” ÍO” ÍO” ÍO” ÍO” ÍO”+ ÍO'”- ÍO)”. ÍO*”= ÍO9”> ÍO:”ÌA ÍO=”ÌC ÍO?”ÌL ÍOÌH”ÌM ÍOÌI”ÌN ÍOÌJÜ ” ÍP” ÍP” ÍP” ÍP)” ÍP+”% ÍP1”' ÍP3”/ ÍP;”1 ÍP=”; ÍPÌG”= ÍPÌI”> ÍPÌJ”Ì@ ÍPÌL”ÌK ÍPÌW”ÌM ÍPÌY”ÌN ÍPÌZ”ÌP ÍPÌ\”ÌQ ÍPÌ]”” ÍQ” ÍQ” ÍQ” ÍQ•” ÍR” ÍR” ÍR” ÍR”& ÍR š” ÍS” ÍS” ÍS”$ ÍS”% ÍS”. ÍS&”0 ÍS(”> ÍS6”? ÍS7”Ì@ ÍS8”” ÍT” ÍT” ÍT”  ÍT” ÍU
+” ÍU” ÍU”+ ÍU!”, ÍU"”4 ÍU*”6 ÍU,”Ì@ ÍU6”ÌB ÍU8”ÌC ÍU9”ÌI ÍU?”ÌK ÍUÌA”ÌM ÍUÌCš” ÍV” ÍV” ÍV”* ÍV”+ ÍV”2 ÍV&”4 ÍV(”: ÍV.”; ÍV/”< ÍV0”” ÍW
+” ÍW” ÍW” ÍW‘” ÍX	‘” ÍXŸ” ÍY
+” ÍY” ÍY”& ÍY”' ÍY”. ÍY$”0 ÍY&”4 ÍY*”5 ÍY+”ÌJ ÍYÌ@”ÌK ÍYÌA”ÌS ÍYÌI”ÌT ÍYÌJ”ÌU ÍYÌK”ÌV ÍYÌL‘” ÍZ	’” Í[” Í[•” Í\” Í\” Í\” Í\”# Í\”” Í]” Í]” Í]”  Í]” Í^
+” Í^” Í^”+ Í^!”, Í^"”4 Í^*”6 Í^,”Ì@ Í^6”ÌB Í^8”ÌC Í^9”ÌI Í^?”ÌK Í^ÌA”ÌM Í^ÌCš” Í_” Í_” Í_”* Í_”+ Í_”2 Í_&”4 Í_(”: Í_.”; Í_/”< Í_0”” Í`
+” Í`” Í`” Í`‘” Ía	‘” ÍaŸ” Íb
+” Íb” Íb”& Íb”' Íb”. Íb$”0 Íb&”4 Íb*”5 Íb+”ÌJ ÍbÌ@”ÌK ÍbÌA”ÌS ÍbÌI”ÌT ÍbÌJ”ÌU ÍbÌK”ÌV ÍbÌL‘” Íc	’” Íd” Íd•” Íe” Íe” Íe” Íe”% Íeš” Íf” Íf” Íf”$ Íf”% Íf”. Íf&”0 Íf(”> Íf6”? Íf7”Ì@ Íf8’” Íg” Íg‘”	 Íh’” Íi” Íi‘” Ík‘” Ín”” Ío”	 Ío”
+ Ío” Ío˜” Íp” Íp” Íp” Íp” Íp” Íp”( Íp$”* Íp&™” Íq” Íq” Íq” Íq”  Íq”! Íq”* Íq$”, Íq&”- Íq&‘”	 Ír’” Ís” Ís‘” Íu‘” Íx”” Íy” Íy” Íy” ÍyÌE˜” Íz” Íz” Íz” ÍzÌB”# ÍzÌF”3 ÍzÌV”5 ÍzÌX”6 ÍzÌY—” Í{” Í{” Í{” Í{” Í{”" Í{”$ Í{ —” Í|” Í|” Í|”$ Í|”' Í|!”* Í|$”+ Í|%‘”	 Í}‘” Í}•” Í~” Í~” Í~”" Í~”# Í~‘”	 ÍÜ ” Í€” Í€” Í€” Í€” Í€” Í€”' Í€#”) Í€%”* Í€&”9 Í€5”: Í€6”ÌJ Í€ÌF”ÌK Í€ÌG”ÌR Í€ÌN”ÌT Í€ÌP”Ìd Í€Ì`”Ìe Í€Ìa”Ìn Í€Ìj”Ìo Í€Ìk”Ìp Í€Ìl˜” Í” Í” Í” Í” Í” Í”( Í$”* Í&š” Í‚” Í‚
+” Í‚” Í‚” Í‚”! Í‚”" Í‚”% Í‚”& Í‚ ”' Í‚!‘”	 Íƒ’” Í„” Í„‘” Í†‘” Í‰”” ÍŠ” ÍŠ” ÍŠ” ÍŠ$š” Í‹” Í‹” Í‹	” Í‹” Í‹”& Í‹"”' Í‹#”2 Í‹.”3 Í‹/”4 Í‹/’” ÍŒ” ÍŒ–” Í” Í” Í” Í%”  Í'”# Í2˜” Í” Í” Í” Í” Í” Í”( Í$”* Í&›” Í” Í” Í” Í”/ Í)”0 Í*”7 Í1”9 Í3”< Í6”= Í7”> Í7‘”	 Í‘”” Í’” Í’” Í’” Í’’” Í“” Í“”” Í•” Í•” Í•” Í•!–” Í–” Í–” Í–” Í–” Í–” Í–›” Í—” Í—” Í—” Í—”# Í—”$ Í—”' Í—!”( Í—"”+ Í—%”, Í—&”- Í—&‘”	 Í˜”” Í™” Í™” Í™” Í™’” Íš” Íš–” Íœ” Íœ” Íœ” Íœ” Íœ” Íœ3–” Í” Í” Í” Í” Í” Íœ” Í” Í
+” Í” Í” Í”  Í”! Í”$ Í”& Í ”* Í$”+ Í%”, Í%‘”	 ÍŸ’” Í ” Í ”” Í¢” Í¢” Í¢” Í¢›” Í£” Í£” Í£” Í£” Í£” Í£”" Í£”# Í£”& Í£"”' Í£#”( Í£#’” Í¤” Í¤–” Í¦” Í¦” Í¦” Í¦” Í¦” Í¦.œ” Í§” Í§” Í§	” Í§” Í§” Í§” Í§” Í§”! Í§”% Í§!”& Í§"”' Í§"’” Í¨” Í¨’” Íª” Íª–” Í«” Í«” Í«” Í«” Í«&” Í«&’” Í¬” Í¬‘” Í®‘” Í²”” Í³” Í³” Í³” Í³-œ” Í´” Í´” Í´” Í´”" Í´”& Í´"”/ Í´+”3 Í´/”Ì@ Í´<”ÌA Í´=”ÌH Í´ÌD”ÌJ Í´ÌF—” Íµ” Íµ” Íµ”% Íµ”& Íµ ”, Íµ&”- Íµ'‘”	 Í¶˜” Í·” Í·” Í·” Í·”& Í·"”' Í·#”- Í·)”/ Í·+˜” Í¸” Í¸” Í¸” Í¸”# Í¸1”$ Í¸2”- Í¸;”. Í¸<‘”	 Í¹‘” Í¹—” Íº” Íº
+” Íº” Íº”$ Íº”& Íº ”( Íº"˜” Í»” Í»” Í»” Í»”% Í»”' Í»”0 Í»(”1 Í»)‘” Í¼‘” Í¼˜” Í½” Í½” Í½” Í½”  Í½”9 Í½1”: Í½2”; Í½3‘” Í¾‘”	 Í¿’” ÍÀ” ÍÀ‘” ÍÂ‘” ÍÆ”” ÍÇ” ÍÇ” ÍÇ”  ÍÇ-œ” ÍÈ” ÍÈ” ÍÈ” ÍÈ”" ÍÈ”& ÍÈ"”/ ÍÈ+”3 ÍÈ/”Ì@ ÍÈ<”ÌA ÍÈ=”ÌH ÍÈÌD”ÌJ ÍÈÌF—” ÍÉ” ÍÉ” ÍÉ”% ÍÉ”& ÍÉ ”, ÍÉ&”- ÍÉ'‘”	 ÍÊ˜” ÍË” ÍË” ÍË” ÍË”& ÍË"”' ÍË#”- ÍË)”/ ÍË+™” ÍÌ” ÍÌ” ÍÌ” ÍÌ”# ÍÌ1”$ ÍÌ2”( ÍÌ6”* ÍÌ8”+ ÍÌ9‘”	 ÍÍ‘” ÍÍ—” ÍÎ” ÍÎ
+” ÍÎ” ÍÎ”$ ÍÎ”& ÍÎ ”( ÍÎ"™” ÍÏ” ÍÏ” ÍÏ” ÍÏ”% ÍÏ”' ÍÏ”+ ÍÏ#”- ÍÏ%”. ÍÏ&‘” ÍĞ‘” ÍĞ˜” ÍÑ” ÍÑ” ÍÑ” ÍÑ”  ÍÑ”9 ÍÑ1”: ÍÑ2”; ÍÑ3‘” ÍÒ‘”	 ÍÓ’” ÍÔ” ÍÔ‘” ÍÖ‘” ÍÚ”” ÍÛ” ÍÛ” ÍÛ”! ÍÛ.œ” ÍÜ” ÍÜ” ÍÜ” ÍÜ”" ÍÜ”& ÍÜ"”/ ÍÜ+”3 ÍÜ/”Ì@ ÍÜ<”ÌA ÍÜ=”ÌH ÍÜÌD”ÌJ ÍÜÌF—” Íİ” Íİ” Íİ”% Íİ”& Íİ ”, Íİ&”- Íİ'‘”	 ÍŞ˜” Íß” Íß” Íß” Íß”& Íß"”' Íß#”- Íß)”/ Íß+˜” Íà” Íà” Íà” Íà”# Íà1”$ Íà2”1 Íà?”2 ÍàÌ@‘”	 Íá‘” Íá—” Íâ” Íâ
+” Íâ” Íâ”$ Íâ”& Íâ ”( Íâ"˜” Íã” Íã” Íã” Íã”% Íã”' Íã”4 Íã,”5 Íã-‘” Íä‘” Íä˜” Íå” Íå” Íå” Íå”  Íå”9 Íå1”: Íå2”; Íå3‘” Íæ‘”	 Íç’” Íè” Íè”” Íê
+” Íê” Íê ”" Íê2™” Íë” Íë” Íë” Íë”  Íë”! Íë”1 Íë-”3 Íë/”4 Íë0Ü ” Íì” Íì” Íì” Íì"” Íì&”( Íì1”) Íì2”2 Íì;”3 Íì<”7 ÍìÌ@”8 ÍìÌA”> ÍìÌG”ÌA ÍìÌJ”ÌJ ÍìÌS”ÌK ÍìÌT”ÌO ÍìÌX”ÌP ÍìÌY”ÌU ÍìÌ^”ÌX ÍìÌa”ÌY ÍìÌb”ÌZ ÍìÌc”Ì[ ÍìÌd˜” Íí” Íí” Íí”' Íí#”( Íí$”2 Íí.”3 Íí/”4 Íí0”” Íî” Íî” Íî” Íî’” Íï” Íï˜” Íñ
+” Íñ” Íñ” Íñ/”! Íñ1”+ ÍñÌP”- Íò”7 Íò-™” Íó” Íó
+” Íó” Íó”" Íó”# Íó”4 Íó0”6 Íó2”7 Íó2™” Íô” Íô” Íô” Íô”  Íô”( Íô$”* Íô&”4 Íô0”5 Íô1—” Íõ” Íõ” Íõ” Íõ” Íõ” Íõ ” Íõ"–” Íö” Íö” Íö” Íö” Íö” Íöš” Í÷”	 Í÷”
+ Í÷” Í÷	” Í÷” Í÷” Í÷” Í÷"” Í÷$” Í÷&Ü ” Íø” Íø” Íø” Íø” Íø”9 Íø3”< Íø6”= Íø7”ÌA Íø;”ÌQ ÍøÌK”ÌT ÍøÌN”ÌU ÍøÌO”Ì\ ÍøÌV”Ì^ ÍøÌX”Ì_ ÍøÌY”Ì` ÍøÌY˜” Íù”	 Íù”
+ Íù” Íù” Íù” Íù” Íù” Íùœ” Íú” Íú” Íú”  Íú”" Íú”# Íú”( Íú"”) Íú#”* Íú$”- Íú6”/ Íú8”1 Íú:Ü ” Íû” Íû” Íû” Íû” Íû”ÌG Íû?”ÌJ ÍûÌB”ÌK ÍûÌC”ÌO ÍûÌG”Ì_ ÍûÌW”Ìb ÍûÌZ”Ìc ÍûÌ[”Ìj ÍûÌb”Ìl ÍûÌd”Ìm ÍûÌe”Ìn ÍûÌe”” Íü” Íü” Íü” Íü”” Íı”	 Íı”
+ Íı” Íı’” Íş” Íş”” Í 
+” Í ” Í ” Í ÌGÜ ” Í” Í” Í” Í” Í” Í”- Í)”/ Í+”0 Í,”ÌA Í=”ÌB Í>”ÌH ÍÌD”ÌI ÍÌE”ÌP ÍÌL”ÌR ÍÌN”Ìi ÍÌe”Ìj ÍÌf”Ìm ÍÌi”Ìo ÍÌk”Ìu ÍÌq”Ìv ÍÌr”Ìw ÍÌr–” Í” Í” Í” Í”% Í!”' Í#–” Í”  Í”! Í”* Í$”+ Í%”, Í%’” Í” Í–” Í
+” Í” Í” ÍÌC” Í”% Í:” Í” Í” Í” Í” Í” Í”( Í$”* Í&”+ Í'”: Í6”; Í7”ÌB Í>”ÌC Í?”ÌD Í?” Í	” Í	” Í	” Í	” Í	”  Í	”+ Í	'”- Í	)”. Í	*”? Í	;”Ì@ Í	<”ÌD Í	Ì@”ÌE Í	ÌA”ÌF Í	ÌA–” Í
+” Í
+” Í
+” Í
+” Í
+”! Í
+˜” Í” Í
+” Í” Í”# Í”/ Í)”1 Í+”2 Í,›” Í” Í
+” Í” Í”( Í"”) Í#”4 Í.”5 Í/”; Í5”< Í6”= Í7š” Í” Í
+” Í” Í”# Í”' Í!”0 Í*”5 Í/”; Í5”= Í7š” Í” Í” Í”! Í”% Í”) Í!”* Í"”6 Í.”8 Í0”9 Í0Ü ” Í” Í” Í”  Í”- Í%”0 Í(”9 Í1”< Í4”ÌF Í>”ÌI ÍÌA”ÌS ÍÌK”ÌT ÍÌL”Ìf ÍÌ^”Ìg ÍÌ_”Ìk ÍÌc”Ìu ÍÌm”Ìv ÍÌn”Ì| ÍÌt”Ì} ÍÌu”Ì~ ÍÌv”Ì ÍÌv“” Í” Í” Í”” Í
+” Í” Í”% Í”” Í
+” Í”  Í”! Í”” Í
+” Í”! Í”" Í“” Í	” Í
+” Í
+’” Í” Í‘” Í›” Í” Í
+” Í” Í+”# Í0”$ Í1”5 ÍÌB”6 ÍÌC”< ÍÌI”= ÍÌJ”> ÍÌK”” Í” Í
+” Í”" Í3”” Í” Í” Í” Í’” Í” Í—” Í” Í” Í”& Í ”' Í!”6 Í0”7 Í1—” Í	” Í” Í” Í” Í!”! Í#”# Í%“” Í 
+” Í ” Í ”” Í!” Í!” Í!”$ Í!”” Í"” Í"”  Í"”! Í"”” Í#” Í#”! Í#”" Í#“” Í$” Í$” Í$š” Í%” Í%	” Í%
+” Í%” Í%” Í%” Í%” Í%$” Í%&” Í%(š” Í&
+” Í&” Í&” Í&” Í&”ÌP Í&ÌJ”ÌS Í&ÌM”ÌU Í&ÌO”ÌV Í&ÌP”ÌW Í&ÌP–” Í'
+” Í'” Í'”$ Í'”% Í'”& Í'˜” Í(” Í(	” Í(
+” Í(” Í(” Í(” Í(” Í(œ” Í)
+” Í)” Í)”# Í)”% Í)”& Í) ”+ Í)%”, Í)&”- Í)'”0 Í)1”2 Í)3”4 Í)5š” Í*” Í*” Í*”! Í*”" Í*”ÌM Í*ÌE”ÌP Í*ÌH”ÌR Í*ÌJ”ÌS Í*ÌK”ÌT Í*ÌK”” Í+
+” Í+” Í+” Í+”” Í,” Í,	” Í,
+” Í,
+‘”	 Í-‘” Í-–” Í.” Í.” Í.”  Í.”! Í.”" Í.‘”	 Í/’” Í0” Í0”” Í2
+” Í2” Í2” Í2ÌIÜ ” Í3” Í3” Í3” Í3” Í3” Í3”( Í3$”* Í3&”+ Í3'”: Í36”; Í37”ÌA Í3=”ÌB Í3>”ÌI Í3ÌE”ÌJ Í3ÌF”ÌK Í3ÌF” Í4” Í4” Í4” Í4” Í4”  Í4”+ Í4'”- Í4)”. Í4*”? Í4;”Ì@ Í4<”ÌD Í4Ì@”ÌE Í4ÌA”ÌF Í4ÌA–” Í5” Í5” Í5” Í5” Í5”! Í5˜” Í6” Í6
+” Í6” Í6”# Í6”/ Í6)”1 Í6+”2 Í6,›” Í7” Í7
+” Í7” Í7”( Í7"”) Í7#”4 Í7.”5 Í7/”; Í75”< Í76”= Í77š” Í8” Í8
+” Í8” Í8”# Í8”' Í8!”0 Í8*”5 Í8/”; Í85”= Í87š” Í9” Í9” Í9”! Í9”% Í9”) Í9!”* Í9"”6 Í9.”8 Í90”9 Í90Ü ” Í;” Í;” Í;”  Í;”- Í;%”0 Í;(”9 Í;1”< Í;4”ÌF Í;>”ÌI Í;ÌA”ÌS Í;ÌK”ÌT Í;ÌL”Ìf Í;Ì^”Ìg Í;Ì_”Ìk Í;Ìc”Ìu Í;Ìm”Ìv Í;Ìn”Ì| Í;Ìt”Ì} Í;Ìu”Ì~ Í;Ìv”Ì Í;Ìv’” Í<” Í<”” Í=
+” Í=” Í=”% Í=”” Í>
+” Í>”  Í>”! Í>”” Í?
+” Í?”! Í?”" Í?’” Í@	” Í@	‘” ÍA›” ÍB” ÍB
+” ÍB” ÍB+”# ÍB0”$ ÍB1”5 ÍBÌB”6 ÍBÌC”< ÍBÌI”= ÍBÌJ”> ÍBÌK’” ÍC” ÍC
+”” ÍD” ÍD”# ÍD”& ÍD5”” ÍE
+” ÍE” ÍE”# ÍE’” ÍF	” ÍF	›” ÍG” ÍG” ÍG” ÍG”& ÍG”' ÍG”7 ÍG/”9 ÍG1”: ÍG2”> ÍG6”? ÍG6›” ÍH” ÍH” ÍH” ÍH”' ÍH”( ÍH ”: ÍH2”; ÍH3”ÌJ ÍHÌB”ÌK ÍHÌC”ÌL ÍHÌC’” ÍI” ÍI”” ÍJ
+” ÍJ” ÍJ”! ÍJ–” ÍK
+” ÍK”  ÍK”$ ÍK”% ÍK”* ÍK –” ÍL
+” ÍL”! ÍL”% ÍL”& ÍL”, ÍL"’” ÍM	” ÍM	‘” ÍN”” ÍN” ÍN” ÍN” ÍNš” ÍO” ÍO” ÍO” ÍO” ÍO”ÌX ÍOÌP”Ì[ ÍOÌS”Ì] ÍOÌU”Ì^ ÍOÌV”Ì_ ÍOÌV’” ÍP” ÍP‘” ÍQ‘” ÍQœ” ÍR” ÍR” ÍR”# ÍR”% ÍR”& ÍR”+ ÍR#”, ÍR$”- ÍR%”0 ÍR/”2 ÍR1”4 ÍR3š” ÍS
+” ÍS” ÍS”! ÍS”" ÍS”ÌQ ÍSÌG”ÌT ÍSÌJ”ÌV ÍSÌL”ÌW ÍSÌM”ÌX ÍSÌM”” ÍT” ÍT	” ÍT
+” ÍT
+‘” ÍU‘”	 ÍV‘” ÍV’” ÍW” ÍW‘”	 ÍX’” ÍY” ÍY–” Í[” Í[” Í[” Í["” Í[$”( Í[6œ” Í\” Í\” Í\	” Í\” Í\”+ Í\'”, Í\(”/ Í\+”1 Í\-”; Í\7”< Í\8”= Í\8’” Í]” Í]˜” Í_” Í_” Í_”! Í_(”# Í_*”& Í_5”( Í_7”- Í_ÌI˜” Í`” Í`” Í`” Í`” Í`” Í`”( Í`$”* Í`&” Ía” Ía” Ía” Ía”2 Ía,”3 Ía-”: Ía4”< Ía6”? Ía9”ÌA Ía;”ÌF ÍaÌ@”ÌG ÍaÌA”ÌH ÍaÌA‘”	 Íb”” Íc” Íc” Íc” Íc’” Íd” Íd–” Íf”	 Íf”
+ Íf” Íf” Íf” Íf*” Íg” Íg” Íg” Íg” Íg”8 Íg4”; Íg7”ÌB Íg>”ÌC Íg?”ÌS ÍgÌO”ÌT ÍgÌP”Ì[ ÍgÌW”Ì\ ÍgÌX”Ì] ÍgÌXš” Íh” Íh” Íh” Íh” Íh” Íh” Íh”" Íh”# Íh”% Íh!š” Íi” Íi” Íi”  Íi”! Íi”% Íi”& Íi ”/ Íi)”0 Íi*”1 Íi*‘”	 Íjš” Ík” Ík” Ík	” Ík” Ík” Ík”  Ík”' Ík#”( Ík$”) Ík$” Íl” Íl” Íl” Íl” Íl”6 Íl2”9 Íl5”Ì@ Íl<”ÌA Íl=”ÌQ ÍlÌM”ÌR ÍlÌN”ÌY ÍlÌU”ÌZ ÍlÌV”Ì[ ÍlÌV’” Ím” Ím”” Ío” Ío” Ío” Ío#š” Íp” Íp” Íp	” Íp” Íp”( Íp$”) Íp%”- Íp)”. Íp*”/ Íp+’” Íq” Íq’” Ís” Ís™” Ít” Ít” Ít” Ít” Ít” Ít”/ Ít+”1 Ít-”2 Ít.’” Íu” Íu‘” Íw‘” Íz”” Í{” Í{” Í{”$ Í|ÌI—” Í}” Í}” Í}	” Í}” Í}”, Í}(”- Í}(’” Í~” Í~’” Í€” Í€–” Í‚” Í‚” Í‚” Í‚”" Í‚”# Í‚’” Íƒ” Íƒ‘” Í…‘” ÍŒ”” Í” Í” Í”" Í)—” Í” Í” Í	”' Í#”* Í&”0 Í,”1 Í-’” Í” Í‘” Í‘‘” Í”’” Í•” Í•–” Í–” Í–” Í–” Í–”. Í–*”/ Í–+’” Í—” Í—‘” Í˜ÔrI–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜZ‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ‘”  Ìs ‘”  Ìt ‘”  Ìu ‘”  Ìv ‘”  Ìw ‘”  Ìx ‘”  Ìy ‘”  Ìz ‘”  Ì{ ‘”  Ì| ‘”  Ì} ‘”  Ì~ ‘”  Ì ‘”  Ì€ ‘”  Ì ‘”  Ì‚ ‘”  Ìƒ ‘”  Ì„ ‘”  Ì… ‘”  Ì† ‘”  Ì‡ ‘”  Ìˆ ‘”  Ì‰ ‘”  ÌŠ ‘”  Ì‹ ‘”  ÌŒ ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì‘ ‘”  Ì’ ‘”  Ì“ ‘”  Ì” ‘”  Ì• ‘”  Ì– ‘”  Ì— ‘”  Ì˜ ‘”  Ì™ ‘”  Ìš ‘”  Ì› ‘”  Ìœ ‘”  Ì ‘”  Ì ‘”  ÌŸ ‘”  Ì  ‘”  Ì¡ ‘”  Ì¢ ‘”  Ì£ ‘”  Ì¤ ‘”  Ì¥ ‘”  Ì¦ ‘”  Ì§ ‘”  Ì¨ ‘”  Ì© ‘”  Ìª ‘”  Ì« ‘”  Ì¬ ‘”  Ì­ ‘”  Ì® ‘”  Ì¯ ‘”  Ì° ‘”  Ì± ‘”  Ì² ‘”  Ì³ ‘”  Ì´ ‘”  Ìµ ‘”  Ì¶ ‘”  Ì· ‘”  Ì¸ ‘”  Ì¹ ‘”  Ìº ‘”  Ì» ‘”  Ì¼ ‘”  Ì½ ‘”  Ì¾ ‘”  Ì¿ ‘”  ÌÀ ‘”  ÌÁ ‘”  ÌÂ ‘”  ÌÃ ‘”  ÌÄ ‘”  ÌÅ ‘”  ÌÆ ‘”  ÌÇ ‘”  ÌÈ ‘”  ÌÉ ‘”  ÌÊ ‘”  ÌË ‘”  ÌÌ ‘”  ÌÍ ‘”  ÌÎ ‘”  ÌÏ ‘”  ÌĞ ‘”  ÌÑ ‘”  ÌÒ ‘”  ÌÓ ‘”  ÌÔ ‘”  ÌÕ ‘”  ÌÖ ‘”  Ì× ‘”  ÌØ ‘”  ÌÙ ‘”  ÌÚ ‘”  ÌÛ ‘”  ÌÜ ‘”  Ìİ ‘”  ÌŞ ‘”  Ìß ‘”  Ìà ‘”  Ìá ‘”  Ìâ ‘”  Ìã ‘”  Ìä ‘”  Ìå ‘”  Ìæ ‘”  Ìç ‘”  Ìè ‘”  Ìé ‘”  Ìê ‘”  Ìë ‘”  Ìì ‘”  Ìí ‘”  Ìî ‘”  Ìï ‘”  Ìğ ‘”  Ìñ ‘”  Ìò ‘”  Ìó ‘”  Ìô ‘”  Ìõ ‘”  Ìö ‘”  Ì÷ ‘”  Ìø ‘”  Ìù ‘”  Ìú ‘”  Ìû ‘”  Ìü ‘”  Ìı ‘”  Ìş ‘”  Ìÿ ‘”  Í  ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í	 ‘”  Í
+ ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í  ‘”  Í! ‘”  Í" ‘”  Í# ‘”  Í$ ‘”  Í% ‘”  Í& ‘”  Í' ‘”  Í( ‘”  Í) ‘”  Í* ‘”  Í+ ‘”  Í, ‘”  Í- ‘”  Í. ‘”  Í/ ‘”  Í0 ‘”  Í1 ‘”  Í2 ‘”  Í3 ‘”  Í4 ‘”  Í5 ‘”  Í6 ‘”  Í7 ‘”  Í8 ‘”  Í9 ‘”  Í: ‘”  Í; ‘”  Í< ‘”  Í= ‘”  Í> ‘”  Í? ‘”  Í@ ‘”  ÍA ‘”  ÍB ‘”  ÍC ‘”  ÍD ‘”  ÍE ‘”  ÍF ‘”  ÍG ‘”  ÍH ‘”  ÍI ‘”  ÍJ ‘”  ÍK ‘”  ÍL ‘”  ÍM ‘”  ÍN ‘”  ÍO ‘”  ÍP ‘”  ÍQ ‘”  ÍR ‘”  ÍS ‘”  ÍT ‘”  ÍU ‘”  ÍV ‘”  ÍW ‘”  ÍX ‘”  ÍY ‘”  ÍZ ‘”  Í[ ‘”  Í\ ‘”  Í] ‘”  Í^ ‘”  Í_ ‘”  Í` ‘”  Ía ‘”  Íb ‘”  Íc ‘”  Íd ‘”  Íe ‘”  Íf ‘”  Íg ‘”  Íh ‘”  Íi ‘”  Íj ‘”  Ík ‘”  Íl ‘”  Ím ‘”  Ín ‘”  Ío ‘”  Íp ‘”  Íq ‘”  Ír ‘”  Ís ‘”  Ít ‘”  Íu ‘”  Ív ‘”  Íw ‘”  Íx ‘”  Íy ‘”  Íz ‘”  Í{ ‘”  Í| ‘”  Í} ‘”  Í~ ‘”  Í ‘”  Í€ ‘”  Í ‘”  Í‚ ‘”  Íƒ ‘”  Í„ ‘”  Í… ‘”  Í† ‘”  Í‡ ‘”  Íˆ ‘”  Í‰ ‘”  ÍŠ ‘”  Í‹ ‘”  ÍŒ ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í‘ ‘”  Í’ ‘”  Í“ ‘”  Í” ‘”  Í• ‘”  Í– ‘”  Í— ‘”  Í˜ ‘”  Í™ ‘”  Íš ‘”  Í› ‘”  Íœ ‘”  Í ‘”  Í ‘”  ÍŸ ‘”  Í  ‘”  Í¡ ‘”  Í¢ ‘”  Í£ ‘”  Í¤ ‘”  Í¥ ‘”  Í¦ ‘”  Í§ ‘”  Í¨ ‘”  Í© ‘”  Íª ‘”  Í« ‘”  Í¬ ‘”  Í­ ‘”  Í® ‘”  Í¯ ‘”  Í° ‘”  Í± ‘”  Í² ‘”  Í³ ‘”  Í´ ‘”  Íµ ‘”  Í¶ ‘”  Í· ‘”  Í¸ ‘”  Í¹ ‘”  Íº ‘”  Í» ‘”  Í¼ ‘”  Í½ ‘”  Í¾ ‘”  Í¿ ‘”  ÍÀ ‘”  ÍÁ ‘”  ÍÂ ‘”  ÍÃ ‘”  ÍÄ ‘”  ÍÅ ‘”  ÍÆ ‘”  ÍÇ ‘”  ÍÈ ‘”  ÍÉ ‘”  ÍÊ ‘”  ÍË ‘”  ÍÌ ‘”  ÍÍ ‘”  ÍÎ ‘”  ÍÏ ‘”  ÍĞ ‘”  ÍÑ ‘”  ÍÒ ‘”  ÍÓ ‘”  ÍÔ ‘”  ÍÕ ‘”  ÍÖ ‘”  Í× ‘”  ÍØ ‘”  ÍÙ ‘”  ÍÚ ‘”  ÍÛ ‘”  ÍÜ ‘”  Íİ ‘”  ÍŞ ‘”  Íß ‘”  Íà ‘”  Íá ‘”  Íâ ‘”  Íã ‘”  Íä ‘”  Íå ‘”  Íæ ‘”  Íç ‘”  Íè ‘”  Íé ‘”  Íê ‘”  Íë ‘”  Íì ‘”  Íí ‘”  Íî ‘”  Íï ‘”  Íğ ‘”  Íñ ‘”  Íò ‘”  Íó ‘”  Íô ‘”  Íõ ‘”  Íö ‘”  Í÷ ‘”  Íø ‘”  Íù ‘”  Íú ‘”  Íû ‘”  Íü ‘”  Íı ‘”  Íş ‘”  Íÿ ‘”  Í  ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í	 ‘”  Í
+ ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í  ‘”  Í! ‘”  Í" ‘”  Í# ‘”  Í$ ‘”  Í% ‘”  Í& ‘”  Í' ‘”  Í( ‘”  Í) ‘”  Í* ‘”  Í+ ‘”  Í, ‘”  Í- ‘”  Í. ‘”  Í/ ‘”  Í0 ‘”  Í1 ‘”  Í2 ‘”  Í3 ‘”  Í4 ‘”  Í5 ‘”  Í6 ‘”  Í7 ‘”  Í8 ‘”  Í9 ‘”  Í: ‘”  Í; ‘”  Í< ‘”  Í= ‘”  Í> ‘”  Í? ‘”  Í@ ‘”  ÍA ‘”  ÍB ‘”  ÍC ‘”  ÍD ‘”  ÍE ‘”  ÍF ‘”  ÍG ‘”  ÍH ‘”  ÍI ‘”  ÍJ ‘”  ÍK ‘”  ÍL ‘”  ÍM ‘”  ÍN ‘”  ÍO ‘”  ÍP ‘”  ÍQ ‘”  ÍR ‘”  ÍS ‘”  ÍT ‘”  ÍU ‘”  ÍV ‘”  ÍW ‘”  ÍX ‘”  ÍY ÔrJ’§missing¦pluginÃ¦genAbcÂÔ  ÔrK”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrL–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍÜÍPÔrM–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍãÍPÔrN”¤type¥start£end¤nameªIdentifierÍéÍóªImageKnifeÀÔrO”¤type¥start£end¤body©ClassBodyÍôÍPÜ 2ÔrP˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍûÍ¢ÃÂNªIdentifierÍÍ«getInstance¦methodÔrQ™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍÍ¢ÀÂÂÂO®BlockStatementÍÍ¢’ÔrR–¤type¥start£end¤testªconsequent©alternate«IfStatementÍÍvÔrS–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍÍ3¡!ÃÔrT—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍ Í3NªIdentifierÍ Í*ªImageKnifeNªIdentifierÍ+Í3¨instanceÂÂO®BlockStatementÍ5Ív‘ÔrU”¤type¥start£endªexpression³ExpressionStatementÍDÍkÔrV–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍDÍj¡=T°MemberExpressionÍDÍWNªIdentifierÍDÍNªImageKnifeNªIdentifierÍOÍW¨instanceÂÂÔrW•¤type¥start£end¦callee©arguments­NewExpressionÍZÍjNªIdentifierÍ^ÍhªImageKnifeÀÔrX”¤type¥start£end¨argument¯ReturnStatementÍ€Í›T°MemberExpressionÍ‡ÍšNªIdentifierÍ‡Í‘ªImageKnifeNªIdentifierÍ’Íš¨instanceÂÂP°MethodDefinitionÍ¨ÍaÂÂNªIdentifierÍ¨Í³«constructor«constructorQ²FunctionExpressionÍ³ÍaÀÂÂÂO®BlockStatementÍ¶Ía–U³ExpressionStatementÍÒÍV´AssignmentExpressionÍÒÍ¡=T°MemberExpressionÍÒÍâÔrY“¤type¥start£end®ThisExpressionÍÒÍÖNªIdentifierÍ×Íâ«memoryCacheÂÂW­NewExpressionÍåÍNªIdentifierÍéÍ÷®MemoryLruCache’ÔrZ•¤type¥start£end¥value£raw§LiteralÍøÍûÍ £256Ôr[–¤type¥start£end¤left¨operator¥right°BinaryExpressionÍıÍ[°BinaryExpressionÍıÍZ§LiteralÍıÍ Ì€£128¡*Z§LiteralÍÍÍ ¤1024¡*Z§LiteralÍ
+ÍÍ ¤1024U³ExpressionStatementÍÍGV´AssignmentExpressionÍÍF¡=T°MemberExpressionÍÍ)Y®ThisExpressionÍÍNªIdentifierÍÍ)ªdispatcherÂÂW­NewExpressionÍ,ÍFNªIdentifierÍ0ÍD´ImageKnifeDispatcherU³ExpressionStatementÍnÍV´AssignmentExpressionÍnÍ¡=T°MemberExpressionÍnÍˆY®ThisExpressionÍnÍrNªIdentifierÍsÍˆµ_isRequestInSubThreadÂÂZ§LiteralÍ‹ÍÃ¤trueU³ExpressionStatementÍ¸ÍÓV´AssignmentExpressionÍ¸ÍÒ¡=T°MemberExpressionÍ¸ÍÆY®ThisExpressionÍ¸Í¼NªIdentifierÍ½ÍÆ©headerMapÂÂW­NewExpressionÍÉÍÒNªIdentifierÍÍÍĞ£MapU³ExpressionStatementÍİÍıV´AssignmentExpressionÍİÍü¡=T°MemberExpressionÍİÍğY®ThisExpressionÍİÍáNªIdentifierÍâÍğ®customGetImageÂÂNªIdentifierÍóÍü©undefinedU³ExpressionStatementÍ2ÍZV´AssignmentExpressionÍ2ÍY¡=T°MemberExpressionÍ2ÍQY®ThisExpressionÍ2Í6NªIdentifierÍ7ÍQºenableJpegOptimizeDecodingÂÂZ§LiteralÍTÍYÂ¥falseP°MethodDefinitionÍgÍ¨ÂÂNªIdentifierÍgÍx±getConnectTimeout¦methodQ²FunctionExpressionÍxÍ¨ÀÂÂÂO®BlockStatementÍ{Í¨‘X¯ReturnStatementÍ†Í¡T°MemberExpressionÍÍ Y®ThisExpressionÍÍ‘NªIdentifierÍ’Í ®connectTimeoutÂÂP°MethodDefinitionÍ®ÍéÂÂNªIdentifierÍ®Í¼®getReadTimeout¦methodQ²FunctionExpressionÍ¼ÍéÀÂÂÂO®BlockStatementÍ¿Íé‘X¯ReturnStatementÍÊÍâT°MemberExpressionÍÑÍáY®ThisExpressionÍÑÍÕNªIdentifierÍÖÍá«readTimeoutÂÂP°MethodDefinitionÍ)ÍtÂÂNªIdentifierÍ)Í:±setConnectTimeout¦methodQ²FunctionExpressionÍ:ÍtÀÂÂÂ‘NªIdentifierÍ;ÍB§timeoutO®BlockStatementÍDÍt‘U³ExpressionStatementÍOÍmV´AssignmentExpressionÍOÍl¡=T°MemberExpressionÍOÍbY®ThisExpressionÍOÍSNªIdentifierÍTÍb®connectTimeoutÂÂNªIdentifierÍeÍl§timeoutP°MethodDefinitionÍ´ÍùÂÂNªIdentifierÍ´ÍÂ®setReadTimeout¦methodQ²FunctionExpressionÍÂÍùÀÂÂÂ‘NªIdentifierÍÃÍÊ§timeoutO®BlockStatementÍÌÍù‘U³ExpressionStatementÍ×ÍòV´AssignmentExpressionÍ×Íñ¡=T°MemberExpressionÍ×ÍçY®ThisExpressionÍ×ÍÛNªIdentifierÍÜÍç«readTimeoutÂÂNªIdentifierÍêÍñ§timeoutP°MethodDefinitionÍÿÍ	TÂÂNªIdentifierÍ	Í	´isRequestInSubThread£setQ²FunctionExpressionÍ	Í	TÀÂÂÂ‘NªIdentifierÍ	Í	¥valueO®BlockStatementÍ	Í	T‘U³ExpressionStatementÍ	*Í	MV´AssignmentExpressionÍ	*Í	L¡=T°MemberExpressionÍ	*Í	DY®ThisExpressionÍ	*Í	.NªIdentifierÍ	/Í	Dµ_isRequestInSubThreadÂÂNªIdentifierÍ	GÍ	L¥valueP°MethodDefinitionÍ	ZÍ	©ÂÂNªIdentifierÍ	^Í	r´isRequestInSubThread£getQ²FunctionExpressionÍ	rÍ	©ÀÂÂÂO®BlockStatementÍ	uÍ	©‘X¯ReturnStatementÍ	€Í	¢T°MemberExpressionÍ	‡Í	¡Y®ThisExpressionÍ	‡Í	‹NªIdentifierÍ	ŒÍ	¡µ_isRequestInSubThreadÂÂP°MethodDefinitionÍ
+CÍÂÂNªIdentifierÍ
+IÍ
+V­initFileCache¦methodQ²FunctionExpressionÍ
+VÍÀÂÂÃ”NªIdentifierÍ
+WÍ
+^§contextÔr\•¤type¥start£end¤left¥right±AssignmentPatternÍ
+`Í
+jNªIdentifierÍ
+`Í
+d¤sizeZ§LiteralÍ
+gÍ
+jÍ £256\±AssignmentPatternÍ
+lÍ
+†NªIdentifierÍ
+lÍ
+r¦memory[°BinaryExpressionÍ
+uÍ
+†[°BinaryExpressionÍ
+uÍ
+Z§LiteralÍ
+uÍ
+xÍ £256¡*Z§LiteralÍ
+{Í
+Í ¤1024¡*Z§LiteralÍ
+‚Í
+†Í ¤1024NªIdentifierÍ
+ˆÍ
+Œ¤pathO®BlockStatementÍ
+Í’U³ExpressionStatementÍ
+™Í
+ÏV´AssignmentExpressionÍ
+™Í
+Î¡=T°MemberExpressionÍ
+™Í
+§Y®ThisExpressionÍ
+™Í
+NªIdentifierÍ
+Í
+§©fileCacheÂÂW­NewExpressionÍ
+ªÍ
+ÎNªIdentifierÍ
+®Í
+·©FileCache“NªIdentifierÍ
+¸Í
+¿§contextNªIdentifierÍ
+ÁÍ
+Å¤sizeNªIdentifierÍ
+ÇÍ
+Í¦memoryÔr]–¤type¥start£end¥block§handler©finalizer¬TryStatementÍ
+ÙÍO®BlockStatementÍ
+İÍ³‘R«IfStatementÍ
+ìÍ¨[°BinaryExpressionÍ
+ğÍNªIdentifierÍ
+ğÍ
+ô¤path¢!=NªIdentifierÍ
+øÍ©undefinedO®BlockStatementÍÍN‘U³ExpressionStatementÍÍ?X¯AwaitExpressionÍÍ>Ôr^–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍÍ>T°MemberExpressionÍÍ8T°MemberExpressionÍÍ*Y®ThisExpressionÍÍ NªIdentifierÍ!Í*©fileCacheÂÂNªIdentifierÍ+Í8­initFileCacheÂÂ‘NªIdentifierÍ9Í=¤pathÂO®BlockStatementÍaÍ¨‘U³ExpressionStatementÍtÍ™X¯AwaitExpressionÍtÍ˜^®CallExpressionÍzÍ˜T°MemberExpressionÍzÍ–T°MemberExpressionÍzÍˆY®ThisExpressionÍzÍ~NªIdentifierÍÍˆ©fileCacheÂÂNªIdentifierÍ‰Í–­initFileCacheÂÂÂÔr_•¤type¥start£end¥param¤body«CatchClauseÍ½ÍNªIdentifierÍÄÍÇ£errO®BlockStatementÍÉÍ‘U³ExpressionStatementÍØÍ^®CallExpressionÍØÍT°MemberExpressionÍØÍåNªIdentifierÍØÍß§LogUtilNªIdentifierÍàÍå¥errorÂÂ‘Ôr`•¤type¥start£end«expressions¦quasis¯TemplateLiteralÍæÍ‘NªIdentifierÍüÍÿ£err’Ôra•¤type¥start£end¥value¤tail¯TemplateElementÍçÍúÔrb’£raw¦cooked³initFileCache err: ³initFileCache err: Âa¯TemplateElementÍ Í b  ÃÂÀP°MethodDefinitionÍ[ÍÎÂÂNªIdentifierÍ[Íj¯isFileCacheInit¦methodQ²FunctionExpressionÍjÍÎÀÂÂÂO®BlockStatementÍmÍÎ‘X¯ReturnStatementÍxÍÇRµConditionalExpressionÍÍÆ[°BinaryExpressionÍÍ›T°MemberExpressionÍÍY®ThisExpressionÍÍƒNªIdentifierÍ„Í©fileCacheÂÂ£===NªIdentifierÍ’Í›©undefinedZ§LiteralÍÍ£Â¥false^®CallExpressionÍ¦ÍÆT°MemberExpressionÍ¦ÍÄT°MemberExpressionÍ¦Í´Y®ThisExpressionÍ¦ÍªNªIdentifierÍ«Í´©fileCacheÂÂNªIdentifierÍµÍÄ¯isFileCacheInitÂÂÂP°MethodDefinitionÍóÍØÂÂNªIdentifierÍóÍù¦reload¦methodQ²FunctionExpressionÍùÍØÀÂÂÂ‘NªIdentifierÍúÍ§requestO®BlockStatementÍÍØ‘R«IfStatementÍÍÑ[°BinaryExpressionÍÍFT°MemberExpressionÍÍ&NªIdentifierÍÍ§requestNªIdentifierÍÍ&¬requestStateÂÂ¢==T°MemberExpressionÍ*ÍFNªIdentifierÍ*Í@¶ImageKnifeRequestStateNªIdentifierÍAÍF¥ERRORÂÂO®BlockStatementÍHÍÑ’U³ExpressionStatementÍWÍV´AssignmentExpressionÍWÍ¡=T°MemberExpressionÍWÍkNªIdentifierÍWÍ^§requestNªIdentifierÍ_Ík¬requestStateÂÂT°MemberExpressionÍnÍNªIdentifierÍnÍ„¶ImageKnifeRequestStateNªIdentifierÍ…Í¨PROGRESSÂÂU³ExpressionStatementÍœÍÆ^®CallExpressionÍœÍÅT°MemberExpressionÍœÍ¼^®CallExpressionÍœÍ´T°MemberExpressionÍœÍ²NªIdentifierÍœÍ¦ªImageKnifeNªIdentifierÍ§Í²«getInstanceÂÂÂNªIdentifierÍµÍ¼§executeÂÂ‘NªIdentifierÍ½ÍÄ§requestÂÀP°MethodDefinitionÍ;Í‚ÂÂNªIdentifierÍ;ÍD©addHeader¦methodQ²FunctionExpressionÍDÍ‚ÀÂÂÂ’NªIdentifierÍEÍH£keyNªIdentifierÍJÍO¥valueO®BlockStatementÍQÍ‚‘U³ExpressionStatementÍ\Í{^®CallExpressionÍ\ÍzT°MemberExpressionÍ\ÍnT°MemberExpressionÍ\ÍjY®ThisExpressionÍ\Í`NªIdentifierÍaÍj©headerMapÂÂNªIdentifierÍkÍn£setÂÂ’NªIdentifierÍoÍr£keyNªIdentifierÍtÍy¥valueÂP°MethodDefinitionÍÍÍ[ÂÂNªIdentifierÍÍÍİ°serHeaderOptions¦methodQ²FunctionExpressionÍİÍ[ÀÂÂÂ‘NªIdentifierÍŞÍå§optionsO®BlockStatementÍçÍ[‘U³ExpressionStatementÍòÍT^®CallExpressionÍòÍST°MemberExpressionÍòÍNªIdentifierÍòÍù§optionsNªIdentifierÍúÍ§forEachÂÂ‘Q·ArrowFunctionExpressionÍÍRÀÂÂÂ‘NªIdentifierÍÍ¥valueO®BlockStatementÍÍR‘U³ExpressionStatementÍÍG^®CallExpressionÍÍFT°MemberExpressionÍÍ.T°MemberExpressionÍÍ*Y®ThisExpressionÍÍ NªIdentifierÍ!Í*©headerMapÂÂNªIdentifierÍ+Í.£setÂÂ’T°MemberExpressionÍ/Í8NªIdentifierÍ/Í4¥valueNªIdentifierÍ5Í8£keyÂÂT°MemberExpressionÍ:ÍENªIdentifierÍ:Í?¥valueNªIdentifierÍ@ÍE¥valueÂÂÂÂP°MethodDefinitionÍ¢ÍáÂÂNªIdentifierÍ¢Í®¬deleteHeader¦methodQ²FunctionExpressionÍ®ÍáÀÂÂÂ‘NªIdentifierÍ¯Í²£keyO®BlockStatementÍ´Íá‘U³ExpressionStatementÍ¿ÍÚ^®CallExpressionÍ¿ÍÙT°MemberExpressionÍ¿ÍÔT°MemberExpressionÍ¿ÍÍY®ThisExpressionÍ¿ÍÃNªIdentifierÍÄÍÍ©headerMapÂÂNªIdentifierÍÎÍÔ¦deleteÂÂ‘NªIdentifierÍÕÍØ£keyÂP°MethodDefinitionÍ2Í†ÂÂNªIdentifierÍ2ÍA¯initMemoryCache¦methodQ²FunctionExpressionÍAÍ†ÀÂÂÂ‘NªIdentifierÍBÍP®newMemoryCacheO®BlockStatementÍRÍ†‘U³ExpressionStatementÍ]ÍV´AssignmentExpressionÍ]Í~¡=T°MemberExpressionÍ]ÍmY®ThisExpressionÍ]ÍaNªIdentifierÍbÍm«memoryCacheÂÂNªIdentifierÍpÍ~®newMemoryCacheP°MethodDefinitionÍ¯ÍõÂÂNªIdentifierÍ¯ÍÃ´removeAllMemoryCache¦methodQ²FunctionExpressionÍÃÍõÀÂÂÂO®BlockStatementÍÆÍõ‘U³ExpressionStatementÍÑÍî^®CallExpressionÍÑÍíT°MemberExpressionÍÑÍëT°MemberExpressionÍÑÍáY®ThisExpressionÍÑÍÕNªIdentifierÍÖÍá«memoryCacheÂÂNªIdentifierÍâÍë©removeAllÂÂÂP°MethodDefinitionÍLÍşÂÂNªIdentifierÍLÍ]±removeMemoryCache¦methodQ²FunctionExpressionÍ]ÍşÀÂÂÂ‘NªIdentifierÍ^Ía£urlO®BlockStatementÍcÍş”Ôrc•¤type¥start£end¬declarations¤kind³VariableDeclarationÍnÍœ‘Ôrd•¤type¥start£end¢id¤init²VariableDeclaratorÍrÍ›NªIdentifierÍrÍ‚°imageKnifeOptionW­NewExpressionÍ…Í›NªIdentifierÍ‰Í™°ImageKnifeOption£letR«IfStatementÍ¦Í;[°BinaryExpressionÍªÍÀS¯UnaryExpressionÍªÍ´¦typeofÃNªIdentifierÍ±Í´£url¢==Z§LiteralÍ¸ÍÀ¦string¨'string'O®BlockStatementÍÂÍû‘U³ExpressionStatementÍÑÍğV´AssignmentExpressionÍÑÍï¡=T°MemberExpressionÍÑÍéNªIdentifierÍÑÍá°imageKnifeOptionNªIdentifierÍâÍé§loadSrcÂÂNªIdentifierÍìÍï£urlO®BlockStatementÍ
+Í;‘U³ExpressionStatementÍÍ0V´AssignmentExpressionÍÍ/¡=NªIdentifierÍÍ)°imageKnifeOptionNªIdentifierÍ,Í/£urlc³VariableDeclarationÍEÍĞ‘d²VariableDeclaratorÍIÍÏNªIdentifierÍIÍL£key^®CallExpressionÍOÍÏT°MemberExpressionÍOÍ†^®CallExpressionÍOÍfT°MemberExpressionÍOÍdY®ThisExpressionÍOÍSNªIdentifierÍTÍd°getEngineKeyImplÂÂÂNªIdentifierÍuÍ†±generateMemoryKeyÂÂ“T°MemberExpressionÍ‡ÍŸNªIdentifierÍ‡Í—°imageKnifeOptionNªIdentifierÍ˜ÍŸ§loadSrcÂÂT°MemberExpressionÍ¡Í¼NªIdentifierÍ¡Í¸·ImageKnifeRequestSourceNªIdentifierÍ¹Í¼£SRCÂÂNªIdentifierÍ¾ÍÎ°imageKnifeOptionÂ£letU³ExpressionStatementÍÚÍ÷^®CallExpressionÍÚÍöT°MemberExpressionÍÚÍñT°MemberExpressionÍÚÍêY®ThisExpressionÍÚÍŞNªIdentifierÍßÍê«memoryCacheÂÂNªIdentifierÍëÍñ¦removeÂÂ‘NªIdentifierÍòÍõ£keyÂP°MethodDefinitionÍ^Í’ÂÂNªIdentifierÍ^Íe§preload¦methodQ²FunctionExpressionÍeÍ’ÀÂÂÂ‘NªIdentifierÍfÍm§loadSrcO®BlockStatementÍoÍ’•c³VariableDeclarationÍzÍ¨‘d²VariableDeclaratorÍ~Í§NªIdentifierÍ~Í°imageKnifeOptionW­NewExpressionÍ‘Í§NªIdentifierÍ•Í¥°ImageKnifeOption£letR«IfStatementÍ²ÍS[°BinaryExpressionÍ¶ÍĞS¯UnaryExpressionÍ¶ÍÄ¦typeofÃNªIdentifierÍ½ÍÄ§loadSrc¢==Z§LiteralÍÈÍĞ¦string¨'string'O®BlockStatementÍÒÍ‘U³ExpressionStatementÍáÍV´AssignmentExpressionÍáÍ¡=T°MemberExpressionÍáÍùNªIdentifierÍáÍñ°imageKnifeOptionNªIdentifierÍòÍù§loadSrcÂÂNªIdentifierÍüÍ§loadSrcO®BlockStatementÍÍS‘U³ExpressionStatementÍ-ÍHV´AssignmentExpressionÍ-ÍG¡=NªIdentifierÍ-Í=°imageKnifeOptionNªIdentifierÍ@ÍG§loadSrcc³VariableDeclarationÍ]ÍR‘d²VariableDeclaratorÍaÍQNªIdentifierÍaÍh§requestW­NewExpressionÍkÍQNªIdentifierÍoÍ€±ImageKnifeRequest–NªIdentifierÍÍ‘°imageKnifeOptionRµConditionalExpressionÍ“Íû[°BinaryExpressionÍ“Í¹T°MemberExpressionÍ“Í«NªIdentifierÍ“Í£°imageKnifeOptionNªIdentifierÍ¤Í«§contextÂÂ£!==NªIdentifierÍ°Í¹©undefinedT°MemberExpressionÍ¼ÍÔNªIdentifierÍ¼ÍÌ°imageKnifeOptionNªIdentifierÍÍÍÔ§contextÂÂU¯ChainExpressionÍäÍûT°MemberExpressionÍäÍûT°MemberExpressionÍäÍòY®ThisExpressionÍäÍèNªIdentifierÍéÍò©fileCacheÂÂNªIdentifierÍôÍû§contextÂÃZ§LiteralÍıÍş ¡0Z§LiteralÍ Í ¡0Z§LiteralÍÍ ¡0Ôre”¤type¥start£endªproperties°ObjectExpressionÍÍP‘Ôrf™¤type¥start£end¦method©shorthand¨computed£key¤kind¥value¨PropertyÍÍEÃÂÂNªIdentifierÍÍ!¬showPixelMap¤initQ²FunctionExpressionÍ!ÍEÀÂÂÂ’NªIdentifierÍ"Í)§versionNªIdentifierÍ+Í3¨pixelMapO®BlockStatementÍ5ÍE£letU³ExpressionStatementÍ\Ír^®CallExpressionÍ\ÍqT°MemberExpressionÍ\ÍhY®ThisExpressionÍ\Í`NªIdentifierÍaÍh§executeÂÂ‘NªIdentifierÍiÍp§requestÂX¯ReturnStatementÍ|Í‹NªIdentifierÍƒÍŠ§requestP°MethodDefinitionÍÜÍõÂÂNªIdentifierÍÜÍâ¦cancel¦methodQ²FunctionExpressionÍâÍõÀÂÂÂ‘NªIdentifierÍãÍê§requestO®BlockStatementÍìÍõ’R«IfStatementÍ÷Í®[±LogicalExpressionÍûÍM[°BinaryExpressionÍûÍ0S¯UnaryExpressionÍûÍ#¦typeofÃU¯ChainExpressionÍÍ#T°MemberExpressionÍÍ#T°MemberExpressionÍÍNªIdentifierÍÍ	§requestNªIdentifierÍÍ°imageKnifeOptionÂÃNªIdentifierÍÍ#§loadSrcÂÂ£===Z§LiteralÍ(Í0¦string¨'string'¢&&S¯UnaryExpressionÍ4ÍM¡!ÃU¯ChainExpressionÍ5ÍMT°MemberExpressionÍ5ÍMNªIdentifierÍ5Í<§requestNªIdentifierÍ>ÍM¯drawMainSuccessÂÃO®BlockStatementÍOÍ®‘U³ExpressionStatementÍ^Í£^®CallExpressionÍ^Í¢T°MemberExpressionÍ^ÍjNªIdentifierÍ^Íe§emitterNªIdentifierÍfÍj¤emitÂÂ‘[°BinaryExpressionÍkÍ¡T°MemberExpressionÍkÍ‹T°MemberExpressionÍkÍƒNªIdentifierÍkÍr§requestNªIdentifierÍsÍƒ°imageKnifeOptionÂÂNªIdentifierÍ„Í‹§loadSrcÂÂ¡+T°MemberExpressionÍÍ¡NªIdentifierÍÍ•§requestNªIdentifierÍ–Í¡«componentIdÂÂÂÀU³ExpressionStatementÍ¸ÍîV´AssignmentExpressionÍ¸Íí¡=T°MemberExpressionÍ¸ÍÌNªIdentifierÍ¸Í¿§requestNªIdentifierÍÀÍÌ¬requestStateÂÂT°MemberExpressionÍÏÍíNªIdentifierÍÏÍå¶ImageKnifeRequestStateNªIdentifierÍæÍí§DESTROYÂÂP°MethodDefinitionÍYÍ1ÂÂNªIdentifierÍYÍe¬preLoadCache¦methodQ²FunctionExpressionÍeÍ1ÀÂÂÂ‘NªIdentifierÍfÍm§loadSrcO®BlockStatementÍoÍ1‘X¯ReturnStatementÍzÍ*W­NewExpressionÍÍ)NªIdentifierÍ…ÍŒ§Promise‘Q·ArrowFunctionExpressionÍÍ(ÀÂÂÂ’NªIdentifierÍÍ•§resolveNªIdentifierÍ—Í¦rejectO®BlockStatementÍ¢Í(–c³VariableDeclarationÍ±Íß‘d²VariableDeclaratorÍµÍŞNªIdentifierÍµÍÅ°imageKnifeOptionW­NewExpressionÍÈÍŞNªIdentifierÍÌÍÜ°ImageKnifeOption£letR«IfStatementÍíÍ¢[°BinaryExpressionÍñÍS¯UnaryExpressionÍñÍÿ¦typeofÃNªIdentifierÍøÍÿ§loadSrc¢==Z§LiteralÍÍ¦string¨'string'O®BlockStatementÍÍR‘U³ExpressionStatementÍ ÍCV´AssignmentExpressionÍ ÍB¡=T°MemberExpressionÍ Í8NªIdentifierÍ Í0°imageKnifeOptionNªIdentifierÍ1Í8§loadSrcÂÂNªIdentifierÍ;ÍB§loadSrcO®BlockStatementÍeÍ¢‘U³ExpressionStatementÍxÍ“V´AssignmentExpressionÍxÍ’¡=NªIdentifierÍxÍˆ°imageKnifeOptionNªIdentifierÍ‹Í’§loadSrcU³ExpressionStatementÍ°Íü^®CallExpressionÍ°ÍûT°MemberExpressionÍ°Í»NªIdentifierÍ°Í·§LogUtilNªIdentifierÍ¸Í»£logÂÂ‘[°BinaryExpressionÍ¼ÍúZ§LiteralÍ¼ÍğÙ2ImageKnife_DataTime_preLoadCache-imageKnifeOption:Ù4'ImageKnife_DataTime_preLoadCache-imageKnifeOption:'¡+NªIdentifierÍóÍú§loadSrcÂc³VariableDeclarationÍ
+Ív‘d²VariableDeclaratorÍÍuNªIdentifierÍÍ§fileKey^®CallExpressionÍÍuT°MemberExpressionÍÍ?^®CallExpressionÍÍ/T°MemberExpressionÍÍ-Y®ThisExpressionÍÍNªIdentifierÍÍ-°getEngineKeyImplÂÂÂNªIdentifierÍ0Í?¯generateFileKeyÂÂ’T°MemberExpressionÍ@ÍXNªIdentifierÍ@ÍP°imageKnifeOptionNªIdentifierÍQÍX§loadSrcÂÂT°MemberExpressionÍZÍtNªIdentifierÍZÍj°imageKnifeOptionNªIdentifierÍkÍt©signatureÂÂÂ£letc³VariableDeclarationÍ„ÍÓ‘d²VariableDeclaratorÍˆÍÒNªIdentifierÍˆÍ‘©cachePath^®CallExpressionÍ”ÍÒT°MemberExpressionÍ”ÍÉ^®CallExpressionÍ”Í»T°MemberExpressionÍ”Í¹^®CallExpressionÍ”Í¬T°MemberExpressionÍ”ÍªNªIdentifierÍ”ÍªImageKnifeNªIdentifierÍŸÍª«getInstanceÂÂÂNªIdentifierÍ­Í¹¬getFileCacheÂÂÂNªIdentifierÍ¼ÍÉ­getFileToPathÂÂ‘NªIdentifierÍÊÍÑ§fileKeyÂ£letR«IfStatementÍáÍ[±LogicalExpressionÍåÍ#[±LogicalExpressionÍåÍ	[°BinaryExpressionÍåÍöNªIdentifierÍåÍî©cachePath¢==Z§LiteralÍòÍöÀ¤null¢||[°BinaryExpressionÍúÍ	NªIdentifierÍúÍ©cachePath¢==Z§LiteralÍÍ	 ¢''¢||[°BinaryExpressionÍÍ#NªIdentifierÍÍ©cachePath¢==NªIdentifierÍÍ#©undefinedO®BlockStatementÍ%ÍÕ’c³VariableDeclarationÍ8Í‘d²VariableDeclaratorÍ<ÍNªIdentifierÍ<ÍC§requestW­NewExpressionÍFÍNªIdentifierÍJÍ[±ImageKnifeRequest–NªIdentifierÍ\Íl°imageKnifeOptionRµConditionalExpressionÍnÍŞ[°BinaryExpressionÍnÍ”T°MemberExpressionÍnÍ†NªIdentifierÍnÍ~°imageKnifeOptionNªIdentifierÍÍ†§contextÂÂ£!==NªIdentifierÍ‹Í”©undefinedT°MemberExpressionÍ—Í¯NªIdentifierÍ—Í§°imageKnifeOptionNªIdentifierÍ¨Í¯§contextÂÂU¯ChainExpressionÍÇÍŞT°MemberExpressionÍÇÍŞT°MemberExpressionÍÇÍÕY®ThisExpressionÍÇÍËNªIdentifierÍÌÍÕ©fileCacheÂÂNªIdentifierÍ×ÍŞ§contextÂÃZ§LiteralÍàÍá ¡0Z§LiteralÍãÍä ¡0Z§LiteralÍæÍç ¡0e°ObjectExpressionÍéÍœ’f¨PropertyÍ ÍÃÂÂNªIdentifierÍ Í¬showPixelMap¤initQ²FunctionExpressionÍÍÀÂÂÂ”NªIdentifierÍÍ§versionNªIdentifierÍÍ¨pixelMapNªIdentifierÍ Í-­requestSourceNªIdentifierÍ/Í3¤sizeO®BlockStatementÍ5Í‘R«IfStatementÍPÍ[°BinaryExpressionÍTÍNªIdentifierÍTÍa­requestSource£===T°MemberExpressionÍfÍNªIdentifierÍfÍ}·ImageKnifeRequestSourceNªIdentifierÍ~Í£SRCÂÂO®BlockStatementÍƒÍ‘U³ExpressionStatementÍ¢Íê^®CallExpressionÍ¢ÍéNªIdentifierÍ¢Í©§resolve‘^®CallExpressionÍªÍèT°MemberExpressionÍªÍß^®CallExpressionÍªÍÑT°MemberExpressionÍªÍÏ^®CallExpressionÍªÍÂT°MemberExpressionÍªÍÀNªIdentifierÍªÍ´ªImageKnifeNªIdentifierÍµÍÀ«getInstanceÂÂÂNªIdentifierÍÃÍÏ¬getFileCacheÂÂÂNªIdentifierÍÒÍß­getFileToPathÂÂ‘NªIdentifierÍàÍç§fileKeyÂÂÀÔrg™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍ3Í‰ÂÂÂNªIdentifierÍ3Í@­mainLoadErrorQ·ArrowFunctionExpressionÍBÍ‰ÀÂÂÂ‘NªIdentifierÍCÍF£errO®BlockStatementÍKÍ‰‘U³ExpressionStatementÍfÍr^®CallExpressionÍfÍqNªIdentifierÍfÍl¦reject‘NªIdentifierÍmÍp£errÂ¤init£letU³ExpressionStatementÍ°ÍÆ^®CallExpressionÍ°ÍÅT°MemberExpressionÍ°Í¼Y®ThisExpressionÍ°Í´NªIdentifierÍµÍ¼§executeÂÂ‘NªIdentifierÍ½ÍÄ§requestÂO®BlockStatementÍèÍ‘U³ExpressionStatementÍûÍ^®CallExpressionÍûÍNªIdentifierÍûÍ§resolve‘NªIdentifierÍÍ©cachePathÂP°MethodDefinitionÍ7ÍmÂÂNªIdentifierÍ7Í@©getOption¦methodQ²FunctionExpressionÍ@ÍmÀÂÂÂ’NªIdentifierÍAÍH§loadSrcNªIdentifierÍJÍS©signatureO®BlockStatementÍUÍm“c³VariableDeclarationÍ`Í¶‘d²VariableDeclaratorÍdÍµNªIdentifierÍdÍj¦optione°ObjectExpressionÍmÍµ’g¨PropertyÍ|Í‡ÂÂÂNªIdentifierÍ|Íƒ§loadSrcZ§LiteralÍ…Í‡ ¢''¤initg¨PropertyÍ–ÍªÂÂÂNªIdentifierÍ–ÍŸ©signatureNªIdentifierÍ¡Íª©signature¤init£letR«IfStatementÍÀÍN[°BinaryExpressionÍÄÍßS¯UnaryExpressionÍÄÍÒ¦typeofÃNªIdentifierÍËÍÒ§loadSrc£===Z§LiteralÍ×Íß¦string¨'string'O®BlockStatementÍáÍ‘U³ExpressionStatementÍğÍ	V´AssignmentExpressionÍğÍ¡=T°MemberExpressionÍğÍşNªIdentifierÍğÍö¦optionNªIdentifierÍ÷Íş§loadSrcÂÂNªIdentifierÍÍ§loadSrcO®BlockStatementÍ#ÍN‘U³ExpressionStatementÍ2ÍCV´AssignmentExpressionÍ2ÍB¡=NªIdentifierÍ2Í8¦optionNªIdentifierÍ;ÍB§loadSrcX¯ReturnStatementÍXÍfNªIdentifierÍ_Íe¦optionP°MethodDefinitionÍÍ!™ÂÂNªIdentifierÍÍ­getCacheImage¦methodQ²FunctionExpressionÍÍ!™ÀÂÂÂ“NªIdentifierÍÍ#§loadSrc\±AssignmentPatternÍ%ÍFNªIdentifierÍ%Í.©cacheTypeT°MemberExpressionÍ1ÍFNªIdentifierÍ1Í>­CacheStrategyNªIdentifierÍ?ÍF§DefaultÂÂNªIdentifierÍHÍQ©signatureO®BlockStatementÍSÍ!™’c³VariableDeclarationÍ^Í‘d²VariableDeclaratorÍbÍNªIdentifierÍbÍh¦option^®CallExpressionÍkÍT°MemberExpressionÍkÍyY®ThisExpressionÍkÍoNªIdentifierÍpÍy©getOptionÂÂ’NªIdentifierÍzÍ§loadSrcNªIdentifierÍƒÍŒ©signatureÂ£letX¯ReturnStatementÍ˜Í!’W­NewExpressionÍŸÍ!‘NªIdentifierÍ£Íª§Promise‘Q·ArrowFunctionExpressionÍ«Í!ÀÂÂÂ’NªIdentifierÍ¬Í³§resolveNªIdentifierÍµÍ»¦rejectO®BlockStatementÍÀÍ!‘R«IfStatementÍÏÍ!…[°BinaryExpressionÍÓÍõNªIdentifierÍÓÍÜ©cacheType£===T°MemberExpressionÍáÍõNªIdentifierÍáÍî­CacheStrategyNªIdentifierÍïÍõ¦MemoryÂÂO®BlockStatementÍ÷Í ?‘U³ExpressionStatementÍ 
+Í 0^®CallExpressionÍ 
+Í /NªIdentifierÍ 
+Í §resolve‘^®CallExpressionÍ Í .T°MemberExpressionÍ Í &Y®ThisExpressionÍ Í NªIdentifierÍ Í &¯readMemoryCacheÂÂ‘NªIdentifierÍ 'Í -¦optionÂÂR«IfStatementÍ RÍ!…[°BinaryExpressionÍ VÍ vNªIdentifierÍ VÍ _©cacheType£===T°MemberExpressionÍ dÍ vNªIdentifierÍ dÍ q­CacheStrategyNªIdentifierÍ rÍ v¤FileÂÂO®BlockStatementÍ xÍ Æ‘U³ExpressionStatementÍ ‹Í ·^®CallExpressionÍ ‹Í ¶T°MemberExpressionÍ ‹Í Y®ThisExpressionÍ ‹Í NªIdentifierÍ Í ­readFileCacheÂÂ’T°MemberExpressionÍ Í ¬NªIdentifierÍ Í ¤¦optionNªIdentifierÍ ¥Í ¬§loadSrcÂÂNªIdentifierÍ ®Í µ§resolveÂO®BlockStatementÍ ÙÍ!…’c³VariableDeclarationÍ ìÍ!‘d²VariableDeclaratorÍ ğÍ!NªIdentifierÍ ğÍ ô¤data^®CallExpressionÍ ÷Í!T°MemberExpressionÍ ÷Í!Y®ThisExpressionÍ ÷Í ûNªIdentifierÍ üÍ!¯readMemoryCacheÂÂ‘NªIdentifierÍ!Í!¦optionÂ£letU³ExpressionStatementÍ!&Í!vRµConditionalExpressionÍ!&Í!u[°BinaryExpressionÍ!&Í!7NªIdentifierÍ!&Í!*¤data¢==NªIdentifierÍ!.Í!7©undefined^®CallExpressionÍ!:Í!eT°MemberExpressionÍ!:Í!LY®ThisExpressionÍ!:Í!>NªIdentifierÍ!?Í!L­readFileCacheÂÂ’T°MemberExpressionÍ!MÍ![NªIdentifierÍ!MÍ!S¦optionNªIdentifierÍ!TÍ![§loadSrcÂÂNªIdentifierÍ!]Í!d§resolveÂ^®CallExpressionÍ!hÍ!uNªIdentifierÍ!hÍ!o§resolve‘NªIdentifierÍ!pÍ!t¤dataÂP°MethodDefinitionÍ">Í$NÂÂNªIdentifierÍ">Í"O±getCacheImageSync¦methodQ²FunctionExpressionÍ"OÍ$NÀÂÂÂ“NªIdentifierÍ"PÍ"W§loadSrc\±AssignmentPatternÍ"YÍ"zNªIdentifierÍ"YÍ"b©cacheTypeT°MemberExpressionÍ"eÍ"zNªIdentifierÍ"eÍ"r­CacheStrategyNªIdentifierÍ"sÍ"z§DefaultÂÂNªIdentifierÍ"|Í"…©signatureO®BlockStatementÍ"‡Í$N’c³VariableDeclarationÍ"’Í"Â‘d²VariableDeclaratorÍ"–Í"ÁNªIdentifierÍ"–Í"œ¦option^®CallExpressionÍ"ŸÍ"ÁT°MemberExpressionÍ"ŸÍ"­Y®ThisExpressionÍ"ŸÍ"£NªIdentifierÍ"¤Í"­©getOptionÂÂ’NªIdentifierÍ"®Í"µ§loadSrcNªIdentifierÍ"·Í"À©signatureÂ£letR«IfStatementÍ"ÌÍ$G[°BinaryExpressionÍ"ĞÍ"òNªIdentifierÍ"ĞÍ"Ù©cacheType£===T°MemberExpressionÍ"ŞÍ"òNªIdentifierÍ"ŞÍ"ë­CacheStrategyNªIdentifierÍ"ìÍ"ò¦MemoryÂÂO®BlockStatementÍ"ôÍ#2‘X¯ReturnStatementÍ#Í#'^®CallExpressionÍ#
+Í#&T°MemberExpressionÍ#
+Í#Y®ThisExpressionÍ#
+Í#NªIdentifierÍ#Í#¯readMemoryCacheÂÂ‘NªIdentifierÍ#Í#%¦optionÂR«IfStatementÍ#AÍ$G[°BinaryExpressionÍ#EÍ#eNªIdentifierÍ#EÍ#N©cacheType£===T°MemberExpressionÍ#SÍ#eNªIdentifierÍ#SÍ#`­CacheStrategyNªIdentifierÍ#aÍ#e¤FileÂÂO®BlockStatementÍ#gÍ#§‘X¯ReturnStatementÍ#vÍ#œ^®CallExpressionÍ#}Í#›T°MemberExpressionÍ#}Í#“Y®ThisExpressionÍ#}Í#NªIdentifierÍ#‚Í#“±readFileCacheSyncÂÂ‘NªIdentifierÍ#”Í#š¦optionÂO®BlockStatementÍ#¶Í$G’c³VariableDeclarationÍ#ÅÍ#í‘d²VariableDeclaratorÍ#ÉÍ#ìNªIdentifierÍ#ÉÍ#Í¤data^®CallExpressionÍ#ĞÍ#ìT°MemberExpressionÍ#ĞÍ#äY®ThisExpressionÍ#ĞÍ#ÔNªIdentifierÍ#ÕÍ#ä¯readMemoryCacheÂÂ‘NªIdentifierÍ#åÍ#ë¦optionÂ£letX¯ReturnStatementÍ#ûÍ$<RµConditionalExpressionÍ$Í$;[°BinaryExpressionÍ$Í$NªIdentifierÍ$Í$¤data¢==NªIdentifierÍ$
+Í$©undefined^®CallExpressionÍ$Í$4T°MemberExpressionÍ$Í$,Y®ThisExpressionÍ$Í$NªIdentifierÍ$Í$,±readFileCacheSyncÂÂ‘NªIdentifierÍ$-Í$3¦optionÂNªIdentifierÍ$7Í$;¤dataP°MethodDefinitionÍ%Í*ÜÂÂNªIdentifierÍ%Í%­putCacheImage¦methodQ²FunctionExpressionÍ%Í*ÜÀÂÂÂ•NªIdentifierÍ%Í%!£urlNªIdentifierÍ%#Í%+¨pixelMap\±AssignmentPatternÍ%-Í%NNªIdentifierÍ%-Í%6©cacheTypeT°MemberExpressionÍ%9Í%NNªIdentifierÍ%9Í%F­CacheStrategyNªIdentifierÍ%GÍ%N§DefaultÂÂNªIdentifierÍ%PÍ%ZªpackOptionNªIdentifierÍ%\Í%e©signatureO®BlockStatementÍ%gÍ*Ü”c³VariableDeclarationÍ%rÍ&‘d²VariableDeclaratorÍ%vÍ&NªIdentifierÍ%vÍ%©memoryKey^®CallExpressionÍ%‚Í&T°MemberExpressionÍ%‚Í%¹^®CallExpressionÍ%‚Í%™T°MemberExpressionÍ%‚Í%—Y®ThisExpressionÍ%‚Í%†NªIdentifierÍ%‡Í%—°getEngineKeyImplÂÂÂNªIdentifierÍ%¨Í%¹±generateMemoryKeyÂÂ“NªIdentifierÍ%ºÍ%½£urlT°MemberExpressionÍ%¿Í%ÚNªIdentifierÍ%¿Í%Ö·ImageKnifeRequestSourceNªIdentifierÍ%×Í%Ú£SRCÂÂe°ObjectExpressionÍ%ÜÍ&’g¨PropertyÍ%ŞÍ%êÂÂÂNªIdentifierÍ%ŞÍ%å§loadSrcNªIdentifierÍ%çÍ%ê£url¤initg¨PropertyÍ%ìÍ& ÂÂÂNªIdentifierÍ%ìÍ%õ©signatureNªIdentifierÍ%÷Í& ©signature¤initÂ£letc³VariableDeclarationÍ&Í&T‘d²VariableDeclaratorÍ&Í&SNªIdentifierÍ&Í&§fileKey^®CallExpressionÍ&Í&ST°MemberExpressionÍ&Í&C^®CallExpressionÍ&Í&3T°MemberExpressionÍ&Í&1Y®ThisExpressionÍ&Í& NªIdentifierÍ&!Í&1°getEngineKeyImplÂÂÂNªIdentifierÍ&4Í&C¯generateFileKeyÂÂ’NªIdentifierÍ&DÍ&G£urlNªIdentifierÍ&IÍ&R©signatureÂ£letc³VariableDeclarationÍ&^Í&§‘d²VariableDeclaratorÍ&bÍ&¦NªIdentifierÍ&bÍ&p®imageKnifeDatae°ObjectExpressionÍ&sÍ&¦“g¨PropertyÍ&uÍ&…ÂÂÂNªIdentifierÍ&uÍ&{¦sourceNªIdentifierÍ&}Í&…¨pixelMap¤initg¨PropertyÍ&‡Í&”ÂÂÂNªIdentifierÍ&‡Í&‘ªimageWidthZ§LiteralÍ&“Í&” ¡0¤initg¨PropertyÍ&–Í&¤ÂÂÂNªIdentifierÍ&–Í&¡«imageHeightZ§LiteralÍ&£Í&¤ ¡0¤init£letÔrh•¤type¥start£end¬discriminant¥cases¯SwitchStatementÍ&±Í*ÕNªIdentifierÍ&¹Í&Â©cacheType“Ôri•¤type¥start£endªconsequent¤testªSwitchCaseÍ&ÓÍ(©“U³ExpressionStatementÍ' Í'0^®CallExpressionÍ' Í'/T°MemberExpressionÍ' Í'Y®ThisExpressionÍ' Í'NªIdentifierÍ'Í'¯saveMemoryCacheÂÂ’NªIdentifierÍ'Í'©memoryKeyNªIdentifierÍ' Í'.®imageKnifeDataÂR«IfStatementÍ'BÍ(‘NªIdentifierÍ'FÍ'PªpackOptionO®BlockStatementÍ'RÍ(‘U³ExpressionStatementÍ'iÍ'û^®CallExpressionÍ'iÍ'úT°MemberExpressionÍ'iÍ'€Y®ThisExpressionÍ'iÍ'mNªIdentifierÍ'nÍ'€²pixelMapToOriginalÂÂ“NªIdentifierÍ'Í'‰¨pixelMapNªIdentifierÍ'‹Í'•ªpackOptionQ·ArrowFunctionExpressionÍ'—Í'ùÀÂÂÂ‘NªIdentifierÍ'˜Í'¦bufferO®BlockStatementÍ'£Í'ù‘U³ExpressionStatementÍ'¾Í'â^®CallExpressionÍ'¾Í'áT°MemberExpressionÍ'¾Í'ĞY®ThisExpressionÍ'¾Í'ÂNªIdentifierÍ'ÃÍ'Ğ­saveFileCacheÂÂ’NªIdentifierÍ'ÑÍ'Ø§fileKeyNªIdentifierÍ'ÚÍ'à¦bufferÂÂO®BlockStatementÍ(%Í(‘‘U³ExpressionStatementÍ(<Í(~^®CallExpressionÍ(<Í(}T°MemberExpressionÍ(<Í(NY®ThisExpressionÍ(<Í(@NªIdentifierÍ(AÍ(N­saveFileCacheÂÂ’NªIdentifierÍ(OÍ(V§fileKey^®CallExpressionÍ(XÍ(|T°MemberExpressionÍ(XÍ(rY®ThisExpressionÍ(XÍ(\NªIdentifierÍ(]Í(rµpixelMapToArrayBufferÂÂ‘NªIdentifierÍ(sÍ({¨pixelMapÂÂÔrj”¤type¥start£end¥label®BreakStatementÍ(£Í(©ÀT°MemberExpressionÍ&ØÍ&íNªIdentifierÍ&ØÍ&å­CacheStrategyNªIdentifierÍ&æÍ&í§DefaultÂÂiªSwitchCaseÍ(·Í*H’R«IfStatementÍ(áÍ*0NªIdentifierÍ(åÍ(ïªpackOptionO®BlockStatementÍ(ñÍ)­‘U³ExpressionStatementÍ)Í)š^®CallExpressionÍ)Í)™T°MemberExpressionÍ)Í)Y®ThisExpressionÍ)Í)NªIdentifierÍ)Í)²pixelMapToOriginalÂÂ“NªIdentifierÍ) Í)(¨pixelMapNªIdentifierÍ)*Í)4ªpackOptionQ·ArrowFunctionExpressionÍ)6Í)˜ÀÂÂÂ‘NªIdentifierÍ)7Í)=¦bufferO®BlockStatementÍ)BÍ)˜‘U³ExpressionStatementÍ)]Í)^®CallExpressionÍ)]Í)€T°MemberExpressionÍ)]Í)oY®ThisExpressionÍ)]Í)aNªIdentifierÍ)bÍ)o­saveFileCacheÂÂ’NªIdentifierÍ)pÍ)w§fileKeyNªIdentifierÍ)yÍ)¦bufferÂÂO®BlockStatementÍ)ÄÍ*0‘U³ExpressionStatementÍ)ÛÍ*^®CallExpressionÍ)ÛÍ*T°MemberExpressionÍ)ÛÍ)íY®ThisExpressionÍ)ÛÍ)ßNªIdentifierÍ)àÍ)í­saveFileCacheÂÂ’NªIdentifierÍ)îÍ)õ§fileKey^®CallExpressionÍ)÷Í*T°MemberExpressionÍ)÷Í*Y®ThisExpressionÍ)÷Í)ûNªIdentifierÍ)üÍ*µpixelMapToArrayBufferÂÂ‘NªIdentifierÍ*Í*¨pixelMapÂÂj®BreakStatementÍ*BÍ*HÀT°MemberExpressionÍ(¼Í(ÎNªIdentifierÍ(¼Í(É­CacheStrategyNªIdentifierÍ(ÊÍ(Î¤FileÂÂiªSwitchCaseÍ*VÍ*Ê’U³ExpressionStatementÍ*‚Í*²^®CallExpressionÍ*‚Í*±T°MemberExpressionÍ*‚Í*–Y®ThisExpressionÍ*‚Í*†NªIdentifierÍ*‡Í*–¯saveMemoryCacheÂÂ’NªIdentifierÍ*—Í* ©memoryKeyNªIdentifierÍ*¢Í*°®imageKnifeDataÂj®BreakStatementÍ*ÄÍ*ÊÀT°MemberExpressionÍ*[Í*oNªIdentifierÍ*[Í*h­CacheStrategyNªIdentifierÍ*iÍ*o¦MemoryÂÂP°MethodDefinitionÍ+Í+ ÂÂNªIdentifierÍ+Í+.²removeAllFileCache¦methodQ²FunctionExpressionÍ+.Í+ ÀÂÂÃO®BlockStatementÍ+1Í+ ‘R«IfStatementÍ+<Í+™[°BinaryExpressionÍ+@Í+\T°MemberExpressionÍ+@Í+NY®ThisExpressionÍ+@Í+DNªIdentifierÍ+EÍ+N©fileCacheÂÂ£!==NªIdentifierÍ+SÍ+\©undefinedO®BlockStatementÍ+^Í+™‘U³ExpressionStatementÍ+mÍ+X¯AwaitExpressionÍ+mÍ+^®CallExpressionÍ+sÍ+T°MemberExpressionÍ+sÍ+‹T°MemberExpressionÍ+sÍ+Y®ThisExpressionÍ+sÍ+wNªIdentifierÍ+xÍ+©fileCacheÂÂNªIdentifierÍ+‚Í+‹©removeAllÂÂÂÀP°MethodDefinitionÍ+ÜÍ-£ÂÂNªIdentifierÍ+ÜÍ+ë¯removeFileCache¦methodQ²FunctionExpressionÍ+ëÍ-£ÀÂÂÂ‘NªIdentifierÍ+ìÍ+ï£urlO®BlockStatementÍ+ñÍ-£”c³VariableDeclarationÍ+üÍ,*‘d²VariableDeclaratorÍ, Í,)NªIdentifierÍ, Í,°imageKnifeOptionW­NewExpressionÍ,Í,)NªIdentifierÍ,Í,'°ImageKnifeOption£letR«IfStatementÍ,4Í,É[°BinaryExpressionÍ,8Í,NS¯UnaryExpressionÍ,8Í,B¦typeofÃNªIdentifierÍ,?Í,B£url¢==Z§LiteralÍ,FÍ,N¦string¨'string'O®BlockStatementÍ,PÍ,‰‘U³ExpressionStatementÍ,_Í,~V´AssignmentExpressionÍ,_Í,}¡=T°MemberExpressionÍ,_Í,wNªIdentifierÍ,_Í,o°imageKnifeOptionNªIdentifierÍ,pÍ,w§loadSrcÂÂNªIdentifierÍ,zÍ,}£urlO®BlockStatementÍ,˜Í,É‘U³ExpressionStatementÍ,§Í,¾V´AssignmentExpressionÍ,§Í,½¡=NªIdentifierÍ,§Í,·°imageKnifeOptionNªIdentifierÍ,ºÍ,½£urlc³VariableDeclarationÍ,ÓÍ-;‘d²VariableDeclaratorÍ,×Í-:NªIdentifierÍ,×Í,Ú£key^®CallExpressionÍ,İÍ-:T°MemberExpressionÍ,İÍ-^®CallExpressionÍ,İÍ,ôT°MemberExpressionÍ,İÍ,òY®ThisExpressionÍ,İÍ,áNªIdentifierÍ,âÍ,ò°getEngineKeyImplÂÂÂNªIdentifierÍ,õÍ-¯generateFileKeyÂÂ’T°MemberExpressionÍ-Í-NªIdentifierÍ-Í-°imageKnifeOptionNªIdentifierÍ-Í-§loadSrcÂÂT°MemberExpressionÍ-Í-9NªIdentifierÍ-Í-/°imageKnifeOptionNªIdentifierÍ-0Í-9©signatureÂÂÂ£letR«IfStatementÍ-EÍ-œ[°BinaryExpressionÍ-IÍ-eT°MemberExpressionÍ-IÍ-WY®ThisExpressionÍ-IÍ-MNªIdentifierÍ-NÍ-W©fileCacheÂÂ£!==NªIdentifierÍ-\Í-e©undefinedO®BlockStatementÍ-gÍ-œ‘U³ExpressionStatementÍ-vÍ-‘^®CallExpressionÍ-vÍ-T°MemberExpressionÍ-vÍ-‹T°MemberExpressionÍ-vÍ-„Y®ThisExpressionÍ-vÍ-zNªIdentifierÍ-{Í-„©fileCacheÂÂNªIdentifierÍ-…Í-‹¦removeÂÂ‘NªIdentifierÍ-ŒÍ-£keyÂÀP°MethodDefinitionÍ-ûÍ.UÂÂNªIdentifierÍ-ûÍ.	®setMaxRequests¦methodQ²FunctionExpressionÍ.	Í.UÀÂÂÂ‘NªIdentifierÍ.
+Í.«concurrencyO®BlockStatementÍ.Í.U‘U³ExpressionStatementÍ."Í.N^®CallExpressionÍ."Í.MT°MemberExpressionÍ."Í.@T°MemberExpressionÍ."Í.1Y®ThisExpressionÍ."Í.&NªIdentifierÍ.'Í.1ªdispatcherÂÂNªIdentifierÍ.2Í.@®setMaxRequestsÂÂ‘NªIdentifierÍ.AÍ.L«concurrencyÂP°MethodDefinitionÍ.[Í/ÂÂNªIdentifierÍ.[Í.m²getFileCacheByFile¦methodQ²FunctionExpressionÍ.mÍ/ÀÂÂÂ’NªIdentifierÍ.nÍ.u§contextNªIdentifierÍ.wÍ.z£keyO®BlockStatementÍ.|Í/’R«IfStatementÍ.‡Í.õ[°BinaryExpressionÍ.‹Í.§T°MemberExpressionÍ.‹Í.™Y®ThisExpressionÍ.‹Í.NªIdentifierÍ.Í.™©fileCacheÂÂ£!==NªIdentifierÍ.Í.§©undefinedO®BlockStatementÍ.©Í.õ‘X¯ReturnStatementÍ.¸Í.ê^®CallExpressionÍ.¿Í.éT°MemberExpressionÍ.¿Í.ÛNªIdentifierÍ.¿Í.È©FileCacheNªIdentifierÍ.ÉÍ.Û²getFileCacheByFileÂÂ’NªIdentifierÍ.ÜÍ.ã§contextNªIdentifierÍ.åÍ.è£keyÂÀX¯ReturnStatementÍ.ÿÍ/NªIdentifierÍ/Í/©undefinedP°MethodDefinitionÍ/Í/®ÂÂNªIdentifierÍ/Í/0³loadFromMemoryCache¦methodQ²FunctionExpressionÍ/0Í/®ÀÂÂÂ‘NªIdentifierÍ/1Í/4£keyO®BlockStatementÍ/6Í/®’R«IfStatementÍ/AÍ/Œ[°BinaryExpressionÍ/EÍ/ONªIdentifierÍ/EÍ/H£key£!==Z§LiteralÍ/MÍ/O ¢''O®BlockStatementÍ/QÍ/Œ‘X¯ReturnStatementÍ/`Í/^®CallExpressionÍ/gÍ/€T°MemberExpressionÍ/gÍ/{T°MemberExpressionÍ/gÍ/wY®ThisExpressionÍ/gÍ/kNªIdentifierÍ/lÍ/w«memoryCacheÂÂNªIdentifierÍ/xÍ/{£getÂÂ‘NªIdentifierÍ/|Í/£keyÂÀX¯ReturnStatementÍ/–Í/§NªIdentifierÍ/Í/¦©undefinedP°MethodDefinitionÍ/´Í0+ÂÂNªIdentifierÍ/´Í/Ã¯saveMemoryCache¦methodQ²FunctionExpressionÍ/ÃÍ0+ÀÂÂÂ’NªIdentifierÍ/ÄÍ/Ç£keyNªIdentifierÍ/ÉÍ/Í¤dataO®BlockStatementÍ/ÏÍ0+‘R«IfStatementÍ/ÚÍ0$[°BinaryExpressionÍ/ŞÍ/èNªIdentifierÍ/ŞÍ/á£key£!==Z§LiteralÍ/æÍ/è ¢''O®BlockStatementÍ/êÍ0$‘U³ExpressionStatementÍ/ùÍ0^®CallExpressionÍ/ùÍ0T°MemberExpressionÍ/ùÍ0T°MemberExpressionÍ/ùÍ0	Y®ThisExpressionÍ/ùÍ/ıNªIdentifierÍ/şÍ0	«memoryCacheÂÂNªIdentifierÍ0
+Í0£putÂÂ’NªIdentifierÍ0Í0£keyNªIdentifierÍ0Í0¤dataÂÀP°MethodDefinitionÍ01Í0zÂÂNªIdentifierÍ01Í0B±loadFromFileCache¦methodQ²FunctionExpressionÍ0BÍ0zÀÂÂÂ‘NªIdentifierÍ0CÍ0F£keyO®BlockStatementÍ0HÍ0z‘X¯ReturnStatementÍ0SÍ0sU¯ChainExpressionÍ0ZÍ0r^®CallExpressionÍ0ZÍ0rT°MemberExpressionÍ0ZÍ0mT°MemberExpressionÍ0ZÍ0hY®ThisExpressionÍ0ZÍ0^NªIdentifierÍ0_Í0h©fileCacheÂÂNªIdentifierÍ0jÍ0m£getÂÃ‘NªIdentifierÍ0nÍ0q£keyÂP°MethodDefinitionÍ0€Í0ÊÂÂNªIdentifierÍ0€Í0­saveFileCache¦methodQ²FunctionExpressionÍ0Í0ÊÀÂÂÂ’NªIdentifierÍ0Í0‘£keyNªIdentifierÍ0“Í0—¤dataO®BlockStatementÍ0™Í0Ê‘U³ExpressionStatementÍ0¤Í0ÃU¯ChainExpressionÍ0¤Í0Â^®CallExpressionÍ0¤Í0ÂT°MemberExpressionÍ0¤Í0·T°MemberExpressionÍ0¤Í0²Y®ThisExpressionÍ0¤Í0¨NªIdentifierÍ0©Í0²©fileCacheÂÂNªIdentifierÍ0´Í0·£putÂÃ’NªIdentifierÍ0¸Í0»£keyNªIdentifierÍ0½Í0Á¤dataÂP°MethodDefinitionÍ0ĞÍ1ÂÂNªIdentifierÍ0ĞÍ0Ü¬getFileCache¦methodQ²FunctionExpressionÍ0ÜÍ1ÀÂÂÂO®BlockStatementÍ0ßÍ1‘X¯ReturnStatementÍ0êÍ1 T°MemberExpressionÍ0ñÍ0ÿY®ThisExpressionÍ0ñÍ0õNªIdentifierÍ0öÍ0ÿ©fileCacheÂÂP°MethodDefinitionÍ1gÍ3hÂÂNªIdentifierÍ1gÍ1x±getCacheLimitSize¦methodQ²FunctionExpressionÍ1xÍ3hÀÂÂÂ‘NªIdentifierÍ1yÍ1‚©cacheTypeO®BlockStatementÍ1„Í3h’R«IfStatementÍ1Í2[±LogicalExpressionÍ1“Í1Ï[°BinaryExpressionÍ1“Í1©NªIdentifierÍ1“Í1œ©cacheType¢==NªIdentifierÍ1 Í1©©undefined¢||[°BinaryExpressionÍ1­Í1ÏNªIdentifierÍ1­Í1¶©cacheType¢==T°MemberExpressionÍ1ºÍ1ÏNªIdentifierÍ1ºÍ1Ç­CacheStrategyNªIdentifierÍ1ÈÍ1Ï§DefaultÂÂO®BlockStatementÍ1ÑÍ2‘U³ExpressionStatementÍ1àÍ2V´AssignmentExpressionÍ1àÍ2 ¡=NªIdentifierÍ1àÍ1é©cacheTypeT°MemberExpressionÍ1ìÍ2 NªIdentifierÍ1ìÍ1ù­CacheStrategyNªIdentifierÍ1úÍ2 ¦MemoryÂÂÀR«IfStatementÍ2Í3a[°BinaryExpressionÍ2Í2;NªIdentifierÍ2Í2#©cacheType¢==T°MemberExpressionÍ2'Í2;NªIdentifierÍ2'Í24­CacheStrategyNªIdentifierÍ25Í2;¦MemoryÂÂO®BlockStatementÍ2=Í2y‘X¯ReturnStatementÍ2LÍ2nT°MemberExpressionÍ2SÍ2mT°MemberExpressionÍ2SÍ2cY®ThisExpressionÍ2SÍ2WNªIdentifierÍ2XÍ2c«memoryCacheÂÂNªIdentifierÍ2dÍ2m©maxMemoryÂÂO®BlockStatementÍ2ˆÍ3a‘R«IfStatementÍ2—Í3V^®CallExpressionÍ2›Í2±T°MemberExpressionÍ2›Í2¯Y®ThisExpressionÍ2›Í2ŸNªIdentifierÍ2 Í2¯¯isFileCacheInitÂÂÂO®BlockStatementÍ2³Í2ö‘X¯ReturnStatementÍ2ÆÍ2çU¯ChainExpressionÍ2ÍÍ2æT°MemberExpressionÍ2ÍÍ2æT°MemberExpressionÍ2ÍÍ2ÛY®ThisExpressionÍ2ÍÍ2ÑNªIdentifierÍ2ÒÍ2Û©fileCacheÂÂNªIdentifierÍ2İÍ2æ©maxMemoryÂÃO®BlockStatementÍ3	Í3V‘X®ThrowStatementÍ3Í3GW­NewExpressionÍ3"Í3FNªIdentifierÍ3&Í3+¥Error‘Z§LiteralÍ3,Í3E·the disk cache not init¹'the disk cache not init'P°MethodDefinitionÍ3İÍ5ÙÂÂNªIdentifierÍ3İÍ3ï²getCurrentCacheNum¦methodQ²FunctionExpressionÍ3ïÍ5ÙÀÂÂÂ‘NªIdentifierÍ3ğÍ3ù©cacheTypeO®BlockStatementÍ3ûÍ5Ù’R«IfStatementÍ4Í4ƒ[±LogicalExpressionÍ4
+Í4F[°BinaryExpressionÍ4
+Í4 NªIdentifierÍ4
+Í4©cacheType¢==NªIdentifierÍ4Í4 ©undefined¢||[°BinaryExpressionÍ4$Í4FNªIdentifierÍ4$Í4-©cacheType¢==T°MemberExpressionÍ41Í4FNªIdentifierÍ41Í4>­CacheStrategyNªIdentifierÍ4?Í4F§DefaultÂÂO®BlockStatementÍ4HÍ4ƒ‘U³ExpressionStatementÍ4WÍ4xV´AssignmentExpressionÍ4WÍ4w¡=NªIdentifierÍ4WÍ4`©cacheTypeT°MemberExpressionÍ4cÍ4wNªIdentifierÍ4cÍ4p­CacheStrategyNªIdentifierÍ4qÍ4w¦MemoryÂÂÀR«IfStatementÍ4Í5Ò[°BinaryExpressionÍ4‘Í4²NªIdentifierÍ4‘Í4š©cacheType¢==T°MemberExpressionÍ4Í4²NªIdentifierÍ4Í4«­CacheStrategyNªIdentifierÍ4¬Í4²¦MemoryÂÂO®BlockStatementÍ4´Í4í‘X¯ReturnStatementÍ4ÃÍ4â^®CallExpressionÍ4ÊÍ4áT°MemberExpressionÍ4ÊÍ4ßT°MemberExpressionÍ4ÊÍ4ÚY®ThisExpressionÍ4ÊÍ4ÎNªIdentifierÍ4ÏÍ4Ú«memoryCacheÂÂNªIdentifierÍ4ÛÍ4ß¤sizeÂÂÂO®BlockStatementÍ4üÍ5Ò‘R«IfStatementÍ5Í5Ç^®CallExpressionÍ5Í5%T°MemberExpressionÍ5Í5#Y®ThisExpressionÍ5Í5NªIdentifierÍ5Í5#¯isFileCacheInitÂÂÂO®BlockStatementÍ5'Í5g‘X¯ReturnStatementÍ5:Í5XU¯ChainExpressionÍ5AÍ5W^®CallExpressionÍ5AÍ5WT°MemberExpressionÍ5AÍ5UT°MemberExpressionÍ5AÍ5OY®ThisExpressionÍ5AÍ5ENªIdentifierÍ5FÍ5O©fileCacheÂÂNªIdentifierÍ5QÍ5U¤sizeÂÃÂO®BlockStatementÍ5zÍ5Ç‘X®ThrowStatementÍ5Í5¸W­NewExpressionÍ5“Í5·NªIdentifierÍ5—Í5œ¥Error‘Z§LiteralÍ5Í5¶·the disk cache not init¹'the disk cache not init'P°MethodDefinitionÍ6?Í8JÂÂNªIdentifierÍ6?Í6R³getCurrentCacheSize¦methodQ²FunctionExpressionÍ6RÍ8JÀÂÂÂ‘NªIdentifierÍ6SÍ6\©cacheTypeO®BlockStatementÍ6^Í8J’R«IfStatementÍ6iÍ6æ[±LogicalExpressionÍ6mÍ6©[°BinaryExpressionÍ6mÍ6ƒNªIdentifierÍ6mÍ6v©cacheType¢==NªIdentifierÍ6zÍ6ƒ©undefined¢||[°BinaryExpressionÍ6‡Í6©NªIdentifierÍ6‡Í6©cacheType¢==T°MemberExpressionÍ6”Í6©NªIdentifierÍ6”Í6¡­CacheStrategyNªIdentifierÍ6¢Í6©§DefaultÂÂO®BlockStatementÍ6«Í6æ‘U³ExpressionStatementÍ6ºÍ6ÛV´AssignmentExpressionÍ6ºÍ6Ú¡=NªIdentifierÍ6ºÍ6Ã©cacheTypeT°MemberExpressionÍ6ÆÍ6ÚNªIdentifierÍ6ÆÍ6Ó­CacheStrategyNªIdentifierÍ6ÔÍ6Ú¦MemoryÂÂÀR«IfStatementÍ6ğÍ8C[°BinaryExpressionÍ6ôÍ7NªIdentifierÍ6ôÍ6ı©cacheType¢==T°MemberExpressionÍ7Í7NªIdentifierÍ7Í7­CacheStrategyNªIdentifierÍ7Í7¦MemoryÂÂO®BlockStatementÍ7Í7W‘X¯ReturnStatementÍ7&Í7LT°MemberExpressionÍ7-Í7KT°MemberExpressionÍ7-Í7=Y®ThisExpressionÍ7-Í71NªIdentifierÍ72Í7=«memoryCacheÂÂNªIdentifierÍ7>Í7K­currentMemoryÂÂO®BlockStatementÍ7fÍ8C‘R«IfStatementÍ7uÍ88^®CallExpressionÍ7yÍ7T°MemberExpressionÍ7yÍ7Y®ThisExpressionÍ7yÍ7}NªIdentifierÍ7~Í7¯isFileCacheInitÂÂÂO®BlockStatementÍ7‘Í7Ø‘X¯ReturnStatementÍ7¤Í7ÉU¯ChainExpressionÍ7«Í7ÈT°MemberExpressionÍ7«Í7ÈT°MemberExpressionÍ7«Í7¹Y®ThisExpressionÍ7«Í7¯NªIdentifierÍ7°Í7¹©fileCacheÂÂNªIdentifierÍ7»Í7È­currentMemoryÂÃO®BlockStatementÍ7ëÍ88‘X®ThrowStatementÍ7şÍ8)W­NewExpressionÍ8Í8(NªIdentifierÍ8Í8¥Error‘Z§LiteralÍ8Í8'·the disk cache not init¹'the disk cache not init'P°MethodDefinitionÍ8PÍ9]ÂÂNªIdentifierÍ8PÍ8eµpixelMapToArrayBuffer¦methodQ²FunctionExpressionÍ8eÍ9]ÀÂÂÂ‘NªIdentifierÍ8fÍ8n¨pixelMapO®BlockStatementÍ8pÍ9]”c³VariableDeclarationÍ8{Í8§‘d²VariableDeclaratorÍ8Í8¦NªIdentifierÍ8Í8ˆ©imageInfo^®CallExpressionÍ8‹Í8¦T°MemberExpressionÍ8‹Í8¤NªIdentifierÍ8‹Í8“¨pixelMapNªIdentifierÍ8”Í8¤°getImageInfoSyncÂÂÂ£letc³VariableDeclarationÍ8±Í9‘d²VariableDeclaratorÍ8µÍ9NªIdentifierÍ8µÍ8¿ªreadBufferW­NewExpressionÍ8ÂÍ9NªIdentifierÍ8ÆÍ8Ñ«ArrayBuffer‘[°BinaryExpressionÍ8ÒÍ9[°BinaryExpressionÍ8ÒÍ8şT°MemberExpressionÍ8ÒÍ8çT°MemberExpressionÍ8ÒÍ8àNªIdentifierÍ8ÒÍ8Û©imageInfoNªIdentifierÍ8ÜÍ8à¤sizeÂÂNªIdentifierÍ8áÍ8ç¦heightÂÂ¡*T°MemberExpressionÍ8êÍ8şT°MemberExpressionÍ8êÍ8øNªIdentifierÍ8êÍ8ó©imageInfoNªIdentifierÍ8ôÍ8ø¤sizeÂÂNªIdentifierÍ8ùÍ8ş¥widthÂÂ¡*Z§LiteralÍ9Í9¡4£letU³ExpressionStatementÍ9Í9:^®CallExpressionÍ9Í99T°MemberExpressionÍ9Í9-NªIdentifierÍ9Í9¨pixelMapNªIdentifierÍ9Í9-¶readPixelsToBufferSyncÂÂ‘NªIdentifierÍ9.Í98ªreadBufferÂX¯ReturnStatementÍ9DÍ9VNªIdentifierÍ9KÍ9UªreadBufferP°MethodDefinitionÍ9cÍ;¬ÂÂNªIdentifierÍ9cÍ9u²pixelMapToOriginal¦methodQ²FunctionExpressionÍ9uÍ;¬ÀÂÂÂ“NªIdentifierÍ9vÍ9~¨pixelMapNªIdentifierÍ9€Í9ŠªpackOptionNªIdentifierÍ9ŒÍ9–ªonCompleteO®BlockStatementÍ9˜Í;¬’c³VariableDeclarationÍ9£Í9Ò‘d²VariableDeclaratorÍ9©Í9ÑNªIdentifierÍ9©Í9µ¬imagePackObj^®CallExpressionÍ9¸Í9ÑT°MemberExpressionÍ9¸Í9ÏNªIdentifierÍ9¸Í9½¥imageNªIdentifierÍ9¾Í9Ï±createImagePackerÂÂÂ¥constU³ExpressionStatementÍ9ÜÍ;¥^®CallExpressionÍ9ÜÍ;¤T°MemberExpressionÍ9ÜÍ:Ú^®CallExpressionÍ9ÜÍ:ÒT°MemberExpressionÍ9ÜÍ:Y^®CallExpressionÍ9ÜÍ:ST°MemberExpressionÍ9ÜÍ:^®CallExpressionÍ9ÜÍ:	T°MemberExpressionÍ9ÜÍ9óNªIdentifierÍ9ÜÍ9è¬imagePackObjNªIdentifierÍ9éÍ9óªpackToDataÂÂ’NªIdentifierÍ9ôÍ9ü¨pixelMapNªIdentifierÍ9şÍ:ªpackOptionÂNªIdentifierÍ:Í:¤thenÂÂ‘Q·ArrowFunctionExpressionÍ:Í:RÀÂÂÂ‘NªIdentifierÍ:Í:"¤dataO®BlockStatementÍ:'Í:R‘U³ExpressionStatementÍ:6Í:G^®CallExpressionÍ:6Í:FNªIdentifierÍ:6Í:@ªonComplete‘NªIdentifierÍ:AÍ:E¤dataÂÂNªIdentifierÍ:TÍ:Y¥catchÂÂ‘Q·ArrowFunctionExpressionÍ:ZÍ:ÑÀÂÂÂ‘NªIdentifierÍ:[Í:^£errO®BlockStatementÍ:cÍ:Ñ‘U³ExpressionStatementÍ:rÍ:Æ^®CallExpressionÍ:rÍ:ÅT°MemberExpressionÍ:rÍ:NªIdentifierÍ:rÍ:y§LogUtilNªIdentifierÍ:zÍ:¥errorÂÂ‘`¯TemplateLiteralÍ:€Í:Ä’T°MemberExpressionÍ:ŸÍ:§NªIdentifierÍ:ŸÍ:¢£errNªIdentifierÍ:£Í:§¤codeÂÂT°MemberExpressionÍ:·Í:ÂNªIdentifierÍ:·Í:º£errNªIdentifierÍ:»Í:Â§messageÂÂ“a¯TemplateElementÍ:Í:b¼Fail to pack the image.code ¼Fail to pack the image.code Âa¯TemplateElementÍ:¨Í:µb­ ,message is ­ ,message is Âa¯TemplateElementÍ:ÃÍ:Ãb  ÃÂÂNªIdentifierÍ:ÓÍ:Ú§finallyÂÂ‘Q·ArrowFunctionExpressionÍ:ÛÍ;£ÀÂÂÂO®BlockStatementÍ:áÍ;£‘U³ExpressionStatementÍ:ğÍ;˜^®CallExpressionÍ:ğÍ;—T°MemberExpressionÍ:ğÍ;^®CallExpressionÍ:ğÍ;T°MemberExpressionÍ:ğÍ;NªIdentifierÍ:ğÍ:ü¬imagePackObjNªIdentifierÍ:ıÍ;§releaseÂÂÂNªIdentifierÍ;Í;¥catchÂÂ‘Q·ArrowFunctionExpressionÍ;Í;–ÀÂÂÂ‘NªIdentifierÍ;Í;£errO®BlockStatementÍ;Í;–‘U³ExpressionStatementÍ;)Í;‡^®CallExpressionÍ;)Í;†T°MemberExpressionÍ;)Í;6NªIdentifierÍ;)Í;0§LogUtilNªIdentifierÍ;1Í;6¥errorÂÂ‘`¯TemplateLiteralÍ;7Í;…’T°MemberExpressionÍ;`Í;hNªIdentifierÍ;`Í;c£errNªIdentifierÍ;dÍ;h¤codeÂÂT°MemberExpressionÍ;xÍ;ƒNªIdentifierÍ;xÍ;{£errNªIdentifierÍ;|Í;ƒ§messageÂÂ“a¯TemplateElementÍ;8Í;^bÙ&Fail to pack the imagePackObj.release Ù&Fail to pack the imagePackObj.release Âa¯TemplateElementÍ;iÍ;vb­ ,message is ­ ,message is Âa¯TemplateElementÍ;„Í;„b  ÃÂÂÂP°MethodDefinitionÍ;²Í<¢ÂÂNªIdentifierÍ;²Í;Á¯readMemoryCache¦methodQ²FunctionExpressionÍ;ÁÍ<¢ÀÂÂÂ‘NªIdentifierÍ;ÂÍ;È¦optionO®BlockStatementÍ;ÊÍ<¢’c³VariableDeclarationÍ;ÕÍ<D‘d²VariableDeclaratorÍ;ÙÍ<CNªIdentifierÍ;ÙÍ;â©memoryKey^®CallExpressionÍ;åÍ<CT°MemberExpressionÍ;åÍ<^®CallExpressionÍ;åÍ;üT°MemberExpressionÍ;åÍ;úY®ThisExpressionÍ;åÍ;éNªIdentifierÍ;êÍ;ú°getEngineKeyImplÂÂÂNªIdentifierÍ;ıÍ<±generateMemoryKeyÂÂ“T°MemberExpressionÍ<Í<NªIdentifierÍ<Í<¦optionNªIdentifierÍ<Í<§loadSrcÂÂT°MemberExpressionÍ<Í<:NªIdentifierÍ<Í<6·ImageKnifeRequestSourceNªIdentifierÍ<7Í<:£SRCÂÂNªIdentifierÍ<<Í<B¦optionÂ£letX¯ReturnStatementÍ<NÍ<›^®CallExpressionÍ<UÍ<šT°MemberExpressionÍ<UÍ<^®CallExpressionÍ<UÍ<mT°MemberExpressionÍ<UÍ<kNªIdentifierÍ<UÍ<_ªImageKnifeNªIdentifierÍ<`Í<k«getInstanceÂÂÂNªIdentifierÍ<|Í<³loadFromMemoryCacheÂÂ‘NªIdentifierÍ<Í<™©memoryKeyÂP°MethodDefinitionÍ<¨ÍCÂÂNªIdentifierÍ<¨Í<µ­readFileCache¦methodQ²FunctionExpressionÍ<µÍCÀÂÂÂ’NªIdentifierÍ<¶Í<½§loadSrcNªIdentifierÍ<¿Í<ÉªonCompleteO®BlockStatementÍ<ËÍC“c³VariableDeclarationÍ<ÖÍ=‘d²VariableDeclaratorÍ<ÚÍ=NªIdentifierÍ<ÚÍ<Ş¤keys^®CallExpressionÍ<áÍ=T°MemberExpressionÍ<áÍ=^®CallExpressionÍ<áÍ<øT°MemberExpressionÍ<áÍ<öY®ThisExpressionÍ<áÍ<åNªIdentifierÍ<æÍ<ö°getEngineKeyImplÂÂÂNªIdentifierÍ<ùÍ=¯generateFileKeyÂÂ‘NªIdentifierÍ=	Í=§loadSrcÂ£letc³VariableDeclarationÍ=Í=Z‘d²VariableDeclaratorÍ= Í=YNªIdentifierÍ= Í=&¦buffer^®CallExpressionÍ=)Í=YT°MemberExpressionÍ=)Í=S^®CallExpressionÍ=)Í=AT°MemberExpressionÍ=)Í=?NªIdentifierÍ=)Í=3ªImageKnifeNªIdentifierÍ=4Í=?«getInstanceÂÂÂNªIdentifierÍ=BÍ=S±loadFromFileCacheÂÂ‘NªIdentifierÍ=TÍ=X¤keysÂ£letR«IfStatementÍ=dÍC[°BinaryExpressionÍ=hÍ={NªIdentifierÍ=hÍ=n¦buffer¢!=NªIdentifierÍ=rÍ={©undefinedO®BlockStatementÍ=}ÍBÑ–c³VariableDeclarationÍ=ŒÍ=²‘d²VariableDeclaratorÍ=Í=±NªIdentifierÍ=Í=œ¬fileTypeUtilW­NewExpressionÍ=ŸÍ=±NªIdentifierÍ=£Í=¯¬FileTypeUtil£letc³VariableDeclarationÍ=ÀÍ=ñ‘d²VariableDeclaratorÍ=ÄÍ=ğNªIdentifierÍ=ÄÍ=Í©typeValue^®CallExpressionÍ=ĞÍ=ğT°MemberExpressionÍ=ĞÍ=èNªIdentifierÍ=ĞÍ=Ü¬fileTypeUtilNªIdentifierÍ=İÍ=è«getFileTypeÂÂ‘NªIdentifierÍ=éÍ=ï¦bufferÂ£letR«IfStatementÍ=ÿÍ?¸[±LogicalExpressionÍ>Í>.[°BinaryExpressionÍ>Í>NªIdentifierÍ>Í>©typeValue£===Z§LiteralÍ>Í>£gif¥'gif'¢||[°BinaryExpressionÍ>Í>.NªIdentifierÍ>Í>#©typeValue£===Z§LiteralÍ>(Í>.¤webp¦'webp'O®BlockStatementÍ>0Í?¸”c³VariableDeclarationÍ>CÍ>l‘d²VariableDeclaratorÍ>GÍ>kNªIdentifierÍ>GÍ>Qªbase64HelpW­NewExpressionÍ>TÍ>kT°MemberExpressionÍ>XÍ>iNªIdentifierÍ>XÍ>\¤utilNªIdentifierÍ>]Í>i¬Base64HelperÂÂ£letc³VariableDeclarationÍ>~Í>í‘d²VariableDeclaratorÍ>‚Í>ìNªIdentifierÍ>‚Í>‹©base64str[°BinaryExpressionÍ>Í>ì[°BinaryExpressionÍ>Í>´[°BinaryExpressionÍ>Í>§Z§LiteralÍ>Í>›«data:image/­'data:image/'¡+NªIdentifierÍ>Í>§©typeValue¡+Z§LiteralÍ>ªÍ>´¨;base64,ª';base64,'¡+^®CallExpressionÍ>·Í>ìT°MemberExpressionÍ>·Í>ÔNªIdentifierÍ>·Í>Áªbase64HelpNªIdentifierÍ>ÂÍ>Ô²encodeToStringSyncÂÂ‘W­NewExpressionÍ>ÕÍ>ëNªIdentifierÍ>ÙÍ>ãªUint8Array‘NªIdentifierÍ>äÍ>ê¦bufferÂ£letU³ExpressionStatementÍ>ÿÍ?^®CallExpressionÍ>ÿÍ?NªIdentifierÍ>ÿÍ?	ªonComplete‘e°ObjectExpressionÍ?
+Í?“g¨PropertyÍ?!Í?2ÂÂÂNªIdentifierÍ?!Í?'¦sourceNªIdentifierÍ?)Í?2©base64str¤initg¨PropertyÍ?IÍ?VÂÂÂNªIdentifierÍ?IÍ?SªimageWidthZ§LiteralÍ?UÍ?V ¡0¤initg¨PropertyÍ?mÍ?{ÂÂÂNªIdentifierÍ?mÍ?x«imageHeightZ§LiteralÍ?zÍ?{ ¡0¤initÂX¯ReturnStatementÍ?¢Í?©ÀÀc³VariableDeclarationÍ?ÆÍ?ø‘d²VariableDeclaratorÍ?ÊÍ?÷NªIdentifierÍ?ÊÍ?Õ«imageSource^®CallExpressionÍ?ØÍ?÷T°MemberExpressionÍ?ØÍ?ïNªIdentifierÍ?ØÍ?İ¥imageNªIdentifierÍ?ŞÍ?ï±createImageSourceÂÂ‘NªIdentifierÍ?ğÍ?ö¦bufferÂ£letc³VariableDeclarationÍ@Í@N‘d²VariableDeclaratorÍ@
+Í@MNªIdentifierÍ@
+Í@¯decodingOptionse°ObjectExpressionÍ@Í@M‘g¨PropertyÍ@/Í@=ÂÂÂNªIdentifierÍ@/Í@7¨editableZ§LiteralÍ@9Í@=Ã¤true¤init£letU³ExpressionStatementÍ@\ÍBÆ^®CallExpressionÍ@\ÍBÅT°MemberExpressionÍ@\ÍB
+^®CallExpressionÍ@\ÍBT°MemberExpressionÍ@\ÍAf^®CallExpressionÍ@\ÍA`T°MemberExpressionÍ@\Í@^®CallExpressionÍ@\Í@‡T°MemberExpressionÍ@\Í@vNªIdentifierÍ@\Í@g«imageSourceNªIdentifierÍ@hÍ@v®createPixelMapÂÂ‘NªIdentifierÍ@wÍ@†¯decodingOptionsÂNªIdentifierÍ@šÍ@¤thenÂÂ‘Q·ArrowFunctionExpressionÍ@ŸÍA_ÀÂÂÂ‘NªIdentifierÍ@ Í@¨¨pixelmapO®BlockStatementÍ@­ÍA_‘U³ExpressionStatementÍ@ÀÍAP^®CallExpressionÍ@ÀÍAONªIdentifierÍ@ÀÍ@ÊªonComplete‘e°ObjectExpressionÍ@ËÍAN“g¨PropertyÍ@âÍ@òÂÂÂNªIdentifierÍ@âÍ@è¦sourceNªIdentifierÍ@êÍ@ò¨pixelmap¤initg¨PropertyÍA	ÍAÂÂÂNªIdentifierÍA	ÍAªimageWidthZ§LiteralÍAÍA ¡0¤initg¨PropertyÍA-ÍA;ÂÂÂNªIdentifierÍA-ÍA8«imageHeightZ§LiteralÍA:ÍA; ¡0¤initÂÂNªIdentifierÍAaÍAf¥catchÂÂ‘Q·ArrowFunctionExpressionÍAgÍBÀÂÂÂ‘NªIdentifierÍAhÍAk£errO®BlockStatementÍApÍB’U³ExpressionStatementÍAƒÍAÊ^®CallExpressionÍAƒÍAÉT°MemberExpressionÍAƒÍANªIdentifierÍAƒÍAŠ§LogUtilNªIdentifierÍA‹ÍA¥errorÂÂ‘`¯TemplateLiteralÍA‘ÍAÈ‘NªIdentifierÍAÃÍAÆ£err’a¯TemplateElementÍA’ÍAÁbÙ/readFileCache; imageSource.createPixelMap err: Ù/readFileCache; imageSource.createPixelMap err: Âa¯TemplateElementÍAÇÍAÇb  ÃÂU³ExpressionStatementÍAÜÍAò^®CallExpressionÍAÜÍAñNªIdentifierÍAÜÍAæªonComplete‘NªIdentifierÍAçÍAğ©undefinedÂÂNªIdentifierÍBÍB
+§finallyÂÂ‘Q·ArrowFunctionExpressionÍBÍBÄÀÂÂÂO®BlockStatementÍBÍBÄ‘U³ExpressionStatementÍB$ÍBµ^®CallExpressionÍB$ÍB´T°MemberExpressionÍB$ÍB?^®CallExpressionÍB$ÍB9T°MemberExpressionÍB$ÍB7NªIdentifierÍB$ÍB/«imageSourceNªIdentifierÍB0ÍB7§releaseÂÂÂNªIdentifierÍB:ÍB?¥catchÂÂ‘Q·ArrowFunctionExpressionÍB@ÍB³ÀÂÂÂ‘NªIdentifierÍBAÍBD£errO®BlockStatementÍBIÍB³‘U³ExpressionStatementÍB`ÍB ^®CallExpressionÍB`ÍBŸT°MemberExpressionÍB`ÍBmNªIdentifierÍB`ÍBg§LogUtilNªIdentifierÍBhÍBm¥errorÂÂ‘`¯TemplateLiteralÍBnÍB‘NªIdentifierÍB™ÍBœ£err’a¯TemplateElementÍBoÍB—bÙ(readFileCache; imageSource.release err: Ù(readFileCache; imageSource.release err: Âa¯TemplateElementÍBÍBb  ÃÂÂÂO®BlockStatementÍBàÍC‘U³ExpressionStatementÍBïÍC^®CallExpressionÍBïÍCNªIdentifierÍBïÍBùªonComplete‘NªIdentifierÍBúÍC©undefinedÂP°MethodDefinitionÍCÍIÁÂÂNªIdentifierÍCÍC.±readFileCacheSync¦methodQ²FunctionExpressionÍC.ÍIÁÀÂÂÂ‘NªIdentifierÍC/ÍC5¦optionO®BlockStatementÍC7ÍIÁ“c³VariableDeclarationÍCBÍC…‘d²VariableDeclaratorÍCFÍC„NªIdentifierÍCFÍCJ¤keys^®CallExpressionÍCMÍC„T°MemberExpressionÍCMÍCt^®CallExpressionÍCMÍCdT°MemberExpressionÍCMÍCbY®ThisExpressionÍCMÍCQNªIdentifierÍCRÍCb°getEngineKeyImplÂÂÂNªIdentifierÍCeÍCt¯generateFileKeyÂÂ‘T°MemberExpressionÍCuÍCƒNªIdentifierÍCuÍC{¦optionNªIdentifierÍC|ÍCƒ§loadSrcÂÂÂ£letc³VariableDeclarationÍCÍCÍ‘d²VariableDeclaratorÍC“ÍCÌNªIdentifierÍC“ÍC™¦buffer^®CallExpressionÍCœÍCÌT°MemberExpressionÍCœÍCÆ^®CallExpressionÍCœÍC´T°MemberExpressionÍCœÍC²NªIdentifierÍCœÍC¦ªImageKnifeNªIdentifierÍC§ÍC²«getInstanceÂÂÂNªIdentifierÍCµÍCÆ±loadFromFileCacheÂÂ‘NªIdentifierÍCÇÍCË¤keysÂ£letR«IfStatementÍC×ÍIº[°BinaryExpressionÍCÛÍCîNªIdentifierÍCÛÍCá¦buffer¢!=NªIdentifierÍCåÍCî©undefinedO®BlockStatementÍCğÍIŠ•c³VariableDeclarationÍCÿÍD%‘d²VariableDeclaratorÍDÍD$NªIdentifierÍDÍD¬fileTypeUtilW­NewExpressionÍDÍD$NªIdentifierÍDÍD"¬FileTypeUtil£letc³VariableDeclarationÍD3ÍDd‘d²VariableDeclaratorÍD7ÍDcNªIdentifierÍD7ÍD@©typeValue^®CallExpressionÍDCÍDcT°MemberExpressionÍDCÍD[NªIdentifierÍDCÍDO¬fileTypeUtilNªIdentifierÍDPÍD[«getFileTypeÂÂ‘NªIdentifierÍD\ÍDb¦bufferÂ£letR«IfStatementÍDrÍF[±LogicalExpressionÍDvÍD¡[°BinaryExpressionÍDvÍD‰NªIdentifierÍDvÍD©typeValue£===Z§LiteralÍD„ÍD‰£gif¥'gif'¢||[°BinaryExpressionÍDÍD¡NªIdentifierÍDÍD–©typeValue£===Z§LiteralÍD›ÍD¡¤webp¦'webp'O®BlockStatementÍD£ÍF“c³VariableDeclarationÍD¶ÍDß‘d²VariableDeclaratorÍDºÍDŞNªIdentifierÍDºÍDÄªbase64HelpW­NewExpressionÍDÇÍDŞT°MemberExpressionÍDËÍDÜNªIdentifierÍDËÍDÏ¤utilNªIdentifierÍDĞÍDÜ¬Base64HelperÂÂ£letc³VariableDeclarationÍDñÍE`‘d²VariableDeclaratorÍDõÍE_NªIdentifierÍDõÍDş©base64str[°BinaryExpressionÍEÍE_[°BinaryExpressionÍEÍE'[°BinaryExpressionÍEÍEZ§LiteralÍEÍE«data:image/­'data:image/'¡+NªIdentifierÍEÍE©typeValue¡+Z§LiteralÍEÍE'¨;base64,ª';base64,'¡+^®CallExpressionÍE*ÍE_T°MemberExpressionÍE*ÍEGNªIdentifierÍE*ÍE4ªbase64HelpNªIdentifierÍE5ÍEG²encodeToStringSyncÂÂ‘W­NewExpressionÍEHÍE^NªIdentifierÍELÍEVªUint8Array‘NªIdentifierÍEWÍE]¦bufferÂ£letX¯ReturnStatementÍErÍEşe°ObjectExpressionÍEyÍEı“g¨PropertyÍEÍE¡ÂÂÂNªIdentifierÍEÍE–¦sourceNªIdentifierÍE˜ÍE¡©base64str¤initg¨PropertyÍE¸ÍEÅÂÂÂNªIdentifierÍE¸ÍEÂªimageWidthZ§LiteralÍEÄÍEÅ ¡0¤initg¨PropertyÍEÜÍEêÂÂÂNªIdentifierÍEÜÍEç«imageHeightZ§LiteralÍEéÍEê ¡0¤initÀc³VariableDeclarationÍFÍFM‘d²VariableDeclaratorÍFÍFLNªIdentifierÍFÍF*«imageSource^®CallExpressionÍF-ÍFLT°MemberExpressionÍF-ÍFDNªIdentifierÍF-ÍF2¥imageNªIdentifierÍF3ÍFD±createImageSourceÂÂ‘NªIdentifierÍFEÍFK¦bufferÂ£let]¬TryStatementÍF[ÍIO®BlockStatementÍF_ÍH”c³VariableDeclarationÍFrÍFÃ‘d²VariableDeclaratorÍFvÍFÂNªIdentifierÍFvÍF…¯decodingOptionse°ObjectExpressionÍFˆÍFÂ‘g¨PropertyÍFŸÍF®ÂÂÂNªIdentifierÍFŸÍF§¨editableZ§LiteralÍF©ÍF®Â¥false¤init£letc³VariableDeclarationÍFÕÍG‘d²VariableDeclaratorÍFÙÍGNªIdentifierÍFÙÍFİ¤sizeT°MemberExpressionÍFàÍG^®CallExpressionÍFàÍFşT°MemberExpressionÍFàÍFüNªIdentifierÍFàÍFë«imageSourceNªIdentifierÍFìÍFü°getImageInfoSyncÂÂÂNªIdentifierÍFÿÍG¤sizeÂÂ£letc³VariableDeclarationÍGÍGR‘d²VariableDeclaratorÍGÍGQNªIdentifierÍGÍG¥pixel^®CallExpressionÍG"ÍGQT°MemberExpressionÍG"ÍG@NªIdentifierÍG"ÍG-«imageSourceNªIdentifierÍG.ÍG@²createPixelMapSyncÂÂ‘NªIdentifierÍGAÍGP¯decodingOptionsÂ£letX¯ReturnStatementÍGdÍGÿe°ObjectExpressionÍGkÍGş“g¨PropertyÍG‚ÍGÂÂÂNªIdentifierÍG‚ÍGˆ¦sourceNªIdentifierÍGŠÍG¥pixel¤initg¨PropertyÍG¦ÍG¼ÂÂÂNªIdentifierÍG¦ÍG°ªimageWidthT°MemberExpressionÍG²ÍG¼NªIdentifierÍG²ÍG¶¤sizeNªIdentifierÍG·ÍG¼¥widthÂÂ¤initg¨PropertyÍGÓÍGëÂÂÂNªIdentifierÍGÓÍGŞ«imageHeightT°MemberExpressionÍGàÍGëNªIdentifierÍGàÍGä¤sizeNªIdentifierÍGåÍGë¦heightÂÂ¤init_«CatchClauseÍHÍH²NªIdentifierÍH#ÍH&£errO®BlockStatementÍH(ÍH²’U³ExpressionStatementÍH;ÍHŠ^®CallExpressionÍH;ÍH‰T°MemberExpressionÍH;ÍHHNªIdentifierÍH;ÍHB§LogUtilNªIdentifierÍHCÍHH¥errorÂÂ‘`¯TemplateLiteralÍHIÍHˆ‘NªIdentifierÍHƒÍH†£err’a¯TemplateElementÍHJÍHbÙ7readFileCacheSync; imageSource.createPixelMapSync err: Ù7readFileCacheSync; imageSource.createPixelMapSync err: Âa¯TemplateElementÍH‡ÍH‡b  ÃÂX¯ReturnStatementÍHœÍH£ÀO®BlockStatementÍHÈÍI‘U³ExpressionStatementÍHÛÍIp^®CallExpressionÍHÛÍIoT°MemberExpressionÍHÛÍHö^®CallExpressionÍHÛÍHğT°MemberExpressionÍHÛÍHîNªIdentifierÍHÛÍHæ«imageSourceNªIdentifierÍHçÍHî§releaseÂÂÂNªIdentifierÍHñÍHö¥catchÂÂ‘Q·ArrowFunctionExpressionÍH÷ÍInÀÂÂÂ‘NªIdentifierÍHøÍHû£errO®BlockStatementÍI ÍIn‘U³ExpressionStatementÍIÍI[^®CallExpressionÍIÍIZT°MemberExpressionÍIÍI$NªIdentifierÍIÍI§LogUtilNªIdentifierÍIÍI$¥errorÂÂ‘`¯TemplateLiteralÍI%ÍIY‘NªIdentifierÍITÍIW£err’a¯TemplateElementÍI&ÍIRbÙ,readFileCacheSync; imageSource.release err: Ù,readFileCacheSync; imageSource.release err: Âa¯TemplateElementÍIXÍIXb  ÃÂÂO®BlockStatementÍI™ÍIº‘X¯ReturnStatementÍI¨ÍI¯ÀP°MethodDefinitionÍIÇÍJ4ÂÂNªIdentifierÍIÇÍIÛ´saveWithoutWriteFile¦methodQ²FunctionExpressionÍIÛÍJ4ÀÂÂÂ’NªIdentifierÍIÜÍIß£keyNªIdentifierÍIáÍIëªbufferSizeO®BlockStatementÍIíÍJ4‘U³ExpressionStatementÍIøÍJ-U¯ChainExpressionÍIøÍJ,^®CallExpressionÍIøÍJ,T°MemberExpressionÍIøÍJT°MemberExpressionÍIøÍJY®ThisExpressionÍIøÍIüNªIdentifierÍIıÍJ©fileCacheÂÂNªIdentifierÍJÍJ³putWithoutWriteFileÂÃ’NªIdentifierÍJÍJ£keyNªIdentifierÍJ!ÍJ+ªbufferSizeÂP°MethodDefinitionÍJ:ÍKÂÂNªIdentifierÍJ:ÍJOµsaveFileCacheOnlyFile¦methodQ²FunctionExpressionÍJOÍKÀÂÂÂ“NªIdentifierÍJPÍJW§contextNªIdentifierÍJYÍJ\£keyNªIdentifierÍJ^ÍJc¥valueO®BlockStatementÍJeÍK’R«IfStatementÍJpÍJè[°BinaryExpressionÍJtÍJT°MemberExpressionÍJtÍJ‚Y®ThisExpressionÍJtÍJxNªIdentifierÍJyÍJ‚©fileCacheÂÂ£!==NªIdentifierÍJ‡ÍJ©undefinedO®BlockStatementÍJ’ÍJè‘X¯ReturnStatementÍJ¡ÍJİ^®CallExpressionÍJ¨ÍJÜT°MemberExpressionÍJ¨ÍJÇNªIdentifierÍJ¨ÍJ±©FileCacheNªIdentifierÍJ²ÍJÇµsaveFileCacheOnlyFileÂÂ“NªIdentifierÍJÈÍJÏ§contextNªIdentifierÍJÑÍJÔ£keyNªIdentifierÍJÖÍJÛ¥valueÂÀX¯ReturnStatementÍJòÍJÿZ§LiteralÍJùÍJşÂ¥falseP°MethodDefinitionÍKÍLxÂÂNªIdentifierÍKÍK§execute¦methodQ²FunctionExpressionÍKÍLxÀÂÂÃ‘NªIdentifierÍKÍK!§requestO®BlockStatementÍK#ÍLx”U³ExpressionStatementÍK.ÍKƒ^®CallExpressionÍK.ÍK‚T°MemberExpressionÍK.ÍK9NªIdentifierÍK.ÍK5§LogUtilNªIdentifierÍK6ÍK9£logÂÂ‘[°BinaryExpressionÍK:ÍKZ§LiteralÍK:ÍK^Ù"ImageKnife_DataTime_execute.start:Ù$'ImageKnife_DataTime_execute.start:'¡+T°MemberExpressionÍKaÍKT°MemberExpressionÍKaÍKyNªIdentifierÍKaÍKh§requestNªIdentifierÍKiÍKy°imageKnifeOptionÂÂNªIdentifierÍKzÍK§loadSrcÂÂÂR«IfStatementÍKÍKé[°BinaryExpressionÍK‘ÍK¨T°MemberExpressionÍK‘ÍK¤T°MemberExpressionÍK‘ÍKŸY®ThisExpressionÍK‘ÍK•NªIdentifierÍK–ÍKŸ©headerMapÂÂNªIdentifierÍK ÍK¤¤sizeÂÂ¡>Z§LiteralÍK§ÍK¨ ¡0O®BlockStatementÍKªÍKé‘U³ExpressionStatementÍK¹ÍKŞ^®CallExpressionÍK¹ÍKİT°MemberExpressionÍK¹ÍKÍNªIdentifierÍK¹ÍKÀ§requestNªIdentifierÍKÁÍKÍ¬addHeaderMapÂÂ‘T°MemberExpressionÍKÎÍKÜY®ThisExpressionÍKÎÍKÒNªIdentifierÍKÓÍKÜ©headerMapÂÂÂÀU³ExpressionStatementÍKóÍL^®CallExpressionÍKóÍLT°MemberExpressionÍKóÍL
+T°MemberExpressionÍKóÍLY®ThisExpressionÍKóÍK÷NªIdentifierÍKøÍLªdispatcherÂÂNªIdentifierÍLÍL
+§enqueueÂÂ‘NªIdentifierÍLÍL§requestÂU³ExpressionStatementÍLÍLq^®CallExpressionÍLÍLpT°MemberExpressionÍLÍL)NªIdentifierÍLÍL%§LogUtilNªIdentifierÍL&ÍL)£logÂÂ‘[°BinaryExpressionÍL*ÍLoZ§LiteralÍL*ÍLLÙ ImageKnife_DataTime_execute.end:Ù"'ImageKnife_DataTime_execute.end:'¡+T°MemberExpressionÍLOÍLoT°MemberExpressionÍLOÍLgNªIdentifierÍLOÍLV§requestNªIdentifierÍLWÍLg°imageKnifeOptionÂÂNªIdentifierÍLhÍLo§loadSrcÂÂÂP°MethodDefinitionÍL~ÍLÎÂÂNªIdentifierÍL~ÍL°setEngineKeyImpl¦methodQ²FunctionExpressionÍLÍLÎÀÂÂÂ‘NªIdentifierÍLÍL“¤implO®BlockStatementÍL•ÍLÎ‘U³ExpressionStatementÍL ÍLÇ^®CallExpressionÍL ÍLÆT°MemberExpressionÍL ÍLÀT°MemberExpressionÍL ÍL¯Y®ThisExpressionÍL ÍL¤NªIdentifierÍL¥ÍL¯ªdispatcherÂÂNªIdentifierÍL°ÍLÀ°setEngineKeyImplÂÂ‘NªIdentifierÍLÁÍLÅ¤implÂP°MethodDefinitionÍLÔÍM#ÂÂNªIdentifierÍLÔÍLä°getEngineKeyImpl¦methodQ²FunctionExpressionÍLäÍM#ÀÂÂÂO®BlockStatementÍLçÍM#‘X¯ReturnStatementÍLòÍM^®CallExpressionÍLùÍMT°MemberExpressionÍLùÍMT°MemberExpressionÍLùÍMY®ThisExpressionÍLùÍLıNªIdentifierÍLşÍMªdispatcherÂÂNªIdentifierÍM	ÍM°getEngineKeyImplÂÂÂP°MethodDefinitionÍMsÍMÌÂÂNªIdentifierÍMsÍM„±setCustomGetImage¦methodQ²FunctionExpressionÍM„ÍMÌÀÂÂÂ‘NªIdentifierÍM…ÍM“®customGetImageO®BlockStatementÍM•ÍMÌ‘U³ExpressionStatementÍM ÍMÅV´AssignmentExpressionÍM ÍMÄ¡=T°MemberExpressionÍM ÍM³Y®ThisExpressionÍM ÍM¤NªIdentifierÍM¥ÍM³®customGetImageÂÂNªIdentifierÍM¶ÍMÄ®customGetImageP°MethodDefinitionÍMÒÍNÂÂNªIdentifierÍMÒÍMã±getCustomGetImage¦methodQ²FunctionExpressionÍMãÍNÀÂÂÂO®BlockStatementÍMæÍN‘X¯ReturnStatementÍMñÍNT°MemberExpressionÍMøÍNY®ThisExpressionÍMøÍMüNªIdentifierÍMıÍN®customGetImageÂÂP°MethodDefinitionÍO
+ÍOeÂÂNªIdentifierÍO
+ÍO!·setJpegOptimizeDecoding¦methodQ²FunctionExpressionÍO!ÍOeÀÂÂÂ‘NªIdentifierÍO"ÍO(¦enableO®BlockStatementÍO*ÍOe‘U³ExpressionStatementÍO5ÍO^V´AssignmentExpressionÍO5ÍO]¡=T°MemberExpressionÍO5ÍOTY®ThisExpressionÍO5ÍO9NªIdentifierÍO:ÍOTºenableJpegOptimizeDecodingÂÂNªIdentifierÍOWÍO]¦enableP°MethodDefinitionÍOÇÍPÂÂNªIdentifierÍOÇÍOŞ·getJpegOptimizeDecoding¦methodQ²FunctionExpressionÍOŞÍPÀÂÂÂO®BlockStatementÍOáÍP‘X¯ReturnStatementÍOìÍPT°MemberExpressionÍOóÍPY®ThisExpressionÍOóÍO÷NªIdentifierÍOøÍPºenableJpegOptimizeDecodingÂÂÀ›Ôrk•¤type¥start£endªspecifiers¦source±ImportDeclarationÍnÍÄ’Ôrl•¤type¥start£end¨imported¥local¯ImportSpecifierÍwÍˆNªIdentifierÍwÍˆ±ImageKnifeRequestNªIdentifierÍwÍˆ±ImageKnifeRequestl¯ImportSpecifierÍŠÍ NªIdentifierÍŠÍ ¶ImageKnifeRequestStateNªIdentifierÍŠÍ ¶ImageKnifeRequestStateZ§LiteralÍ¨ÍÃ¹./model/ImageKnifeRequest»'./model/ImageKnifeRequest'k±ImportDeclarationÍÆÍ’l¯ImportSpecifierÍÏÍÜNªIdentifierÍÏÍÜ­CacheStrategyNªIdentifierÍÏÍÜ­CacheStrategyl¯ImportSpecifierÍŞÍõNªIdentifierÍŞÍõ·ImageKnifeRequestSourceNªIdentifierÍŞÍõ·ImageKnifeRequestSourceZ§LiteralÍıÍ¶./model/ImageKnifeData¸'./model/ImageKnifeData'k±ImportDeclarationÍÍP‘l¯ImportSpecifierÍ!Í/NªIdentifierÍ!Í/®MemoryLruCacheNªIdentifierÍ!Í/®MemoryLruCacheZ§LiteralÍ7ÍO¶./cache/MemoryLruCache¸'./cache/MemoryLruCache'k±ImportDeclarationÍRÍ€‘l¯ImportSpecifierÍ[ÍdNªIdentifierÍ[Íd©FileCacheNªIdentifierÍ[Íd©FileCacheZ§LiteralÍlÍ±./cache/FileCache³'./cache/FileCache'k±ImportDeclarationÍ‚ÍÀ‘l¯ImportSpecifierÍ‹ÍŸNªIdentifierÍ‹ÍŸ´ImageKnifeDispatcherNªIdentifierÍ‹ÍŸ´ImageKnifeDispatcherZ§LiteralÍ§Í¿¶./ImageKnifeDispatcher¸'./ImageKnifeDispatcher'k±ImportDeclarationÍÂÍş‘l¯ImportSpecifierÍËÍÛNªIdentifierÍËÍÛ°ImageKnifeOptionNªIdentifierÍËÍÛ°ImageKnifeOptionZ§LiteralÍãÍı¸./model/ImageKnifeOptionº'./model/ImageKnifeOption'k±ImportDeclarationÍ Í4‘l¯ImportSpecifierÍ	ÍNªIdentifierÍ	Í¬FileTypeUtilNªIdentifierÍ	Í¬FileTypeUtilZ§LiteralÍÍ3´./utils/FileTypeUtil¶'./utils/FileTypeUtil'k±ImportDeclarationÍ6ÍT‘Ôrm”¤type¥start£end¥local¶ImportDefaultSpecifierÍ=ÍANªIdentifierÍ=ÍA¤utilZ§LiteralÍGÍSª@ohos.util¬"@ohos.util"k±ImportDeclarationÍVÍ‘m¶ImportDefaultSpecifierÍ]ÍbNªIdentifierÍ]Íb¥imageZ§LiteralÍhÍ€¶@ohos.multimedia.image¸"@ohos.multimedia.image"k±ImportDeclarationÍƒÍ­‘l¯ImportSpecifierÍŒÍ“NªIdentifierÍŒÍ“§LogUtilNªIdentifierÍŒÍ“§LogUtilZ§LiteralÍ›Í¬¯./utils/LogUtil±'./utils/LogUtil'k±ImportDeclarationÍ¯ÍÚ‘m¶ImportDefaultSpecifierÍ¶Í½NªIdentifierÍ¶Í½§emitterZ§LiteralÍÃÍÙ´@ohos.events.emitter¶"@ohos.events.emitter"

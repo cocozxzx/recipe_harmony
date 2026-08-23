@@ -1,0 +1,669 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚ<pif (!("finalizeConstruction" in ViewPU.prototype)) {
+    Reflect.set(ViewPU.prototype, "finalizeConstruction", () => { });
+}
+import { ImageKnifeRequest, ImageKnifeRequestState } from '../model/ImageKnifeRequest';
+import { ImageKnife } from '../ImageKnife';
+import { LogUtil } from '../utils/LogUtil';
+import { ImageKnifeRequestSource } from '../model/ImageKnifeData';
+import { DefaultEngineKey } from '../key/DefaultEngineKey';
+import emitter from "@ohos.events.emitter";
+import taskpool from "@ohos.taskpool";
+export class ImageKnifeComponent extends ViewPU {
+    constructor(parent, params, __localStorage, elmtId = -1, paramsLambda = undefined, extraInfo) {
+        super(parent, __localStorage, elmtId, extraInfo);
+        if (typeof paramsLambda === "function") {
+            this.paramsGenerator_ = paramsLambda;
+        }
+        this.__imageKnifeOption = new SynchedPropertyNesedObjectPU(params.imageKnifeOption, this, "imageKnifeOption");
+        this.__pixelMap = new ObservedPropertyObjectPU(ImageContent.EMPTY, this, "pixelMap");
+        this.__syncLoad = new ObservedPropertySimplePU(false, this, "syncLoad");
+        this.__adaptiveWidth = new ObservedPropertyObjectPU('100%', this, "adaptiveWidth");
+        this.__adaptiveHeight = new ObservedPropertyObjectPU('100%', this, "adaptiveHeight");
+        this.__objectFit = new ObservedPropertySimplePU(ImageFit.Contain, this, "objectFit");
+        this.componentId = 0;
+        this.request = undefined;
+        this.lastWidth = 0;
+        this.lastHeight = 0;
+        this.currentWidth = 0;
+        this.isImageFitAutoResize = false;
+        this.currentHeight = 0;
+        this.componentVersion = 0;
+        this.currentContext = undefined;
+        this.lastOption = undefined;
+        this.setInitiallyProvidedValue(params);
+        this.declareWatch("imageKnifeOption", this.watchImageKnifeOption);
+        this.finalizeConstruction();
+    }
+    setInitiallyProvidedValue(params) {
+        this.__imageKnifeOption.set(params.imageKnifeOption);
+        if (params.pixelMap !== undefined) {
+            this.pixelMap = params.pixelMap;
+        }
+        if (params.syncLoad !== undefined) {
+            this.syncLoad = params.syncLoad;
+        }
+        if (params.adaptiveWidth !== undefined) {
+            this.adaptiveWidth = params.adaptiveWidth;
+        }
+        if (params.adaptiveHeight !== undefined) {
+            this.adaptiveHeight = params.adaptiveHeight;
+        }
+        if (params.objectFit !== undefined) {
+            this.objectFit = params.objectFit;
+        }
+        if (params.componentId !== undefined) {
+            this.componentId = params.componentId;
+        }
+        if (params.request !== undefined) {
+            this.request = params.request;
+        }
+        if (params.lastWidth !== undefined) {
+            this.lastWidth = params.lastWidth;
+        }
+        if (params.lastHeight !== undefined) {
+            this.lastHeight = params.lastHeight;
+        }
+        if (params.currentWidth !== undefined) {
+            this.currentWidth = params.currentWidth;
+        }
+        if (params.isImageFitAutoResize !== undefined) {
+            this.isImageFitAutoResize = params.isImageFitAutoResize;
+        }
+        if (params.currentHeight !== undefined) {
+            this.currentHeight = params.currentHeight;
+        }
+        if (params.componentVersion !== undefined) {
+            this.componentVersion = params.componentVersion;
+        }
+        if (params.currentContext !== undefined) {
+            this.currentContext = params.currentContext;
+        }
+        if (params.lastOption !== undefined) {
+            this.lastOption = params.lastOption;
+        }
+    }
+    updateStateVars(params) {
+        this.__imageKnifeOption.set(params.imageKnifeOption);
+    }
+    purgeVariableDependenciesOnElmtId(rmElmtId) {
+        this.__imageKnifeOption.purgeDependencyOnElmtId(rmElmtId);
+        this.__pixelMap.purgeDependencyOnElmtId(rmElmtId);
+        this.__syncLoad.purgeDependencyOnElmtId(rmElmtId);
+        this.__adaptiveWidth.purgeDependencyOnElmtId(rmElmtId);
+        this.__adaptiveHeight.purgeDependencyOnElmtId(rmElmtId);
+        this.__objectFit.purgeDependencyOnElmtId(rmElmtId);
+    }
+    aboutToBeDeleted() {
+        this.__imageKnifeOption.aboutToBeDeleted();
+        this.__pixelMap.aboutToBeDeleted();
+        this.__syncLoad.aboutToBeDeleted();
+        this.__adaptiveWidth.aboutToBeDeleted();
+        this.__adaptiveHeight.aboutToBeDeleted();
+        this.__objectFit.aboutToBeDeleted();
+        SubscriberManager.Get().delete(this.id__());
+        this.aboutToBeDeletedInternal();
+    }
+    get imageKnifeOption() {
+        return this.__imageKnifeOption.get();
+    }
+    get pixelMap() {
+        return this.__pixelMap.get();
+    }
+    set pixelMap(newValue) {
+        this.__pixelMap.set(newValue);
+    }
+    get syncLoad() {
+        return this.__syncLoad.get();
+    }
+    set syncLoad(newValue) {
+        this.__syncLoad.set(newValue);
+    }
+    get adaptiveWidth() {
+        return this.__adaptiveWidth.get();
+    }
+    set adaptiveWidth(newValue) {
+        this.__adaptiveWidth.set(newValue);
+    }
+    get adaptiveHeight() {
+        return this.__adaptiveHeight.get();
+    }
+    set adaptiveHeight(newValue) {
+        this.__adaptiveHeight.set(newValue);
+    }
+    get objectFit() {
+        return this.__objectFit.get();
+    }
+    set objectFit(newValue) {
+        this.__objectFit.set(newValue);
+    }
+    getChangeValue() {
+        if (typeof this.imageKnifeOption.loadSrc?.isEditable === 'boolean') {
+            return;
+        }
+        return `${JSON.stringify(this.imageKnifeOption.loadSrc)},${this.imageKnifeOption.signature},
+            ${this.imageKnifeOption.downsampleOf},${JSON.stringify(this.imageKnifeOption.transformation)},
+            ${JSON.stringify(this.imageKnifeOption.dynamicRangeMode)}`;
+    }
+    aboutToAppear() {
+        if (typeof this.imageKnifeOption.loadSrc?.isEditable === 'boolean') {
+            this.pixelMap = this.imageKnifeOption.loadSrc;
+            return;
+        }
+        this.lastOption = this.getChangeValue();
+        this.objectFit =
+            this.imageKnifeOption.placeholderObjectFit ?? (this.imageKnifeOption.objectFit ?? ImageFit.Contain);
+        this.adaptiveHeight = this.objectFit === ImageFit.Auto ? undefined : this.adaptiveHeight;
+        this.componentId = this.getUniqueId();
+        if (this.syncLoad) { //é’ˆå¯¹éƒ¨åˆ†æ¶ˆæ¯åˆ—è¡¨æœ€æ–°æ¶ˆæ¯çš„å›¾ç‰‡é—ªåŠ¨é—®é¢˜ï¼Œå»ºè®®ä½¿ç”¨åŒæ­¥æ–¹å¼åœ¨aboutToAppearæ—¶åŠ è½½å›¾ç‰‡
+            let engineKey = new DefaultEngineKey();
+            let memoryCacheSrc = ImageKnife.getInstance()
+                .loadFromMemoryCache(engineKey.generateMemoryKey(this.imageKnifeOption.loadSrc, ImageKnifeRequestSource.SRC, this.imageKnifeOption));
+            if (memoryCacheSrc !== undefined) {
+                LogUtil.log('aboutToAppear success load loadSrc from memory cache for loadSrc = ' + this.imageKnifeOption.loadSrc);
+                this.pixelMap = memoryCacheSrc.source;
+            }
+            else {
+                LogUtil.log('aboutToAppear fail load loadSrc from memory cache for loadSrc = ' + this.imageKnifeOption.loadSrc);
+                if (this.imageKnifeOption.placeholderSrc !== undefined) {
+                    let memoryCachePlace = ImageKnife.getInstance()
+                        .loadFromMemoryCache(engineKey.generateMemoryKey(this.imageKnifeOption.placeholderSrc, ImageKnifeRequestSource.PLACE_HOLDER, this.imageKnifeOption));
+                    if (memoryCachePlace !== undefined) {
+                        LogUtil.log('aboutToAppear success load placeholderSrc from memory cache for placeholderSrc = ' + this.imageKnifeOption.placeholderSrc);
+                        this.pixelMap = memoryCachePlace.source;
+                    }
+                    else {
+                        LogUtil.log('aboutToAppear fail load placeholderSrc from memory cache for placeholderSrc = ' + this.imageKnifeOption.placeholderSrc);
+                    }
+                }
+            }
+        }
+    }
+    aboutToDisappear() {
+        this.emitterDestroy();
+        this.clearLastRequest();
+    }
+    aboutToRecycle() {
+        this.pixelMap = ImageContent.EMPTY;
+        this.emitterDestroy();
+        this.clearLastRequest();
+    }
+    emitterDestroy() {
+        if (typeof this.request?.imageKnifeOption.loadSrc === 'string' && !this.request?.drawMainSuccess) {
+            emitter.emit(this.request.imageKnifeOption.loadSrc + this.componentId);
+        }
+    }
+    /**
+     * å¯¹å·²DESTROYçš„ç»„ä»¶ä¸å†å‘èµ·è¯·æ±‚
+     */
+    clearLastRequest() {
+        if (this.request !== undefined) {
+            this.request.requestState = ImageKnifeRequestState.DESTROY;
+            if (this.request.taskRequest !== undefined && !this.request.taskRequest.isDone()) {
+                try {
+                    taskpool.cancel(this.request.taskRequest);
+                }
+                catch (error) {
+                    LogUtil.error(`ImageKnifeComponent; clearLastRequest error: ${error}`);
+                }
+            }
+            this.request.destroy();
+            this.request = undefined;
+        }
+    }
+    initialRender() {
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Image.create(this.pixelMap);
+            Image.debugLine("oh_modules/.ohpm/@ohos+imageknife@3.2.10/oh_modules/@ohos/imageknife/src/main/ets/components/ImageKnifeComponent.ets(120:5)", "@ohos/imageknife");
+            Image.dynamicRangeMode(this.imageKnifeOption.dynamicRangeMode);
+            Image.colorFilter(this.imageKnifeOption.drawingColorFilter);
+            Image.objectFit(this.objectFit);
+            Image.width(ObservedObject.GetRawObject(this.adaptiveWidth));
+            Image.height(ObservedObject.GetRawObject(this.adaptiveHeight));
+            Image.border(this.imageKnifeOption.border);
+            Image.syncLoad(this.syncLoad);
+            Image.draggable(false);
+            Image.onComplete(this.imageKnifeOption.onComplete);
+            Image.onSizeChange((oldValue, newValue) => {
+                this.currentWidth = newValue.width;
+                this.currentHeight = newValue.height;
+                this.lastWidth = oldValue.width;
+                this.lastHeight = oldValue.height;
+                if (this.currentWidth <= 0 || (this.objectFit !== ImageFit.Auto && this.currentHeight <= 0)) {
+                    // å­˜åœ¨å®½æˆ–è€…é«˜ä¸º0,æ­¤æ¬¡é‡å›æ— æ„ä¹‰,æ— éœ€è¿›è¡Œrequestè¯·æ±‚
+                }
+                else {
+                    // å‰æï¼šå®½é«˜å€¼å‡æœ‰æ•ˆ,å€¼>0. æ¡ä»¶1ï¼šå½“å‰å®½é«˜ä¸ä¸Šä¸€æ¬¡å®½é«˜ä¸åŒ  æ¡ä»¶2:å½“å‰æ˜¯ç¬¬ä¸€æ¬¡ç»˜åˆ¶
+                    if (this.currentHeight != this.lastHeight || this.currentWidth != this.lastWidth) {
+                        LogUtil.log('onSizeChange execute request:width=' + this.currentWidth + ' height= ' + this.currentHeight +
+                            ' loadSrc = ' + this.imageKnifeOption.loadSrc +
+                            ' placeholderSrc = ' + this.imageKnifeOption.placeholderSrc +
+                            ' errorholderSrc = ' + this.imageKnifeOption.errorholderSrc +
+                            ' componentId = ' + this.componentId);
+                        if (this.objectFit === ImageFit.Auto && this.isImageFitAutoResize) {
+                            this.isImageFitAutoResize = false;
+                        }
+                        else {
+                            ImageKnife.getInstance().execute(this.getRequest(this.currentWidth, this.currentHeight, this.componentId));
+                        }
+                    }
+                }
+            });
+        }, Image);
+    }
+    watchImageKnifeOption() {
+        if (this.lastOption !== undefined && this.lastOption === this.getChangeValue() && this.pixelMap !== ImageContent.EMPTY) {
+            return;
+        }
+        this.lastOption = this.getChangeValue();
+        this.clearLastRequest();
+        this.componentVersion++;
+        this.isImageFitAutoResize = false;
+        this.objectFit = this.imageKnifeOption.objectFit === undefined ? ImageFit.Contain : this.imageKnifeOption.objectFit;
+        LogUtil.log('watchImageKnifeOption execute request:width=' + this.currentWidth + ' height= ' + this.currentHeight +
+            ' loadSrc = ' + this.imageKnifeOption.loadSrc +
+            ' placeholderSrc = ' + this.imageKnifeOption.placeholderSrc +
+            ' errorholderSrc = ' + this.imageKnifeOption.errorholderSrc +
+            ' componentId = ' + this.componentId);
+        ImageKnife.getInstance().execute(this.getRequest(this.currentWidth, this.currentHeight, this.componentId));
+    }
+    getCurrentContext() {
+        if (this.currentContext == undefined) {
+            this.currentContext = this.getUIContext().getHostContext();
+        }
+        return this.currentContext;
+    }
+    getRequest(width, height, componentId) {
+        this.request = new ImageKnifeRequest(this.imageKnifeOption, this.imageKnifeOption.context !== undefined ? this.imageKnifeOption.context : this.getCurrentContext(), this.getUIContext().vp2px(width), this.getUIContext().vp2px(height), this.componentVersion, {
+            showPixelMap: (version, pixelMap, requestSource, size) => {
+                if (version !== this.componentVersion) {
+                    return; //é’ˆå¯¹reuseåœºæ™¯ï¼Œä¸æ˜¾ç¤ºå†å²å›¾ç‰‡
+                }
+                this.pixelMap = pixelMap;
+                LogUtil.info('image load showPixelMap:' + this.request?.componentId + ',srcType:' + requestSource +
+                    ',version:' + this.request?.componentVersion +
+                    ',size:' + JSON.stringify(size));
+                if ((this.imageKnifeOption.objectFit === ImageFit.Auto ||
+                    this.imageKnifeOption.placeholderObjectFit === ImageFit.Auto ||
+                    this.imageKnifeOption.errorholderObjectFit === ImageFit.Auto) && this.isImageFitAutoResize == false) {
+                    this.isImageFitAutoResize = true;
+                }
+                if (requestSource == ImageKnifeRequestSource.SRC) {
+                    this.objectFit =
+                        this.imageKnifeOption.objectFit ?? ImageFit.Contain;
+                    this.adaptiveHeight = this.objectFit === ImageFit.Auto ? undefined : '100%';
+                }
+                else if (requestSource == ImageKnifeRequestSource.PLACE_HOLDER) {
+                    this.objectFit =
+                        this.imageKnifeOption.placeholderObjectFit ?? (this.imageKnifeOption.objectFit ?? ImageFit.Contain);
+                    this.adaptiveHeight = this.objectFit === ImageFit.Auto ? undefined : '100%';
+                }
+                else {
+                    this.objectFit =
+                        this.imageKnifeOption.errorholderObjectFit ?? (this.imageKnifeOption.objectFit ?? ImageFit.Contain);
+                    this.adaptiveHeight = this.objectFit === ImageFit.Auto ? undefined : '100%';
+                }
+            }
+        }, componentId);
+        return this.request;
+    }
+    rerender() {
+        this.updateDirtyElements();
+    }
+}
+//# sourceMappingURL=ImageKnifeComponent.js.mapÂ—Ù“C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeRequest.etsÙ†C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnife.etsÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\key\DefaultEngineKey.etsÙ` hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.events.emitter.d.tsÙZ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.taskpool.d.tsÙšC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\components\ImageKnifeComponent.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚ)Ú/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { ImageKnifeOption } from '../model/ImageKnifeOption';
+import { ImageKnifeRequest, ImageKnifeRequestState } from '../model/ImageKnifeRequest';
+import common from '@ohos.app.ability.common';
+import { ImageKnife } from '../ImageKnife';
+import { LogUtil } from '../utils/LogUtil';
+import { ImageKnifeData, ImageKnifeRequestSource } from '../model/ImageKnifeData';
+import { IEngineKey } from '../key/IEngineKey';
+import { DefaultEngineKey } from '../key/DefaultEngineKey';
+import { emitter } from '@kit.BasicServicesKit';
+import { taskpool } from '@kit.ArkTS';
+
+@Component
+export struct ImageKnifeComponent {
+  @Watch('watchImageKnifeOption') @ObjectLink imageKnifeOption: ImageKnifeOption;
+  @State pixelMap: PixelMap | string | Resource | ImageContent | undefined = ImageContent.EMPTY
+  @State syncLoad: boolean = false
+  @State adaptiveWidth: Length = '100%'
+  @State adaptiveHeight: Length | undefined = '100%'
+  @State objectFit: ImageFit = ImageFit.Contain
+  private componentId: number = 0
+  private request: ImageKnifeRequest | undefined
+  private lastWidth: number = 0
+  private lastHeight: number = 0
+  private currentWidth: number = 0
+  private isImageFitAutoResize: boolean = false
+  private currentHeight: number = 0
+  private componentVersion: number = 0
+  private currentContext: common.UIAbilityContext | undefined = undefined
+  private lastOption?: string
+  
+  getChangeValue() {
+    if (typeof (this.imageKnifeOption.loadSrc as PixelMap)?.isEditable === 'boolean') {
+      return
+    }
+    return `${JSON.stringify(this.imageKnifeOption.loadSrc)},${this.imageKnifeOption.signature},
+            ${this.imageKnifeOption.downsampleOf},${JSON.stringify(this.imageKnifeOption.transformation)},
+            ${JSON.stringify(this.imageKnifeOption.dynamicRangeMode)}`
+  }
+  aboutToAppear(): void {
+    if (typeof (this.imageKnifeOption.loadSrc as PixelMap)?.isEditable === 'boolean') {
+      this.pixelMap = this.imageKnifeOption.loadSrc
+      return
+    }
+    this.lastOption = this.getChangeValue()
+    this.objectFit =
+      this.imageKnifeOption.placeholderObjectFit ?? (this.imageKnifeOption.objectFit ?? ImageFit.Contain)
+    this.adaptiveHeight = this.objectFit === ImageFit.Auto ? undefined : this.adaptiveHeight
+    this.componentId = this.getUniqueId()
+    if(this.syncLoad) { //é’ˆå¯¹éƒ¨åˆ†æ¶ˆæ¯åˆ—è¡¨æœ€æ–°æ¶ˆæ¯çš„å›¾ç‰‡é—ªåŠ¨é—®é¢˜ï¼Œå»ºè®®ä½¿ç”¨åŒæ­¥æ–¹å¼åœ¨aboutToAppearæ—¶åŠ è½½å›¾ç‰‡
+      let engineKey: IEngineKey = new DefaultEngineKey();
+      let memoryCacheSrc: ImageKnifeData | undefined = ImageKnife.getInstance()
+        .loadFromMemoryCache(engineKey.generateMemoryKey(this.imageKnifeOption.loadSrc,ImageKnifeRequestSource.SRC,this.imageKnifeOption))
+      if (memoryCacheSrc !== undefined){
+        LogUtil.log('aboutToAppear success load loadSrc from memory cache for loadSrc = '+ this.imageKnifeOption.loadSrc)
+        this.pixelMap = memoryCacheSrc.source;
+      }else{
+        LogUtil.log('aboutToAppear fail load loadSrc from memory cache for loadSrc = '+ this.imageKnifeOption.loadSrc)
+        if (this.imageKnifeOption.placeholderSrc !== undefined){
+          let memoryCachePlace: ImageKnifeData | undefined = ImageKnife.getInstance()
+            .loadFromMemoryCache(engineKey.generateMemoryKey(this.imageKnifeOption.placeholderSrc!,ImageKnifeRequestSource.PLACE_HOLDER,this.imageKnifeOption))
+          if (memoryCachePlace !== undefined){
+            LogUtil.log('aboutToAppear success load placeholderSrc from memory cache for placeholderSrc = ' + this.imageKnifeOption.placeholderSrc)
+            this.pixelMap = memoryCachePlace.source;
+          }else{
+            LogUtil.log('aboutToAppear fail load placeholderSrc from memory cache for placeholderSrc = ' + this.imageKnifeOption.placeholderSrc)
+          }
+        }
+      }
+    }
+  }
+
+  aboutToDisappear(): void {
+    this.emitterDestroy()
+    this.clearLastRequest()
+  }
+
+  aboutToRecycle() {
+    this.pixelMap = ImageContent.EMPTY
+    this.emitterDestroy()
+    this.clearLastRequest()
+  }
+
+  emitterDestroy() {
+    if (typeof this.request?.imageKnifeOption.loadSrc === 'string' && !this.request?.drawMainSuccess) {
+      emitter.emit(this.request.imageKnifeOption.loadSrc + this.componentId)
+    }
+  }
+  /**
+   * å¯¹å·²DESTROYçš„ç»„ä»¶ä¸å†å‘èµ·è¯·æ±‚
+   */
+  private clearLastRequest(){
+    if (this.request !== undefined) {
+      this.request.requestState = ImageKnifeRequestState.DESTROY
+      if (this.request.taskRequest !== undefined && !this.request.taskRequest.isDone()) {
+        try {
+          taskpool.cancel(this.request.taskRequest)
+        } catch (error) {
+          LogUtil.error(`ImageKnifeComponent; clearLastRequest error: ${error}`)
+        }
+      }
+      this.request.destroy()
+      this.request = undefined
+    }
+  }
+  build() {
+    Image(this.pixelMap)
+      .dynamicRangeMode(this.imageKnifeOption.dynamicRangeMode)
+      .colorFilter(this.imageKnifeOption.drawingColorFilter)
+      .objectFit(this.objectFit)
+      .width(this.adaptiveWidth)
+      .height(this.adaptiveHeight)
+      .border(this.imageKnifeOption.border)
+      .syncLoad(this.syncLoad)
+      .draggable(false)
+      .onComplete(this.imageKnifeOption.onComplete)
+      .onSizeChange((oldValue:SizeOptions, newValue:SizeOptions) => {
+        this.currentWidth = newValue.width as number
+        this.currentHeight = newValue.height as number
+        this.lastWidth = oldValue.width as number
+        this.lastHeight = oldValue.height as number
+        if (this.currentWidth <= 0 || (this.objectFit !== ImageFit.Auto && this.currentHeight <= 0)) {
+          // å­˜åœ¨å®½æˆ–è€…é«˜ä¸º0,æ­¤æ¬¡é‡å›æ— æ„ä¹‰,æ— éœ€è¿›è¡Œrequestè¯·æ±‚
+        } else {
+          // å‰æï¼šå®½é«˜å€¼å‡æœ‰æ•ˆ,å€¼>0. æ¡ä»¶1ï¼šå½“å‰å®½é«˜ä¸ä¸Šä¸€æ¬¡å®½é«˜ä¸åŒ  æ¡ä»¶2:å½“å‰æ˜¯ç¬¬ä¸€æ¬¡ç»˜åˆ¶
+          if (this.currentHeight != this.lastHeight || this.currentWidth != this.lastWidth) {
+            LogUtil.log('onSizeChange execute request:width=' + this.currentWidth + ' height= ' + this.currentHeight +
+              ' loadSrc = ' + this.imageKnifeOption.loadSrc +
+              ' placeholderSrc = ' + this.imageKnifeOption.placeholderSrc +
+              ' errorholderSrc = ' + this.imageKnifeOption.errorholderSrc +
+              ' componentId = ' + this.componentId)
+
+            if (this.objectFit === ImageFit.Auto && this.isImageFitAutoResize) {
+              this.isImageFitAutoResize = false
+            } else {
+              ImageKnife.getInstance().execute(this.getRequest(
+                this.currentWidth, this.currentHeight, this.componentId))
+            }
+          }
+        }
+      })
+  }
+
+  watchImageKnifeOption() {
+    if (this.lastOption !== undefined && this.lastOption === this.getChangeValue() && this.pixelMap !== ImageContent.EMPTY) {
+      return
+    }
+    this.lastOption = this.getChangeValue()
+    this.clearLastRequest()
+    this.componentVersion++
+    this.isImageFitAutoResize = false
+    this.objectFit = this.imageKnifeOption.objectFit === undefined ? ImageFit.Contain : this.imageKnifeOption.objectFit
+    LogUtil.log('watchImageKnifeOption execute request:width=' + this.currentWidth + ' height= ' + this.currentHeight +
+      ' loadSrc = ' + this.imageKnifeOption.loadSrc +
+      ' placeholderSrc = ' + this.imageKnifeOption.placeholderSrc +
+      ' errorholderSrc = ' + this.imageKnifeOption.errorholderSrc +
+      ' componentId = ' + this.componentId)
+    ImageKnife.getInstance().execute(this.getRequest(
+      this.currentWidth, this.currentHeight, this.componentId))
+  }
+
+  getCurrentContext(): common.UIAbilityContext {
+    if (this.currentContext == undefined) {
+      this.currentContext = this.getUIContext().getHostContext() as common.UIAbilityContext
+    }
+    return this.currentContext
+  }
+
+  getRequest(width: number, height: number,componentId: number): ImageKnifeRequest {
+    this.request = new ImageKnifeRequest(
+      this.imageKnifeOption,
+      this.imageKnifeOption.context !== undefined ? this.imageKnifeOption.context : this.getCurrentContext(),
+      this.getUIContext().vp2px(width),
+      this.getUIContext().vp2px(height),
+      this.componentVersion,
+      {
+        showPixelMap: (version: number, pixelMap: PixelMap | string | Resource, requestSource: ImageKnifeRequestSource,size?:Size) => {
+          if (version !== this.componentVersion) {
+            return //é’ˆå¯¹reuseåœºæ™¯ï¼Œä¸æ˜¾ç¤ºå†å²å›¾ç‰‡
+          }
+          this.pixelMap = pixelMap
+          LogUtil.info('image load showPixelMap:' + this.request?.componentId + ',srcType:' + requestSource +
+            ',version:' + this.request?.componentVersion +
+            ',size:' + JSON.stringify(size))
+          if ((this.imageKnifeOption.objectFit === ImageFit.Auto ||
+            this.imageKnifeOption.placeholderObjectFit === ImageFit.Auto ||
+            this.imageKnifeOption.errorholderObjectFit === ImageFit.Auto) && this.isImageFitAutoResize == false) {
+            this.isImageFitAutoResize = true
+          }
+
+          if (requestSource == ImageKnifeRequestSource.SRC) {
+            this.objectFit =
+              this.imageKnifeOption.objectFit ?? ImageFit.Contain
+            this.adaptiveHeight = this.objectFit === ImageFit.Auto ? undefined : '100%'
+          } else if (requestSource == ImageKnifeRequestSource.PLACE_HOLDER) {
+            this.objectFit =
+              this.imageKnifeOption.placeholderObjectFit ?? (this.imageKnifeOption.objectFit ?? ImageFit.Contain)
+            this.adaptiveHeight = this.objectFit === ImageFit.Auto ? undefined : '100%'
+          } else {
+            this.objectFit =
+            this.imageKnifeOption.errorholderObjectFit ?? (this.imageKnifeOption.objectFit ?? ImageFit.Contain)
+            this.adaptiveHeight = this.objectFit === ImageFit.Auto ? undefined : '100%'
+          }
+        }
+      },
+      componentId
+    )
+    return this.request
+  }
+}
+
+interface KeyCanvas {
+  keyId: string
+}ÀÔrD—´@ohos.events.emitter®@ohos.taskpoolº../model/ImageKnifeRequest­../ImageKnife°../utils/LogUtil·../model/ImageKnifeData·../key/DefaultEngineKeyÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÃÙ` hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.events.emitter.d.tsAÃªoh-resolveÂEAÃÙZ hvigor_ignore_D:_Huawei_DevEco Studio_sdk_default_openharmony_ets_api_@ohos.taskpool.d.tsAÃªoh-resolveÂEAÂÙ“C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeRequest.etsAÃªoh-resolveÂEAÂÙ†C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\ImageKnife.etsAÃªoh-resolveÂEAÂÙ‰C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\LogUtil.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\model\ImageKnifeData.etsAÃªoh-resolveÂEAÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\key\DefaultEngineKey.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappings¶ImageKnifeComponent.js ‘·ImageKnifeComponent.etsÜ4š”   ” ”	 	” ” ”2 2”4 4”: :”ÌV ÌV”ÌW ÌW˜”   ” ”	 	” ” ” ”* *”+ +˜”   ” ”	 	” ” ” ”* *”+ +˜”   ” ”	 ”  0”" 2”( 8”ÌA ÌQ”ÌB ÌR˜”   ” ”	 	” ” ”! !”: :”; ;–”   ” 	” ” ”* /”+ 0–”   ” 	” ” ”% %”& &””   ” ” ”  !‘”  ””7 ÌM”ÌC ÌY”ÌD ÌZ”ÌI Ì_’”7 ”< "’”< !”ÌB '’”= .”ÌC 4””8  ”Ì@  '”ÌA  (”ÌH  /’” ! ” !!’” #” #’” $” $ ’” %!” %"’”$ &*”) &/’” '"” '#’”  (%”! (&’” )Ì@”' )ÌI‘” &’” .” >’” 	” ’” 	” ’” 	” ’” 	” ’” 	” ’” 	” ’” 	” ’” 	” ’”  	”  ’”  	”  ’” ,” ,” -” -” -” -” -”( -%”) -&”0 -:”2 -<”< -ÌF”ÌA -ÌK”ÌJ -ÌT”ÌL -ÌV’” .” .‘”	 /Ü ” 0” 0” 0” 0” 0”  0”! 0”% 0!”& 0"”6 02”7 03”> 0:”? 0;”ÌC 0?”ÌG 0ÌC”ÌH 0ÌD”ÌX 0ÌT”ÌY 0ÌU”Ìb 0Ì^Ü ” 1” 1” 1”# 1#”$ 1$”0 10”4 14”8 18”9 19”ÌB 1ÌB”ÌC 1ÌC”ÌG 1ÌG”ÌH 1ÌH”ÌX 1ÌX”ÌY 1ÌY”Ìg 1Ìg”Ìh 1Ìh” 2” 2” 2” 2” 2”! 2!”" 2"”2 22”3 23”ÌC 2ÌC”ÌD 2ÌD”ÌF 2ÌF”ÌG 2ÌF’” 3” 3’” 4” 4” 5” 5” 5” 5” 5”( 5%”) 5&”0 5:”2 5<”< 5ÌF”ÌA 5ÌK”ÌJ 5ÌT”ÌL 5ÌV›” 6” 6
+” 6” 6” 6”  6”! 6”1 6+”2 6,”9 63”: 63’” 7” 7‘”	 8š” 9” 9” 9	” 9” 9” 9” 9”- 9)”/ 9+”0 9+”” :” :” :	” :Ü ” ;” ;
+” ;”! ;”" ;”6 ;0”: ;4”; ;5”? ;9”Ì@ ;:”ÌP ;ÌJ”ÌQ ;ÌK”ÌZ ;ÌT”Ì^ ;ÌX”Ìf ;Ì`”Ìg ;Ìa”Ìn ;Ìh”Ìo ;Ìi”Ìp ;ÌiÜ ” <” <” <	” <” <”" <”# <”, <(”1 <-”9 <5”: <6”> <:”? <;”Ì@ <<”ÌA <=”ÌJ <ÌF”ÌK <ÌG”ÌL <ÌH”ÌM <ÌI”ÌQ <ÌM”ÌR <ÌN”Ì` <Ì\”Ìa <Ì\š” =” =” =	” =” =” =”  =”+ ='”- =)”. =)˜” >” >” >” >” >” >” >”ÌN >ÌI˜” ?” ?
+” ?” ?"”  ?&”0 ?6”2 ?8”3 ?9˜” Ì@” Ì@
+” Ì@”! Ì@7”+ Ì@ÌA”, Ì@ÌB”7 Ì@ÌM”9 Ì@ÌOÜ ” ÌA	”$ ÌA”% ÌA”. ÌA&”/ ÌA'”Ì@ ÌA8”ÌA ÌA9”ÌE ÌA=”ÌF ÌA>”ÌV ÌAÌN”ÌW ÌAÌO”Ì^ ÌAÌV”Ì` ÌAÌW”Ìw ÌAÌn”Ìx ÌAÌo”Ì{ ÌAÌr”Ì} ÌAÌs”Ì ÌAÌw”Ì‚ ÌAÌx”Ì’ ÌAÌˆ”Ì“ ÌAÌ‰”Ì” ÌAÌŠ”Ì• ÌAÌŠ–” ÌB” ÌB
+” ÌB”# ÌB”, ÌB&”. ÌB'” ÌC” ÌC” ÌC” ÌC” ÌC”Ìa ÌCÌY”Ìd ÌCÌ[”Ìh ÌCÌ_”Ìi ÌCÌ`”Ìy ÌCÌp”Ìz ÌCÌq”Ì ÌCÌx”Ì‚ ÌCÌy”Ìƒ ÌCÌy™” ÌD” ÌD” ÌD” ÌD”  ÌD”. ÌD&”/ ÌD'”5 ÌD-”6 ÌD.‘” ÌE‘” ÌE” ÌF” ÌF” ÌF” ÌF” ÌF”Ì^ ÌFÌV”Ìa ÌFÌX”Ìe ÌFÌ\”Ìf ÌFÌ]”Ìv ÌFÌm”Ìw ÌFÌn”Ì~ ÌFÌu”Ì ÌFÌv”Ì€ ÌFÌvš” ÌG” ÌG” ÌG” ÌG”) ÌG!”* ÌG"”8 ÌG0”= ÌG5”ÌF ÌG>”ÌH ÌG?˜” ÌH
+” ÌH”( ÌH”+ ÌH=”5 ÌHÌG”6 ÌHÌH”ÌA ÌHÌS”ÌC ÌHÌUÜ ” ÌI”, ÌI ”- ÌI!”6 ÌI*”7 ÌI+”ÌH ÌI<”ÌI ÌI=”ÌM ÌIÌA”ÌN ÌIÌB”Ì^ ÌIÌR”Ì_ ÌIÌS”Ìm ÌIÌb”Ìo ÌIÌc”Ì† ÌIÌz”Ì‡ ÌIÌ{”Ì“ ÌIÌ‡”Ì• ÌIÌˆ”Ì™ ÌIÌŒ”Ìš ÌIÌ”Ìª ÌIÌ”Ì« ÌIÌ”Ì¬ ÌIÌŸ”Ì­ ÌIÌŸ–” ÌJ
+” ÌJ”( ÌJ”- ÌJ#”6 ÌJ,”8 ÌJ-” ÌK” ÌK”  ÌK”# ÌK”$ ÌK”Ìw ÌKÌk”Ìz ÌKÌn”Ì~ ÌKÌr”Ì ÌKÌs”Ì ÌKÌƒ”Ì ÌKÌ„”Ì ÌKÌ’”ÌŸ ÌKÌ“”Ì  ÌKÌ“™” ÌL” ÌL” ÌL”% ÌL”( ÌL”8 ÌL,”9 ÌL-”? ÌL3”Ì@ ÌL4‘” ÌM‘” ÌM” ÌN” ÌN”  ÌN”# ÌN”$ ÌN”Ìt ÌNÌh”Ìw ÌNÌk”Ì{ ÌNÌo”Ì| ÌNÌp”ÌŒ ÌNÌ€”Ì ÌNÌ”Ì› ÌNÌ”Ìœ ÌNÌ”Ì ÌNÌ‘” ÌO‘” ÌP	‘” ÌQ‘”	 ÌR’” ÌS” ÌS’” ÌU” ÌU–” ÌV” ÌV” ÌV	” ÌV” ÌV” ÌV–” ÌW” ÌW” ÌW	” ÌW” ÌW”  ÌW’” ÌX” ÌX’” ÌZ” ÌZ™” Ì[” Ì[” Ì[	” Ì[” Ì[”$ Ì[ ”% Ì[!”* Ì[&”+ Ì[&–” Ì\” Ì\” Ì\	” Ì\” Ì\” Ì\–” Ì]” Ì]” Ì]	” Ì]” Ì]”  Ì]’” Ì^” Ì^’” Ì`” Ì`Ü ” Ìa” Ìa” Ìa” Ìa” Ìa” Ìa”! Ìa”1 Ìa-”2 Ìa.”9 Ìa5”> Ìa:”ÌF ÌaÌB”ÌJ ÌaÌF”ÌK ÌaÌG”ÌO ÌaÌK”ÌP ÌaÌL”ÌW ÌaÌS”ÌY ÌaÌU”Ìh ÌaÌd”Ìj ÌaÌfÜ ” Ìb” Ìb” Ìb” Ìb” Ìb” Ìb” Ìb”% Ìb”& Ìb ”6 Ìb0”7 Ìb1”> Ìb8”ÌA Ìb;”ÌE Ìb?”ÌF ÌbÌ@”ÌQ ÌbÌK”ÌR ÌbÌL”ÌS ÌbÌL‘”	 Ìc’” Ìd” Ìd‘” Ìe‘” Ìg’” Ìh
+” Ìh˜” Ìi” Ìi” Ìi” Ìi” Ìi” Ìi”& Ìi"”( Ìi$›” Ìj” Ìj
+” Ìj” Ìj” Ìj”% Ìj”( Ìj"”> Ìj8”? Ìj9”ÌF ÌjÌ@”ÌG ÌjÌ@Ü ” Ìk” Ìk
+” Ìk” Ìk” Ìk” Ìk”( Ìk"”- Ìk'”6 Ìk0”: Ìk4”; Ìk5”? Ìk9”Ì@ Ìk:”ÌG ÌkÌA”ÌH ÌkÌB”ÌS ÌkÌM”ÌT ÌkÌN”ÌZ ÌkÌT”Ì\ ÌkÌV”Ì^ ÌkÌX’” Ìl” Ìlœ” Ìm
+” Ìm” Ìm”# Ìm”$ Ìm”( Ìm”) Ìm”0 Ìm&”1 Ìm'”< Ìm2”= Ìm3”> Ìm3‘” Ìn	”” Ìn
+” Ìn” Ìn” Ìnš” Ìo
+” Ìo” Ìo”! Ìo”" Ìo”ÌR ÌoÌH”ÌW ÌoÌM”ÌY ÌoÌO”ÌZ ÌoÌP”Ì[ ÌoÌP‘” Ìp	‘” Ìq˜” Ìr” Ìr
+” Ìr” Ìr” Ìr”  Ìr”" Ìr”# Ìr—” Ìs” Ìs
+” Ìs” Ìs” Ìs”$ Ìs”% Ìs‘”	 Ìt’” Ìu” Ìu‘” Ìv–” Ìw” Ìw	” Ìw
+” Ìw” Ìw”& Ìwš” Ìw” Ìw	” Ìx”" Ìx”# Ìx”' Ìx”( Ìx”8 Ìx-”9 Ìx.”ÌI Ìx>š” Ìw” Ìw	” Ìy” Ìy” Ìy”" Ìy”# Ìy”3 Ìy(”4 Ìy)”ÌF Ìy;˜” Ìw” Ìw	” Ìz” Ìz” Ìz”  Ìz”! Ìz”* Ìz˜” Ìw” Ìw	” Ì{” Ì{”4 Ì{”8 Ì{”9 Ì{”ÌF Ì{˜” Ìw” Ìw	” Ì|” Ì|”5 Ì|”9 Ì|”: Ì|”ÌH Ì|!š” Ìw” Ìw	” Ì}” Ì}” Ì}” Ì}” Ì}”. Ì}#”/ Ì}$”5 Ì}*˜” Ìw” Ìw	” Ì~” Ì~” Ì~” Ì~”  Ì~”( Ì~–” Ìw” Ìw	” Ì” Ì” Ì”! Ìš” Ìw” Ìw	” Ì€” Ì€” Ì€”! Ì€”" Ì€”2 Ì€'”3 Ì€(”= Ì€2›” Ìw” Ìw	” Ì” Ì” Ì”  Ì”( Ì)”* Ì+”2 Ì?”4 ÌÌA”6 ÌÌC™” Ì‚” Ì‚” Ì‚”! Ì‚”$ Ì‚”, Ì‚$”- Ì‚%”2 Ì‚4”3 Ì‚4™” Ìƒ” Ìƒ” Ìƒ”" Ìƒ”% Ìƒ”- Ìƒ%”. Ìƒ&”4 Ìƒ6”5 Ìƒ6™” Ì„” Ì„” Ì„” Ì„”! Ì„”) Ì„!”* Ì„"”/ Ì„1”0 Ì„1™” Ì…” Ì…” Ì…” Ì…”" Ì…”* Ì…"”+ Ì…#”1 Ì…3”2 Ì…3Ü ” Ì†” Ì†” Ì†” Ì†”% Ì†”) Ì†!”* Ì†"”. Ì†&”/ Ì†'”3 Ì†+”4 Ì†,”= Ì†5”ÌB Ì†:”ÌJ Ì†ÌB”ÌK Ì†ÌC”ÌO Ì†ÌG”ÌS Ì†ÌK”ÌW Ì†ÌO”ÌX Ì†ÌP”Ìe Ì†Ì]”Ìi Ì†Ìa”Ìj Ì†Ìb”Ìk Ì†Ìc”Ìm Ì†Ìe’” Ì‡
+”5 Ì‡+‘” Ìˆ	‘” Ìˆ’” Ì‰
+”ÌD Ì‰:Ü ” ÌŠ
+” ÌŠ” ÌŠ” ÌŠ”* ÌŠ ”. ÌŠ$”2 ÌŠ(”3 ÌŠ)”= ÌŠ3”ÌA ÌŠ7”ÌE ÌŠ;”ÌF ÌŠ<”ÌR ÌŠÌH”ÌV ÌŠÌL”ÌZ ÌŠÌP”Ì[ ÌŠÌQ”Ìd ÌŠÌZ”Ìf ÌŠÌ\Ü ” Ì‹” Ì‹”  Ì‹”# Ì‹”$ Ì‹”ÌI Ì‹=”ÌL Ì‹Ì@”ÌP Ì‹ÌD”ÌQ Ì‹ÌE”Ì] Ì‹ÌQ”Ì` Ì‹ÌT”Ìk Ì‹Ì_”Ìn Ì‹Ìb”Ìr Ì‹Ìf”Ìs Ì‹Ìg”Ì€ Ì‹Ìt˜” ÌŒ”) ÌŒ”, ÌŒ”0 ÌŒ"”1 ÌŒ#”ÌA ÌŒ3”ÌB ÌŒ4”ÌI ÌŒ;˜” Ì”0 Ì"”3 Ì%”7 Ì)”8 Ì*”ÌH Ì:”ÌI Ì;”ÌW ÌÌI˜” Ì”0 Ì"”3 Ì%”7 Ì)”8 Ì*”ÌH Ì:”ÌI Ì;”ÌW ÌÌI˜” Ì”- Ì”0 Ì"”4 Ì&”5 Ì'”Ì@ Ì2”ÌA Ì3”ÌB Ì3” Ì‘” Ì‘”  Ì‘”! Ì‘”* Ì‘”/ Ì‘#”7 Ì‘+”8 Ì‘,”< Ì‘0”Ì@ Ì‘4”ÌD Ì‘8”ÌE Ì‘9”ÌY Ì‘ÌM”Ì[ Ì‘ÌO—” Ì’”  Ì’”! Ì’”5 Ì’'”8 Ì’*”= Ì’/”> Ì’/‘” Ì“‘” Ì“Ü ” Ì””& Ì””' Ì””2 Ì”$”4 Ì”&”5 Ì”'”< Ì”.”= Ì”/”ÌA Ì”3”ÌB Ì”4”ÌL Ì”>”ÌM Ì•”ÌQ Ì•”ÌR Ì•”Ì^ Ì•!”Ì` Ì•#”Ìd Ì•'”Ìe Ì•(”Ìr Ì•5”Ìt Ì•7”Ìx Ì•;”Ìy Ì•<”Ì„ Ì•ÌG”Ì… Ì•ÌH”Ì† Ì•ÌI”Ì‡ Ì•ÌI‘” Ì–‘” Ì—‘” Ì˜	’” Ì™” Ì™‘” Ìš’” Ìœ” ÌœÜ ” Ì” Ì” Ì” Ì” Ì”  Ì”) Ì%”- Ì)”1 Ì-”2 Ì.”< Ì8”ÌA Ì=”ÌE ÌÌA”ÌF ÌÌB”ÌT ÌÌP”ÌV ÌÌR”ÌZ ÌÌV”Ì^ ÌÌZ”Ì_ ÌÌ[”Ìg ÌÌc”Ìl ÌÌh”Ìx ÌÌt”Ìy ÌÌu”Ì~ ÌÌz”Ì€ ÌÌ|’” Ì” Ì‘”	 ÌŸš” Ì ” Ì ” Ì 	” Ì ” Ì ” Ì ” Ì ”- Ì )”/ Ì +”0 Ì +–” Ì¡” Ì¡” Ì¡	” Ì¡” Ì¡”  Ì¡–” Ì¢” Ì¢” Ì¢	” Ì¢” Ì¢”  Ì¢—” Ì£” Ì£” Ì£	”! Ì£”$ Ì£ ”) Ì£%”* Ì£%Ü ” Ì¤” Ì¤” Ì¤	” Ì¤” Ì¤” Ì¤” Ì¤”. Ì¤*”/ Ì¤+”8 Ì¤4”= Ì¤9”ÌF Ì¤ÌB”ÌG Ì¤ÌC”ÌH Ì¤ÌD”ÌI Ì¤ÌE”ÌQ Ì¤ÌM”ÌR Ì¤ÌN”ÌY Ì¤ÌU”ÌZ Ì¤ÌV”Ì[ Ì¤ÌW”Ì\ Ì¤ÌX”Ì` Ì¤Ì\”Ìa Ì¤Ì]”Ìq Ì¤Ìm”Ìr Ì¤Ìn”Ì{ Ì¤Ìw”Ì| Ì¤ÌwÜ ” Ì¥” Ì¥” Ì¥” Ì¥” Ì¥”ÌB Ì¥>”ÌE Ì¥ÌA”ÌI Ì¥ÌE”ÌJ Ì¥ÌF”ÌV Ì¥ÌR”ÌY Ì¥ÌU”Ìd Ì¥Ì`”Ìg Ì¥Ìc”Ìk Ì¥Ìg”Ìl Ì¥Ìh”Ìy Ì¥Ìu˜” Ì¦” Ì¦” Ì¦”  Ì¦”! Ì¦”1 Ì¦+”2 Ì¦,”9 Ì¦3˜” Ì§”  Ì§”# Ì§”' Ì§!”( Ì§"”8 Ì§2”9 Ì§3”ÌG Ì§ÌA˜” Ì¨”  Ì¨”# Ì¨”' Ì¨!”( Ì¨"”8 Ì¨2”9 Ì¨3”ÌG Ì¨ÌA˜” Ì©” Ì©”  Ì©”$ Ì©”% Ì©”0 Ì©*”1 Ì©+”2 Ì©+Ü ” Ìª” Ìª” Ìª” Ìª”  Ìª”! Ìª”( Ìª$”) Ìª%”- Ìª)”. Ìª*”8 Ìª4”9 Ì«”= Ì«
+”> Ì«”ÌJ Ì«”ÌL Ì«”ÌP Ì«”ÌQ Ì«”Ì^ Ì«+”Ì` Ì«-”Ìd Ì«1”Ìe Ì«2”Ìp Ì«=”Ìq Ì«>”Ìr Ì«?”Ìs Ì«?’” Ì¬” Ì¬’” Ì®” Ì®˜” Ì¯” Ì¯” Ì¯” Ì¯” Ì¯”# Ì¯”, Ì¯(”. Ì¯*” Ì°” Ì°
+” Ì°” Ì°”" Ì°”& Ì° ”' Ì°!”3 Ì°-”5 Ì°/”6 Ì°0”ÌD Ì°>”ÌF Ì°Ì[”ÌG Ì°Ì[‘”	 Ì±–” Ì²” Ì²” Ì²” Ì²”" Ì²”# Ì²’” Ì³” Ì³˜” Ìµ” Ìµ” Ìµ” Ìµ” Ìµ” Ìµ*” Ìµ+”) Ìµ>Ü ;” Ì¶” Ì¶” Ì¶	” Ì¶” Ì¶” Ì¶”, Ì¶(”- Ì·”1 Ì·
+”2 Ì·”ÌB Ì·”ÌD Ì¸”ÌH Ì¸
+”ÌI Ì¸”ÌY Ì¸”ÌZ Ì¸”Ìa Ì¸#”Ìf Ì¸(”Ìo Ì¸1”Ìp Ì¸2”Ìq Ì¸3”Ìr Ì¸4”Ìv Ì¸8”Ìw Ì¸9”Ì‡ Ì¸ÌI”Ìˆ Ì¸ÌJ”Ì Ì¸ÌQ”Ì Ì¸ÌR”Ì‘ Ì¸ÌS”Ì’ Ì¸ÌT”Ì– Ì¸ÌX”Ì— Ì¸ÌY”Ì¨ Ì¸Ìj”Ìª Ì¸Ìl”Ì¬ Ì¹”Ì° Ì¹
+”Ì± Ì¹”Ì½ Ì¹”Ì¿ Ì¹”ÌÀ Ì¹”ÌÅ Ì¹”ÌÆ Ì¹ ”ÌË Ì¹%”ÌÌ Ì¹&”ÌÎ Ìº”ÌÒ Ìº
+”ÌÓ Ìº”Ìß Ìº”Ìá Ìº”Ìâ Ìº”Ìç Ìº”Ìè Ìº ”Ìî Ìº&”Ìï Ìº'”Ìñ Ì»”Ìõ Ì»
+”Ìö Ì»”Í Ì»”Í Ì¼” Ì½” Ì½” Ì½” Ì½”" Ì½&”$ Ì½(”, Ì½ÌN”. Ì½ÌP”; Ì½Ìv”= Ì½Ìw”ÌA Ì½Ì”ÌC Ì½Ìƒ”ÌE Ì½Ì…˜” Ì¾
+” Ì¾” Ì¾”  Ì¾”$ Ì¾”% Ì¾”5 Ì¾/”7 Ì¾1”” Ì¿” Ì¿” Ì¿”/ Ì¿&‘” ÌÀ—” ÌÁ
+” ÌÁ” ÌÁ” ÌÁ”  ÌÁ”( ÌÁ"”) ÌÁ"Ü ” ÌÂ
+” ÌÂ” ÌÂ” ÌÂ” ÌÂ”7 ÌÂ1”: ÌÂ4”> ÌÂ8”? ÌÂ9”ÌF ÌÂÌ@”ÌH ÌÂÌB”ÌS ÌÂÌM”ÌV ÌÂÌP”Ìa ÌÂÌ[”Ìd ÌÂÌ^”Ìq ÌÂÌk˜” ÌÃ” ÌÃ”" ÌÃ”& ÌÃ”' ÌÃ”. ÌÃ&”0 ÌÃ(”Ì@ ÌÃ8›” ÌÄ” ÌÄ” ÌÄ”# ÌÄ”$ ÌÄ”- ÌÄ%”. ÌÄ&”2 ÌÄ*”3 ÌÄ+”4 ÌÄ,”5 ÌÄ,œ” ÌÅ
+” ÌÅ” ÌÅ” ÌÅ” ÌÅ”* ÌÅ$”+ ÌÅ%”4 ÌÅ.”9 ÌÅ3”ÌA ÌÅ;”ÌB ÌÅ<”ÌF ÌÅÌ@š” ÌÆ” ÌÆ” ÌÆ”) ÌÆ!”* ÌÆ"”> ÌÆ6”ÌC ÌÆ;”ÌK ÌÆÌC”ÌL ÌÆÌD”ÌP ÌÆÌHÜ ” ÌÇ” ÌÇ” ÌÇ”) ÌÇ!”* ÌÇ"”> ÌÇ6”ÌC ÌÇ;”ÌK ÌÇÌC”ÌL ÌÇÌD”ÌP ÌÇÌH”ÌQ ÌÇÌI”ÌU ÌÇÌM”ÌY ÌÇÌQ”ÌZ ÌÇÌR”Ìn ÌÇÌf”Ìr ÌÇÌj”Ìw ÌÇÌo”Ìy ÌÇÌq—” ÌÈ” ÌÈ” ÌÈ”- ÌÈ%”0 ÌÈ(”4 ÌÈ,”5 ÌÈ,‘” ÌÉ˜” ÌË
+” ÌË”! ÌË”% ÌË”< ÌË6”= ÌË7”Ì@ ÌË:”ÌB ÌË<”” ÌÌ” ÌÌ” ÌÌ”" ÌÌ›” ÌÍ” ÌÍ” ÌÍ”- ÌÍ#”. ÌÍ$”7 ÌÍ-”; ÌÍ1”ÌC ÌÍ9”ÌD ÌÍ:”ÌK ÌÍÌA”ÌL ÌÍÌAÜ ” ÌÎ” ÌÎ” ÌÎ”' ÌÎ”* ÌÎ"”. ÌÎ&”/ ÌÎ'”8 ÌÎ0”= ÌÎ5”ÌE ÌÎ=”ÌF ÌÎ>”ÌJ ÌÎÌB”ÌK ÌÎÌC”ÌL ÌÎÌD”ÌM ÌÎÌE”ÌV ÌÎÌN”ÌW ÌÎÌO”ÌX ÌÎÌP”ÌY ÌÎÌQ”Ì_ ÌÎÌW”Ì` ÌÎÌW‘” ÌÏ˜” ÌÏ” ÌÏ”& ÌÏ"”* ÌÏ&”ÌA ÌÏ=”ÌB ÌÏ>”ÌN ÌÏÌJ”ÌP ÌÏÌL”” ÌĞ” ÌĞ” ÌĞ”" ÌĞÜ ” ÌÑ” ÌÑ” ÌÑ”- ÌÑ#”. ÌÑ$”ÌB ÌÑ8”ÌF ÌÑ<”ÌG ÌÑ=”ÌK ÌÑÌA”ÌL ÌÑÌB”Ì\ ÌÑÌR”Ì] ÌÑÌS”Ìf ÌÑÌ\”Ìj ÌÑÌ`”Ìr ÌÑÌh”Ìs ÌÑÌi”Ìz ÌÑÌp”Ì{ ÌÑÌq”Ì| ÌÑÌqÜ ” ÌÒ” ÌÒ” ÌÒ”' ÌÒ”* ÌÒ"”. ÌÒ&”/ ÌÒ'”8 ÌÒ0”= ÌÒ5”ÌE ÌÒ=”ÌF ÌÒ>”ÌJ ÌÒÌB”ÌK ÌÒÌC”ÌL ÌÒÌD”ÌM ÌÒÌE”ÌV ÌÒÌN”ÌW ÌÒÌO”ÌX ÌÒÌP”ÌY ÌÒÌQ”Ì_ ÌÒÌW”Ì` ÌÒÌW‘” ÌÓ‘” ÌÓ”” ÌÔ” ÌÔ” ÌÔ”" ÌÔÜ ” ÌÕ” ÌÕ” ÌÕ”- ÌÕ!”. ÌÕ"”ÌB ÌÕ6”ÌF ÌÕ:”ÌG ÌÕ;”ÌK ÌÕ?”ÌL ÌÕÌ@”Ì\ ÌÕÌP”Ì] ÌÕÌQ”Ìf ÌÕÌZ”Ìj ÌÕÌ^”Ìr ÌÕÌf”Ìs ÌÕÌg”Ìz ÌÕÌn”Ì{ ÌÕÌo”Ì| ÌÕÌoÜ ” ÌÖ” ÌÖ” ÌÖ”' ÌÖ”* ÌÖ"”. ÌÖ&”/ ÌÖ'”8 ÌÖ0”= ÌÖ5”ÌE ÌÖ=”ÌF ÌÖ>”ÌJ ÌÖÌB”ÌK ÌÖÌC”ÌL ÌÖÌD”ÌM ÌÖÌE”ÌV ÌÖÌN”ÌW ÌÖÌO”ÌX ÌÖÌP”ÌY ÌÖÌQ”Ì_ ÌÖÌW”Ì` ÌÖÌW‘” Ì×’” ÌØ” ÌØ	•”	 ÌÙ” ÌÚ” ÌÚ” ÌÛ” ÌÛ–” ÌÜ” ÌÜ” ÌÜ” ÌÜ” ÌÜ” ÌÜ’” Ìİ” ÌİÔrG–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜ9‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ‘”  Ìs ‘”  Ìt ‘”  Ìu ‘”  Ìv ‘”  Ìw ‘”  Ìx ‘”  Ìy ‘”  Ìz ‘”  Ì{ ‘”  Ì| ‘”  Ì} ‘”  Ì~ ‘”  Ì ‘”  Ì€ ‘”  Ì ‘”  Ì‚ ‘”  Ìƒ ‘”  Ì„ ‘”  Ì… ‘”  Ì† ‘”  Ì‡ ‘”  Ìˆ ‘”  Ì‰ ‘”  ÌŠ ‘”  Ì‹ ‘”  ÌŒ ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì ‘”  Ì‘ ‘”  Ì’ ‘”  Ì“ ‘”  Ì” ‘”  Ì• ‘”  Ì– ‘”  Ì— ‘”  Ì˜ ‘”  Ì™ ‘”  Ìš ‘”  Ì› ‘”  Ìœ ‘”  Ì ‘”  Ì ‘”  ÌŸ ‘”  Ì  ‘”  Ì¡ ‘”  Ì¢ ‘”  Ì£ ‘”  Ì¤ ‘”  Ì¥ ‘”  Ì¦ ‘”  Ì§ ‘”  Ì¨ ‘”  Ì© ‘”  Ìª ‘”  Ì« ‘”  Ì¬ ‘”  Ì­ ‘”  Ì® ‘”  Ì¯ ‘”  Ì° ‘”  Ì± ‘”  Ì² ‘”  Ì³ ‘”  Ì´ ‘”  Ìµ ‘”  Ì¶ ‘”  Ì· ‘”  Ì¸ ‘”  Ì¹ ‘”  Ìº ‘”  Ì» ‘”  Ì¼ ‘”  Ì½ ‘”  Ì¾ ‘”  Ì¿ ‘”  ÌÀ ‘”  ÌÁ ‘”  ÌÂ ‘”  ÌÃ ‘”  ÌÄ ‘”  ÌÅ ‘”  ÌÆ ‘”  ÌÇ ‘”  ÌÈ ‘”  ÌÉ ‘”  ÌÊ ‘”  ÌË ‘”  ÌÌ ‘”  ÌÍ ‘”  ÌÎ ‘”  ÌÏ ‘”  ÌĞ ‘”  ÌÑ ‘”  ÌÒ ‘”  ÌÓ ‘”  ÌÔ ‘”  ÌÕ ‘”  ÌÖ ‘”  Ì× ‘”  ÌØ ‘”  ÌÙ ‘”  ÌÚ ‘”  ÌÛ ‘”  ÌÜ ‘”  Ìİ ‘”  ÌŞ ‘”  Ìß ‘”  Ìà ‘”  Ìá ‘”  Ìâ ‘”  Ìã ‘”  Ìä ‘”  Ìå ‘”  Ìæ ‘”  Ìç ‘”  Ìè ‘”  Ìé ‘”  Ìê ‘”  Ìë ‘”  Ìì ‘”  Ìí ‘”  Ìî ‘”  Ìï ‘”  Ìğ ‘”  Ìñ ‘”  Ìò ‘”  Ìó ‘”  Ìô ‘”  Ìõ ‘”  Ìö ‘”  Ì÷ ‘”  Ìø ‘”  Ìù ‘”  Ìú ‘”  Ìû ‘”  Ìü ‘”  Ìı ‘”  Ìş ‘”  Ìÿ ‘”  Í  ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í	 ‘”  Í
+ ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í ‘”  Í  ‘”  Í! ‘”  Í" ‘”  Í# ‘”  Í$ ‘”  Í% ‘”  Í& ‘”  Í' ‘”  Í( ‘”  Í) ‘”  Í* ‘”  Í+ ‘”  Í, ‘”  Í- ‘”  Í. ‘”  Í/ ‘”  Í0 ‘”  Í1 ‘”  Í2 ‘”  Í3 ‘”  Í4 ‘”  Í5 ‘”  Í6 ‘”  Í7 ‘”  Í8 ÔrH’§missing¦pluginÃ¦genAbcÂÔ  ÔrI”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrJ–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍ	Í;_ÔrK–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍÍ;_ÔrL”¤type¥start£end¤nameªIdentifierÍÍ)³ImageKnifeComponentLªIdentifierÍ2Í8¦ViewPUÔrM”¤type¥start£end¤body©ClassBodyÍ9Í;_Ü ÔrN˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍ@Í—ÂÂLªIdentifierÍ@ÍK«constructor«constructorÔrO™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍKÍ—ÀÂÂÂ–LªIdentifierÍLÍR¦parentLªIdentifierÍTÍZ¦paramsLªIdentifierÍ\Íj®__localStorageÔrP•¤type¥start£end¤left¥right±AssignmentPatternÍlÍwLªIdentifierÍlÍr¦elmtIdÔrQ–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍuÍw¡-ÃÔrR•¤type¥start£end¥value£raw§LiteralÍvÍw¡1P±AssignmentPatternÍyÍ‘LªIdentifierÍyÍ…¬paramsLambdaLªIdentifierÍˆÍ‘©undefinedLªIdentifierÍ“Íœ©extraInfoM®BlockStatementÍÍ—Ü ÔrS”¤type¥start£endªexpression³ExpressionStatementÍ©ÍÚÔrT–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍ©ÍÙÔrU“¤type¥start£end¥SuperÍ©Í®”LªIdentifierÍ¯Íµ¦parentLªIdentifierÍ·ÍÅ®__localStorageLªIdentifierÍÇÍÍ¦elmtIdLªIdentifierÍÏÍØ©extraInfoÂÔrV–¤type¥start£end¤testªconsequent©alternate«IfStatementÍäÍKÔrW–¤type¥start£end¤left¨operator¥right°BinaryExpressionÍèÍ
+Q¯UnaryExpressionÍèÍû¦typeofÃLªIdentifierÍïÍû¬paramsLambda£===R§LiteralÍ Í
+¨functionª"function"M®BlockStatementÍÍK‘S³ExpressionStatementÍÍ@ÔrX–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍÍ?¡=ÔrY—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍÍ0U®ThisExpressionÍÍLªIdentifierÍ Í0°paramsGenerator_ÂÂLªIdentifierÍ3Í?¬paramsLambdaÀS³ExpressionStatementÍUÍÃX´AssignmentExpressionÍUÍÂ¡=Y°MemberExpressionÍUÍlU®ThisExpressionÍUÍYLªIdentifierÍZÍl²__imageKnifeOptionÂÂÔrZ•¤type¥start£end¦callee©arguments­NewExpressionÍoÍÂLªIdentifierÍsÍ¼SynchedPropertyNesedObjectPU“Y°MemberExpressionÍÍ§LªIdentifierÍÍ–¦paramsLªIdentifierÍ—Í§°imageKnifeOptionÂÂU®ThisExpressionÍ©Í­R§LiteralÍ¯ÍÁ°imageKnifeOption²"imageKnifeOption"S³ExpressionStatementÍÍÍ"X´AssignmentExpressionÍÍÍ!¡=Y°MemberExpressionÍÍÍÜU®ThisExpressionÍÍÍÑLªIdentifierÍÒÍÜª__pixelMapÂÂZ­NewExpressionÍßÍ!LªIdentifierÍãÍû¸ObservedPropertyObjectPU“Y°MemberExpressionÍüÍLªIdentifierÍüÍ¬ImageContentLªIdentifierÍ	Í¥EMPTYÂÂU®ThisExpressionÍÍR§LiteralÍÍ ¨pixelMapª"pixelMap"S³ExpressionStatementÍ,ÍtX´AssignmentExpressionÍ,Ís¡=Y°MemberExpressionÍ,Í;U®ThisExpressionÍ,Í0LªIdentifierÍ1Í;ª__syncLoadÂÂZ­NewExpressionÍ>ÍsLªIdentifierÍBÍZ¸ObservedPropertySimplePU“R§LiteralÍ[Í`Â¥falseU®ThisExpressionÍbÍfR§LiteralÍhÍr¨syncLoadª"syncLoad"S³ExpressionStatementÍ~ÍÑX´AssignmentExpressionÍ~ÍĞ¡=Y°MemberExpressionÍ~Í’U®ThisExpressionÍ~Í‚LªIdentifierÍƒÍ’¯__adaptiveWidthÂÂZ­NewExpressionÍ•ÍĞLªIdentifierÍ™Í±¸ObservedPropertyObjectPU“R§LiteralÍ²Í¸¤100%¦'100%'U®ThisExpressionÍºÍ¾R§LiteralÍÀÍÏ­adaptiveWidth¯"adaptiveWidth"S³ExpressionStatementÍÛÍ0X´AssignmentExpressionÍÛÍ/¡=Y°MemberExpressionÍÛÍğU®ThisExpressionÍÛÍßLªIdentifierÍàÍğ°__adaptiveHeightÂÂZ­NewExpressionÍóÍ/LªIdentifierÍ÷Í¸ObservedPropertyObjectPU“R§LiteralÍÍ¤100%¦'100%'U®ThisExpressionÍÍR§LiteralÍÍ.®adaptiveHeight°"adaptiveHeight"S³ExpressionStatementÍ:ÍX´AssignmentExpressionÍ:Í¡=Y°MemberExpressionÍ:ÍJU®ThisExpressionÍ:Í>LªIdentifierÍ?ÍJ«__objectFitÂÂZ­NewExpressionÍMÍLªIdentifierÍQÍi¸ObservedPropertySimplePU“Y°MemberExpressionÍjÍzLªIdentifierÍjÍr¨ImageFitLªIdentifierÍsÍz§ContainÂÂU®ThisExpressionÍ|Í€R§LiteralÍ‚Í©objectFit«"objectFit"S³ExpressionStatementÍ™Í®X´AssignmentExpressionÍ™Í­¡=Y°MemberExpressionÍ™Í©U®ThisExpressionÍ™ÍLªIdentifierÍÍ©«componentIdÂÂR§LiteralÍ¬Í­ ¡0S³ExpressionStatementÍ¸ÍÑX´AssignmentExpressionÍ¸ÍĞ¡=Y°MemberExpressionÍ¸ÍÄU®ThisExpressionÍ¸Í¼LªIdentifierÍ½ÍÄ§requestÂÂLªIdentifierÍÇÍĞ©undefinedS³ExpressionStatementÍÛÍîX´AssignmentExpressionÍÛÍí¡=Y°MemberExpressionÍÛÍéU®ThisExpressionÍÛÍßLªIdentifierÍàÍé©lastWidthÂÂR§LiteralÍìÍí ¡0S³ExpressionStatementÍøÍX´AssignmentExpressionÍøÍ¡=Y°MemberExpressionÍøÍU®ThisExpressionÍøÍüLªIdentifierÍıÍªlastHeightÂÂR§LiteralÍ
+Í ¡0S³ExpressionStatementÍÍ,X´AssignmentExpressionÍÍ+¡=Y°MemberExpressionÍÍ'U®ThisExpressionÍÍLªIdentifierÍÍ'¬currentWidthÂÂR§LiteralÍ*Í+ ¡0S³ExpressionStatementÍ6ÍXX´AssignmentExpressionÍ6ÍW¡=Y°MemberExpressionÍ6ÍOU®ThisExpressionÍ6Í:LªIdentifierÍ;ÍO´isImageFitAutoResizeÂÂR§LiteralÍRÍWÂ¥falseS³ExpressionStatementÍbÍyX´AssignmentExpressionÍbÍx¡=Y°MemberExpressionÍbÍtU®ThisExpressionÍbÍfLªIdentifierÍgÍt­currentHeightÂÂR§LiteralÍwÍx ¡0S³ExpressionStatementÍƒÍX´AssignmentExpressionÍƒÍœ¡=Y°MemberExpressionÍƒÍ˜U®ThisExpressionÍƒÍ‡LªIdentifierÍˆÍ˜°componentVersionÂÂR§LiteralÍ›Íœ ¡0S³ExpressionStatementÍ§ÍÇX´AssignmentExpressionÍ§ÍÆ¡=Y°MemberExpressionÍ§ÍºU®ThisExpressionÍ§Í«LªIdentifierÍ¬Íº®currentContextÂÂLªIdentifierÍ½ÍÆ©undefinedS³ExpressionStatementÍÑÍíX´AssignmentExpressionÍÑÍì¡=Y°MemberExpressionÍÑÍàU®ThisExpressionÍÑÍÕLªIdentifierÍÖÍàªlastOptionÂÂLªIdentifierÍãÍì©undefinedS³ExpressionStatementÍ÷ÍT®CallExpressionÍ÷ÍY°MemberExpressionÍ÷ÍU®ThisExpressionÍ÷ÍûLªIdentifierÍüÍ¹setInitiallyProvidedValueÂÂ‘LªIdentifierÍÍ¦paramsÂS³ExpressionStatementÍ(ÍjT®CallExpressionÍ(ÍiY°MemberExpressionÍ(Í9U®ThisExpressionÍ(Í,LªIdentifierÍ-Í9¬declareWatchÂÂ’R§LiteralÍ:ÍL°imageKnifeOption²"imageKnifeOption"Y°MemberExpressionÍNÍhU®ThisExpressionÍNÍRLªIdentifierÍSÍhµwatchImageKnifeOptionÂÂÂS³ExpressionStatementÍtÍT®CallExpressionÍtÍY°MemberExpressionÍtÍU®ThisExpressionÍtÍxLªIdentifierÍyÍ´finalizeConstructionÂÂÂN°MethodDefinitionÍÍ±ÂÂLªIdentifierÍÍ¶¹setInitiallyProvidedValue¦methodO²FunctionExpressionÍ¶Í±ÀÂÂÂ‘LªIdentifierÍ·Í½¦paramsM®BlockStatementÍ¿Í±Ü S³ExpressionStatementÍÊÍÿT®CallExpressionÍÊÍşY°MemberExpressionÍÊÍåY°MemberExpressionÍÊÍáU®ThisExpressionÍÊÍÎLªIdentifierÍÏÍá²__imageKnifeOptionÂÂLªIdentifierÍâÍå£setÂÂ‘Y°MemberExpressionÍæÍıLªIdentifierÍæÍì¦paramsLªIdentifierÍíÍı°imageKnifeOptionÂÂÂV«IfStatementÍ	ÍfW°BinaryExpressionÍÍ*Y°MemberExpressionÍÍLªIdentifierÍÍ¦paramsLªIdentifierÍÍ¨pixelMapÂÂ£!==LªIdentifierÍ!Í*©undefinedM®BlockStatementÍ,Íf‘S³ExpressionStatementÍ;Í[X´AssignmentExpressionÍ;ÍZ¡=Y°MemberExpressionÍ;ÍHU®ThisExpressionÍ;Í?LªIdentifierÍ@ÍH¨pixelMapÂÂY°MemberExpressionÍKÍZLªIdentifierÍKÍQ¦paramsLªIdentifierÍRÍZ¨pixelMapÂÂÀV«IfStatementÍpÍÍW°BinaryExpressionÍtÍ‘Y°MemberExpressionÍtÍƒLªIdentifierÍtÍz¦paramsLªIdentifierÍ{Íƒ¨syncLoadÂÂ£!==LªIdentifierÍˆÍ‘©undefinedM®BlockStatementÍ“ÍÍ‘S³ExpressionStatementÍ¢ÍÂX´AssignmentExpressionÍ¢ÍÁ¡=Y°MemberExpressionÍ¢Í¯U®ThisExpressionÍ¢Í¦LªIdentifierÍ§Í¯¨syncLoadÂÂY°MemberExpressionÍ²ÍÁLªIdentifierÍ²Í¸¦paramsLªIdentifierÍ¹ÍÁ¨syncLoadÂÂÀV«IfStatementÍ×Í	CW°BinaryExpressionÍÛÍıY°MemberExpressionÍÛÍïLªIdentifierÍÛÍá¦paramsLªIdentifierÍâÍï­adaptiveWidthÂÂ£!==LªIdentifierÍôÍı©undefinedM®BlockStatementÍÿÍ	C‘S³ExpressionStatementÍ	Í	8X´AssignmentExpressionÍ	Í	7¡=Y°MemberExpressionÍ	Í	 U®ThisExpressionÍ	Í	LªIdentifierÍ	Í	 ­adaptiveWidthÂÂY°MemberExpressionÍ	#Í	7LªIdentifierÍ	#Í	)¦paramsLªIdentifierÍ	*Í	7­adaptiveWidthÂÂÀV«IfStatementÍ	MÍ	¼W°BinaryExpressionÍ	QÍ	tY°MemberExpressionÍ	QÍ	fLªIdentifierÍ	QÍ	W¦paramsLªIdentifierÍ	XÍ	f®adaptiveHeightÂÂ£!==LªIdentifierÍ	kÍ	t©undefinedM®BlockStatementÍ	vÍ	¼‘S³ExpressionStatementÍ	…Í	±X´AssignmentExpressionÍ	…Í	°¡=Y°MemberExpressionÍ	…Í	˜U®ThisExpressionÍ	…Í	‰LªIdentifierÍ	ŠÍ	˜®adaptiveHeightÂÂY°MemberExpressionÍ	›Í	°LªIdentifierÍ	›Í	¡¦paramsLªIdentifierÍ	¢Í	°®adaptiveHeightÂÂÀV«IfStatementÍ	ÆÍ
+&W°BinaryExpressionÍ	ÊÍ	èY°MemberExpressionÍ	ÊÍ	ÚLªIdentifierÍ	ÊÍ	Ğ¦paramsLªIdentifierÍ	ÑÍ	Ú©objectFitÂÂ£!==LªIdentifierÍ	ßÍ	è©undefinedM®BlockStatementÍ	êÍ
+&‘S³ExpressionStatementÍ	ùÍ
+X´AssignmentExpressionÍ	ùÍ
+¡=Y°MemberExpressionÍ	ùÍ
+U®ThisExpressionÍ	ùÍ	ıLªIdentifierÍ	şÍ
+©objectFitÂÂY°MemberExpressionÍ
+
+Í
+LªIdentifierÍ
+
+Í
+¦paramsLªIdentifierÍ
+Í
+©objectFitÂÂÀV«IfStatementÍ
+0Í
+–W°BinaryExpressionÍ
+4Í
+TY°MemberExpressionÍ
+4Í
+FLªIdentifierÍ
+4Í
+:¦paramsLªIdentifierÍ
+;Í
+F«componentIdÂÂ£!==LªIdentifierÍ
+KÍ
+T©undefinedM®BlockStatementÍ
+VÍ
+–‘S³ExpressionStatementÍ
+eÍ
+‹X´AssignmentExpressionÍ
+eÍ
+Š¡=Y°MemberExpressionÍ
+eÍ
+uU®ThisExpressionÍ
+eÍ
+iLªIdentifierÍ
+jÍ
+u«componentIdÂÂY°MemberExpressionÍ
+xÍ
+ŠLªIdentifierÍ
+xÍ
+~¦paramsLªIdentifierÍ
+Í
+Š«componentIdÂÂÀV«IfStatementÍ
+ Í
+úW°BinaryExpressionÍ
+¤Í
+ÀY°MemberExpressionÍ
+¤Í
+²LªIdentifierÍ
+¤Í
+ª¦paramsLªIdentifierÍ
+«Í
+²§requestÂÂ£!==LªIdentifierÍ
+·Í
+À©undefinedM®BlockStatementÍ
+ÂÍ
+ú‘S³ExpressionStatementÍ
+ÑÍ
+ïX´AssignmentExpressionÍ
+ÑÍ
+î¡=Y°MemberExpressionÍ
+ÑÍ
+İU®ThisExpressionÍ
+ÑÍ
+ÕLªIdentifierÍ
+ÖÍ
+İ§requestÂÂY°MemberExpressionÍ
+àÍ
+îLªIdentifierÍ
+àÍ
+æ¦paramsLªIdentifierÍ
+çÍ
+î§requestÂÂÀV«IfStatementÍÍdW°BinaryExpressionÍÍ&Y°MemberExpressionÍÍLªIdentifierÍÍ¦paramsLªIdentifierÍÍ©lastWidthÂÂ£!==LªIdentifierÍÍ&©undefinedM®BlockStatementÍ(Íd‘S³ExpressionStatementÍ7ÍYX´AssignmentExpressionÍ7ÍX¡=Y°MemberExpressionÍ7ÍEU®ThisExpressionÍ7Í;LªIdentifierÍ<ÍE©lastWidthÂÂY°MemberExpressionÍHÍXLªIdentifierÍHÍN¦paramsLªIdentifierÍOÍX©lastWidthÂÂÀV«IfStatementÍnÍÑW°BinaryExpressionÍrÍ‘Y°MemberExpressionÍrÍƒLªIdentifierÍrÍx¦paramsLªIdentifierÍyÍƒªlastHeightÂÂ£!==LªIdentifierÍˆÍ‘©undefinedM®BlockStatementÍ“ÍÑ‘S³ExpressionStatementÍ¢ÍÆX´AssignmentExpressionÍ¢ÍÅ¡=Y°MemberExpressionÍ¢Í±U®ThisExpressionÍ¢Í¦LªIdentifierÍ§Í±ªlastHeightÂÂY°MemberExpressionÍ´ÍÅLªIdentifierÍ´Íº¦paramsLªIdentifierÍ»ÍÅªlastHeightÂÂÀV«IfStatementÍÛÍDW°BinaryExpressionÍßÍ Y°MemberExpressionÍßÍòLªIdentifierÍßÍå¦paramsLªIdentifierÍæÍò¬currentWidthÂÂ£!==LªIdentifierÍ÷Í ©undefinedM®BlockStatementÍÍD‘S³ExpressionStatementÍÍ9X´AssignmentExpressionÍÍ8¡=Y°MemberExpressionÍÍ"U®ThisExpressionÍÍLªIdentifierÍÍ"¬currentWidthÂÂY°MemberExpressionÍ%Í8LªIdentifierÍ%Í+¦paramsLªIdentifierÍ,Í8¬currentWidthÂÂÀV«IfStatementÍNÍÏW°BinaryExpressionÍRÍ{Y°MemberExpressionÍRÍmLªIdentifierÍRÍX¦paramsLªIdentifierÍYÍm´isImageFitAutoResizeÂÂ£!==LªIdentifierÍrÍ{©undefinedM®BlockStatementÍ}ÍÏ‘S³ExpressionStatementÍŒÍÄX´AssignmentExpressionÍŒÍÃ¡=Y°MemberExpressionÍŒÍ¥U®ThisExpressionÍŒÍLªIdentifierÍ‘Í¥´isImageFitAutoResizeÂÂY°MemberExpressionÍ¨ÍÃLªIdentifierÍ¨Í®¦paramsLªIdentifierÍ¯ÍÃ´isImageFitAutoResizeÂÂÀV«IfStatementÍÙÍEW°BinaryExpressionÍİÍÿY°MemberExpressionÍİÍñLªIdentifierÍİÍã¦paramsLªIdentifierÍäÍñ­currentHeightÂÂ£!==LªIdentifierÍöÍÿ©undefinedM®BlockStatementÍÍE‘S³ExpressionStatementÍÍ:X´AssignmentExpressionÍÍ9¡=Y°MemberExpressionÍÍ"U®ThisExpressionÍÍLªIdentifierÍÍ"­currentHeightÂÂY°MemberExpressionÍ%Í9LªIdentifierÍ%Í+¦paramsLªIdentifierÍ,Í9­currentHeightÂÂÀV«IfStatementÍOÍÄW°BinaryExpressionÍSÍxY°MemberExpressionÍSÍjLªIdentifierÍSÍY¦paramsLªIdentifierÍZÍj°componentVersionÂÂ£!==LªIdentifierÍoÍx©undefinedM®BlockStatementÍzÍÄ‘S³ExpressionStatementÍ‰Í¹X´AssignmentExpressionÍ‰Í¸¡=Y°MemberExpressionÍ‰ÍU®ThisExpressionÍ‰ÍLªIdentifierÍÍ°componentVersionÂÂY°MemberExpressionÍ¡Í¸LªIdentifierÍ¡Í§¦paramsLªIdentifierÍ¨Í¸°componentVersionÂÂÀV«IfStatementÍÎÍ=W°BinaryExpressionÍÒÍõY°MemberExpressionÍÒÍçLªIdentifierÍÒÍØ¦paramsLªIdentifierÍÙÍç®currentContextÂÂ£!==LªIdentifierÍìÍõ©undefinedM®BlockStatementÍ÷Í=‘S³ExpressionStatementÍÍ2X´AssignmentExpressionÍÍ1¡=Y°MemberExpressionÍÍU®ThisExpressionÍÍ
+LªIdentifierÍÍ®currentContextÂÂY°MemberExpressionÍÍ1LªIdentifierÍÍ"¦paramsLªIdentifierÍ#Í1®currentContextÂÂÀV«IfStatementÍGÍªW°BinaryExpressionÍKÍjY°MemberExpressionÍKÍ\LªIdentifierÍKÍQ¦paramsLªIdentifierÍRÍ\ªlastOptionÂÂ£!==LªIdentifierÍaÍj©undefinedM®BlockStatementÍlÍª‘S³ExpressionStatementÍ{ÍŸX´AssignmentExpressionÍ{Í¡=Y°MemberExpressionÍ{ÍŠU®ThisExpressionÍ{ÍLªIdentifierÍ€ÍŠªlastOptionÂÂY°MemberExpressionÍÍLªIdentifierÍÍ“¦paramsLªIdentifierÍ”ÍªlastOptionÂÂÀN°MethodDefinitionÍ·ÍÂÂLªIdentifierÍ·ÍÆ¯updateStateVars¦methodO²FunctionExpressionÍÆÍÀÂÂÂ‘LªIdentifierÍÇÍÍ¦paramsM®BlockStatementÍÏÍ‘S³ExpressionStatementÍÚÍT®CallExpressionÍÚÍY°MemberExpressionÍÚÍõY°MemberExpressionÍÚÍñU®ThisExpressionÍÚÍŞLªIdentifierÍßÍñ²__imageKnifeOptionÂÂLªIdentifierÍòÍõ£setÂÂ‘Y°MemberExpressionÍöÍLªIdentifierÍöÍü¦paramsLªIdentifierÍıÍ°imageKnifeOptionÂÂÂN°MethodDefinitionÍÍÌÂÂLªIdentifierÍÍ=Ù!purgeVariableDependenciesOnElmtId¦methodO²FunctionExpressionÍ=ÍÌÀÂÂÂ‘LªIdentifierÍ>ÍF¨rmElmtIdM®BlockStatementÍHÍÌ–S³ExpressionStatementÍSÍT®CallExpressionÍSÍŒY°MemberExpressionÍSÍ‚Y°MemberExpressionÍSÍjU®ThisExpressionÍSÍWLªIdentifierÍXÍj²__imageKnifeOptionÂÂLªIdentifierÍkÍ‚·purgeDependencyOnElmtIdÂÂ‘LªIdentifierÍƒÍ‹¨rmElmtIdÂS³ExpressionStatementÍ—ÍÉT®CallExpressionÍ—ÍÈY°MemberExpressionÍ—Í¾Y°MemberExpressionÍ—Í¦U®ThisExpressionÍ—Í›LªIdentifierÍœÍ¦ª__pixelMapÂÂLªIdentifierÍ§Í¾·purgeDependencyOnElmtIdÂÂ‘LªIdentifierÍ¿ÍÇ¨rmElmtIdÂS³ExpressionStatementÍÓÍT®CallExpressionÍÓÍY°MemberExpressionÍÓÍúY°MemberExpressionÍÓÍâU®ThisExpressionÍÓÍ×LªIdentifierÍØÍâª__syncLoadÂÂLªIdentifierÍãÍú·purgeDependencyOnElmtIdÂÂ‘LªIdentifierÍûÍ¨rmElmtIdÂS³ExpressionStatementÍÍFT®CallExpressionÍÍEY°MemberExpressionÍÍ;Y°MemberExpressionÍÍ#U®ThisExpressionÍÍLªIdentifierÍÍ#¯__adaptiveWidthÂÂLªIdentifierÍ$Í;·purgeDependencyOnElmtIdÂÂ‘LªIdentifierÍ<ÍD¨rmElmtIdÂS³ExpressionStatementÍPÍˆT®CallExpressionÍPÍ‡Y°MemberExpressionÍPÍ}Y°MemberExpressionÍPÍeU®ThisExpressionÍPÍTLªIdentifierÍUÍe°__adaptiveHeightÂÂLªIdentifierÍfÍ}·purgeDependencyOnElmtIdÂÂ‘LªIdentifierÍ~Í†¨rmElmtIdÂS³ExpressionStatementÍ’ÍÅT®CallExpressionÍ’ÍÄY°MemberExpressionÍ’ÍºY°MemberExpressionÍ’Í¢U®ThisExpressionÍ’Í–LªIdentifierÍ—Í¢«__objectFitÂÂLªIdentifierÍ£Íº·purgeDependencyOnElmtIdÂÂ‘LªIdentifierÍ»ÍÃ¨rmElmtIdÂN°MethodDefinitionÍÒÍoÂÂLªIdentifierÍÒÍâ°aboutToBeDeleted¦methodO²FunctionExpressionÍâÍoÀÂÂÂM®BlockStatementÍåÍo˜S³ExpressionStatementÍğÍT®CallExpressionÍğÍY°MemberExpressionÍğÍY°MemberExpressionÍğÍU®ThisExpressionÍğÍôLªIdentifierÍõÍ²__imageKnifeOptionÂÂLªIdentifierÍÍ°aboutToBeDeletedÂÂÂS³ExpressionStatementÍ%ÍHT®CallExpressionÍ%ÍGY°MemberExpressionÍ%ÍEY°MemberExpressionÍ%Í4U®ThisExpressionÍ%Í)LªIdentifierÍ*Í4ª__pixelMapÂÂLªIdentifierÍ5ÍE°aboutToBeDeletedÂÂÂS³ExpressionStatementÍRÍuT®CallExpressionÍRÍtY°MemberExpressionÍRÍrY°MemberExpressionÍRÍaU®ThisExpressionÍRÍVLªIdentifierÍWÍaª__syncLoadÂÂLªIdentifierÍbÍr°aboutToBeDeletedÂÂÂS³ExpressionStatementÍÍ§T®CallExpressionÍÍ¦Y°MemberExpressionÍÍ¤Y°MemberExpressionÍÍ“U®ThisExpressionÍÍƒLªIdentifierÍ„Í“¯__adaptiveWidthÂÂLªIdentifierÍ”Í¤°aboutToBeDeletedÂÂÂS³ExpressionStatementÍ±ÍÚT®CallExpressionÍ±ÍÙY°MemberExpressionÍ±Í×Y°MemberExpressionÍ±ÍÆU®ThisExpressionÍ±ÍµLªIdentifierÍ¶ÍÆ°__adaptiveHeightÂÂLªIdentifierÍÇÍ×°aboutToBeDeletedÂÂÂS³ExpressionStatementÍäÍT®CallExpressionÍäÍY°MemberExpressionÍäÍY°MemberExpressionÍäÍôU®ThisExpressionÍäÍèLªIdentifierÍéÍô«__objectFitÂÂLªIdentifierÍõÍ°aboutToBeDeletedÂÂÂS³ExpressionStatementÍÍ>T®CallExpressionÍÍ=Y°MemberExpressionÍÍ0T®CallExpressionÍÍ)Y°MemberExpressionÍÍ'LªIdentifierÍÍ#±SubscriberManagerLªIdentifierÍ$Í'£GetÂÂÂLªIdentifierÍ*Í0¦deleteÂÂ‘T®CallExpressionÍ1Í<Y°MemberExpressionÍ1Í:U®ThisExpressionÍ1Í5LªIdentifierÍ6Í:¤id__ÂÂÂÂS³ExpressionStatementÍHÍhT®CallExpressionÍHÍgY°MemberExpressionÍHÍeU®ThisExpressionÍHÍLLªIdentifierÍMÍe¸aboutToBeDeletedInternalÂÂÂN°MethodDefinitionÍuÍÃÂÂLªIdentifierÍyÍ‰°imageKnifeOption£getO²FunctionExpressionÍ‰ÍÃÀÂÂÂM®BlockStatementÍŒÍÃ‘Ôr[”¤type¥start£end¨argument¯ReturnStatementÍ—Í¼T®CallExpressionÍÍ»Y°MemberExpressionÍÍ¹Y°MemberExpressionÍÍµU®ThisExpressionÍÍ¢LªIdentifierÍ£Íµ²__imageKnifeOptionÂÂLªIdentifierÍ¶Í¹£getÂÂÂN°MethodDefinitionÍÉÍÂÂLªIdentifierÍÍÍÕ¨pixelMap£getO²FunctionExpressionÍÕÍÀÂÂÂM®BlockStatementÍØÍ‘[¯ReturnStatementÍãÍ T®CallExpressionÍêÍÿY°MemberExpressionÍêÍıY°MemberExpressionÍêÍùU®ThisExpressionÍêÍîLªIdentifierÍïÍùª__pixelMapÂÂLªIdentifierÍúÍı£getÂÂÂN°MethodDefinitionÍÍTÂÂLªIdentifierÍÍ¨pixelMap£setO²FunctionExpressionÍÍTÀÂÂÂ‘LªIdentifierÍÍ"¨newValueM®BlockStatementÍ$ÍT‘S³ExpressionStatementÍ/ÍMT®CallExpressionÍ/ÍLY°MemberExpressionÍ/ÍBY°MemberExpressionÍ/Í>U®ThisExpressionÍ/Í3LªIdentifierÍ4Í>ª__pixelMapÂÂLªIdentifierÍ?ÍB£setÂÂ‘LªIdentifierÍCÍK¨newValueÂN°MethodDefinitionÍZÍ˜ÂÂLªIdentifierÍ^Íf¨syncLoad£getO²FunctionExpressionÍfÍ˜ÀÂÂÂM®BlockStatementÍiÍ˜‘[¯ReturnStatementÍtÍ‘T®CallExpressionÍ{ÍY°MemberExpressionÍ{ÍY°MemberExpressionÍ{ÍŠU®ThisExpressionÍ{ÍLªIdentifierÍ€ÍŠª__syncLoadÂÂLªIdentifierÍ‹Í£getÂÂÂN°MethodDefinitionÍÍåÂÂLªIdentifierÍ¢Íª¨syncLoad£setO²FunctionExpressionÍªÍåÀÂÂÂ‘LªIdentifierÍ«Í³¨newValueM®BlockStatementÍµÍå‘S³ExpressionStatementÍÀÍŞT®CallExpressionÍÀÍİY°MemberExpressionÍÀÍÓY°MemberExpressionÍÀÍÏU®ThisExpressionÍÀÍÄLªIdentifierÍÅÍÏª__syncLoadÂÂLªIdentifierÍĞÍÓ£setÂÂ‘LªIdentifierÍÔÍÜ¨newValueÂN°MethodDefinitionÍëÍ3ÂÂLªIdentifierÍïÍü­adaptiveWidth£getO²FunctionExpressionÍüÍ3ÀÂÂÂM®BlockStatementÍÿÍ3‘[¯ReturnStatementÍ
+Í,T®CallExpressionÍÍ+Y°MemberExpressionÍÍ)Y°MemberExpressionÍÍ%U®ThisExpressionÍÍLªIdentifierÍÍ%¯__adaptiveWidthÂÂLªIdentifierÍ&Í)£getÂÂÂN°MethodDefinitionÍ9ÍŠÂÂLªIdentifierÍ=ÍJ­adaptiveWidth£setO²FunctionExpressionÍJÍŠÀÂÂÂ‘LªIdentifierÍKÍS¨newValueM®BlockStatementÍUÍŠ‘S³ExpressionStatementÍ`ÍƒT®CallExpressionÍ`Í‚Y°MemberExpressionÍ`ÍxY°MemberExpressionÍ`ÍtU®ThisExpressionÍ`ÍdLªIdentifierÍeÍt¯__adaptiveWidthÂÂLªIdentifierÍuÍx£setÂÂ‘LªIdentifierÍyÍ¨newValueÂN°MethodDefinitionÍÍÚÂÂLªIdentifierÍ”Í¢®adaptiveHeight£getO²FunctionExpressionÍ¢ÍÚÀÂÂÂM®BlockStatementÍ¥ÍÚ‘[¯ReturnStatementÍ°ÍÓT®CallExpressionÍ·ÍÒY°MemberExpressionÍ·ÍĞY°MemberExpressionÍ·ÍÌU®ThisExpressionÍ·Í»LªIdentifierÍ¼ÍÌ°__adaptiveHeightÂÂLªIdentifierÍÍÍĞ£getÂÂÂN°MethodDefinitionÍàÍ3ÂÂLªIdentifierÍäÍò®adaptiveHeight£setO²FunctionExpressionÍòÍ3ÀÂÂÂ‘LªIdentifierÍóÍû¨newValueM®BlockStatementÍıÍ3‘S³ExpressionStatementÍÍ,T®CallExpressionÍÍ+Y°MemberExpressionÍÍ!Y°MemberExpressionÍÍU®ThisExpressionÍÍLªIdentifierÍÍ°__adaptiveHeightÂÂLªIdentifierÍÍ!£setÂÂ‘LªIdentifierÍ"Í*¨newValueÂN°MethodDefinitionÍ9ÍyÂÂLªIdentifierÍ=ÍF©objectFit£getO²FunctionExpressionÍFÍyÀÂÂÂM®BlockStatementÍIÍy‘[¯ReturnStatementÍTÍrT®CallExpressionÍ[ÍqY°MemberExpressionÍ[ÍoY°MemberExpressionÍ[ÍkU®ThisExpressionÍ[Í_LªIdentifierÍ`Ík«__objectFitÂÂLªIdentifierÍlÍo£getÂÂÂN°MethodDefinitionÍÍÈÂÂLªIdentifierÍƒÍŒ©objectFit£setO²FunctionExpressionÍŒÍÈÀÂÂÂ‘LªIdentifierÍÍ•¨newValueM®BlockStatementÍ—ÍÈ‘S³ExpressionStatementÍ¢ÍÁT®CallExpressionÍ¢ÍÀY°MemberExpressionÍ¢Í¶Y°MemberExpressionÍ¢Í²U®ThisExpressionÍ¢Í¦LªIdentifierÍ§Í²«__objectFitÂÂLªIdentifierÍ³Í¶£setÂÂ‘LªIdentifierÍ·Í¿¨newValueÂN°MethodDefinitionÍÎÍqÂÂLªIdentifierÍÎÍÜ®getChangeValue¦methodO²FunctionExpressionÍÜÍqÀÂÂÂM®BlockStatementÍßÍq’V«IfStatementÍêÍOW°BinaryExpressionÍîÍ,Q¯UnaryExpressionÍîÍ¦typeofÃS¯ChainExpressionÍõÍY°MemberExpressionÍõÍY°MemberExpressionÍõÍY°MemberExpressionÍõÍ
+U®ThisExpressionÍõÍùLªIdentifierÍúÍ
+°imageKnifeOptionÂÂLªIdentifierÍÍ§loadSrcÂÂLªIdentifierÍÍªisEditableÂÃ£===R§LiteralÍ#Í,§boolean©'boolean'M®BlockStatementÍ.ÍO‘[¯ReturnStatementÍ=ÍDÀÀ[¯ReturnStatementÍYÍjÔr\•¤type¥start£end«expressions¦quasis¯TemplateLiteralÍ`Íi•T®CallExpressionÍcÍY°MemberExpressionÍcÍqLªIdentifierÍcÍg¤JSONLªIdentifierÍhÍq©stringifyÂÂ‘Y°MemberExpressionÍrÍY°MemberExpressionÍrÍ‡U®ThisExpressionÍrÍvLªIdentifierÍwÍ‡°imageKnifeOptionÂÂLªIdentifierÍˆÍ§loadSrcÂÂÂY°MemberExpressionÍ”Í³Y°MemberExpressionÍ”Í©U®ThisExpressionÍ”Í˜LªIdentifierÍ™Í©°imageKnifeOptionÂÂLªIdentifierÍªÍ³©signatureÂÂY°MemberExpressionÍÅÍçY°MemberExpressionÍÅÍÚU®ThisExpressionÍÅÍÉLªIdentifierÍÊÍÚ°imageKnifeOptionÂÂLªIdentifierÍÛÍç¬downsampleOfÂÂT®CallExpressionÍëÍY°MemberExpressionÍëÍùLªIdentifierÍëÍï¤JSONLªIdentifierÍğÍù©stringifyÂÂ‘Y°MemberExpressionÍúÍY°MemberExpressionÍúÍU®ThisExpressionÍúÍşLªIdentifierÍÿÍ°imageKnifeOptionÂÂLªIdentifierÍÍ®transformationÂÂÂT®CallExpressionÍ1ÍgY°MemberExpressionÍ1Í?LªIdentifierÍ1Í5¤JSONLªIdentifierÍ6Í?©stringifyÂÂ‘Y°MemberExpressionÍ@ÍfY°MemberExpressionÍ@ÍUU®ThisExpressionÍ@ÍDLªIdentifierÍEÍU°imageKnifeOptionÂÂLªIdentifierÍVÍf°dynamicRangeModeÂÂÂ–Ôr]•¤type¥start£end¥value¤tail¯TemplateElementÍaÍaÔr^’£raw¦cooked  Â]¯TemplateElementÍ‘Í’^¡,¡,Â]¯TemplateElementÍ´ÍÃ^®,
+            ®,
+            Â]¯TemplateElementÍèÍé^¡,¡,Â]¯TemplateElementÍ Í/^®,
+            ®,
+            Â]¯TemplateElementÍhÍh^  ÃN°MethodDefinitionÍwÍéÂÂLªIdentifierÍwÍ„­aboutToAppear¦methodO²FunctionExpressionÍ„ÍéÀÂÂÂM®BlockStatementÍ‡Íé–V«IfStatementÍ’Í3W°BinaryExpressionÍ–ÍÔQ¯UnaryExpressionÍ–ÍÆ¦typeofÃS¯ChainExpressionÍÍÆY°MemberExpressionÍÍÆY°MemberExpressionÍÍºY°MemberExpressionÍÍ²U®ThisExpressionÍÍ¡LªIdentifierÍ¢Í²°imageKnifeOptionÂÂLªIdentifierÍ³Íº§loadSrcÂÂLªIdentifierÍ¼ÍÆªisEditableÂÃ£===R§LiteralÍËÍÔ§boolean©'boolean'M®BlockStatementÍÖÍ3’S³ExpressionStatementÍåÍX´AssignmentExpressionÍåÍ¡=Y°MemberExpressionÍåÍòU®ThisExpressionÍåÍéLªIdentifierÍêÍò¨pixelMapÂÂY°MemberExpressionÍõÍY°MemberExpressionÍõÍ
+U®ThisExpressionÍõÍùLªIdentifierÍúÍ
+°imageKnifeOptionÂÂLªIdentifierÍÍ§loadSrcÂÂ[¯ReturnStatementÍ!Í(ÀÀS³ExpressionStatementÍ=ÍeX´AssignmentExpressionÍ=Íd¡=Y°MemberExpressionÍ=ÍLU®ThisExpressionÍ=ÍALªIdentifierÍBÍLªlastOptionÂÂT®CallExpressionÍOÍdY°MemberExpressionÍOÍbU®ThisExpressionÍOÍSLªIdentifierÍTÍb®getChangeValueÂÂÂS³ExpressionStatementÍoÍñX´AssignmentExpressionÍoÍğ¡=Y°MemberExpressionÍoÍ}U®ThisExpressionÍoÍsLªIdentifierÍtÍ}©objectFitÂÂW±LogicalExpressionÍÍğY°MemberExpressionÍÍ·Y°MemberExpressionÍÍ¢U®ThisExpressionÍÍ‘LªIdentifierÍ’Í¢°imageKnifeOptionÂÂLªIdentifierÍ£Í·´placeholderObjectFitÂÂ¢??W±LogicalExpressionÍ¼ÍïY°MemberExpressionÍ¼ÍÛY°MemberExpressionÍ¼ÍÑU®ThisExpressionÍ¼ÍÀLªIdentifierÍÁÍÑ°imageKnifeOptionÂÂLªIdentifierÍÒÍÛ©objectFitÂÂ¢??Y°MemberExpressionÍßÍïLªIdentifierÍßÍç¨ImageFitLªIdentifierÍèÍï§ContainÂÂS³ExpressionStatementÍûÍTX´AssignmentExpressionÍûÍS¡=Y°MemberExpressionÍûÍU®ThisExpressionÍûÍÿLªIdentifierÍ Í®adaptiveHeightÂÂVµConditionalExpressionÍÍSW°BinaryExpressionÍÍ1Y°MemberExpressionÍÍU®ThisExpressionÍÍLªIdentifierÍÍ©objectFitÂÂ£===Y°MemberExpressionÍ$Í1LªIdentifierÍ$Í,¨ImageFitLªIdentifierÍ-Í1¤AutoÂÂLªIdentifierÍ4Í=©undefinedY°MemberExpressionÍ@ÍSU®ThisExpressionÍ@ÍDLªIdentifierÍEÍS®adaptiveHeightÂÂS³ExpressionStatementÍ^Í„X´AssignmentExpressionÍ^Íƒ¡=Y°MemberExpressionÍ^ÍnU®ThisExpressionÍ^ÍbLªIdentifierÍcÍn«componentIdÂÂT®CallExpressionÍqÍƒY°MemberExpressionÍqÍU®ThisExpressionÍqÍuLªIdentifierÍvÍ«getUniqueIdÂÂÂV«IfStatementÍÍâY°MemberExpressionÍ’ÍŸU®ThisExpressionÍ’Í–LªIdentifierÍ—ÍŸ¨syncLoadÂÂM®BlockStatementÍ¡Íâ“Ôr_•¤type¥start£end¬declarations¤kind³VariableDeclarationÍâÍ	‘Ôr`•¤type¥start£end¢id¤init²VariableDeclaratorÍæÍLªIdentifierÍæÍï©engineKeyZ­NewExpressionÍòÍLªIdentifierÍöÍ°DefaultEngineKey£let_³VariableDeclarationÍÍÛ‘`²VariableDeclaratorÍÍÚLªIdentifierÍÍ)®memoryCacheSrcT®CallExpressionÍ,ÍÚY°MemberExpressionÍ,ÍjT®CallExpressionÍ,ÍDY°MemberExpressionÍ,ÍBLªIdentifierÍ,Í6ªImageKnifeLªIdentifierÍ7ÍB«getInstanceÂÂÂLªIdentifierÍWÍj³loadFromMemoryCacheÂÂ‘T®CallExpressionÍkÍÙY°MemberExpressionÍkÍ†LªIdentifierÍkÍt©engineKeyLªIdentifierÍuÍ†±generateMemoryKeyÂÂ“Y°MemberExpressionÍ‡Í¤Y°MemberExpressionÍ‡ÍœU®ThisExpressionÍ‡Í‹LªIdentifierÍŒÍœ°imageKnifeOptionÂÂLªIdentifierÍÍ¤§loadSrcÂÂY°MemberExpressionÍ¦ÍÁLªIdentifierÍ¦Í½·ImageKnifeRequestSourceLªIdentifierÍ¾ÍÁ£SRCÂÂY°MemberExpressionÍÃÍØU®ThisExpressionÍÃÍÇLªIdentifierÍÈÍØ°imageKnifeOptionÂÂÂÂ£letV«IfStatementÍéÍ×W°BinaryExpressionÍíÍ	LªIdentifierÍíÍû®memoryCacheSrc£!==LªIdentifierÍ Í	©undefinedM®BlockStatementÍÍØ’S³ExpressionStatementÍÍ‘T®CallExpressionÍÍY°MemberExpressionÍÍ)LªIdentifierÍÍ%§LogUtilLªIdentifierÍ&Í)£logÂÂ‘W°BinaryExpressionÍ*ÍR§LiteralÍ*ÍoÙCaboutToAppear success load loadSrc from memory cache for loadSrc = ÙE'aboutToAppear success load loadSrc from memory cache for loadSrc = '¡+Y°MemberExpressionÍrÍY°MemberExpressionÍrÍ‡U®ThisExpressionÍrÍvLªIdentifierÍwÍ‡°imageKnifeOptionÂÂLªIdentifierÍˆÍ§loadSrcÂÂÂS³ExpressionStatementÍ£ÍÉX´AssignmentExpressionÍ£ÍÈ¡=Y°MemberExpressionÍ£Í°U®ThisExpressionÍ£Í§LªIdentifierÍ¨Í°¨pixelMapÂÂY°MemberExpressionÍ³ÍÈLªIdentifierÍ³ÍÁ®memoryCacheSrcLªIdentifierÍÂÍÈ¦sourceÂÂM®BlockStatementÍëÍ×’S³ExpressionStatementÍşÍnT®CallExpressionÍşÍmY°MemberExpressionÍşÍ	LªIdentifierÍşÍ§LogUtilLªIdentifierÍÍ	£logÂÂ‘W°BinaryExpressionÍ
+ÍlR§LiteralÍ
+ÍLÙ@aboutToAppear fail load loadSrc from memory cache for loadSrc = ÙB'aboutToAppear fail load loadSrc from memory cache for loadSrc = '¡+Y°MemberExpressionÍOÍlY°MemberExpressionÍOÍdU®ThisExpressionÍOÍSLªIdentifierÍTÍd°imageKnifeOptionÂÂLªIdentifierÍeÍl§loadSrcÂÂÂV«IfStatementÍ€ÍÈW°BinaryExpressionÍ„Í¶Y°MemberExpressionÍ„Í¨Y°MemberExpressionÍ„Í™U®ThisExpressionÍ„ÍˆLªIdentifierÍ‰Í™°imageKnifeOptionÂÂLªIdentifierÍšÍ¨®placeholderSrcÂÂ£!==LªIdentifierÍ­Í¶©undefinedM®BlockStatementÍ¸ÍÈ’_³VariableDeclarationÍÏÍ­‘`²VariableDeclaratorÍÓÍ¬LªIdentifierÍÓÍã°memoryCachePlaceT®CallExpressionÍæÍ¬Y°MemberExpressionÍæÍ,T®CallExpressionÍæÍşY°MemberExpressionÍæÍüLªIdentifierÍæÍğªImageKnifeLªIdentifierÍñÍü«getInstanceÂÂÂLªIdentifierÍÍ,³loadFromMemoryCacheÂÂ‘T®CallExpressionÍ-Í«Y°MemberExpressionÍ-ÍHLªIdentifierÍ-Í6©engineKeyLªIdentifierÍ7ÍH±generateMemoryKeyÂÂ“Y°MemberExpressionÍIÍmY°MemberExpressionÍIÍ^U®ThisExpressionÍIÍMLªIdentifierÍNÍ^°imageKnifeOptionÂÂLªIdentifierÍ_Ím®placeholderSrcÂÂY°MemberExpressionÍoÍ“LªIdentifierÍoÍ†·ImageKnifeRequestSourceLªIdentifierÍ‡Í“¬PLACE_HOLDERÂÂY°MemberExpressionÍ•ÍªU®ThisExpressionÍ•Í™LªIdentifierÍšÍª°imageKnifeOptionÂÂÂÂ£letV«IfStatementÍÃÍµW°BinaryExpressionÍÇÍåLªIdentifierÍÇÍ×°memoryCachePlace£!==LªIdentifierÍÜÍå©undefinedM®BlockStatementÍçÍã’S³ExpressionStatementÍÍŠT®CallExpressionÍÍ‰Y°MemberExpressionÍÍLªIdentifierÍÍ	§LogUtilLªIdentifierÍ
+Í£logÂÂ‘W°BinaryExpressionÍÍˆR§LiteralÍÍaÙQaboutToAppear success load placeholderSrc from memory cache for placeholderSrc = ÙS'aboutToAppear success load placeholderSrc from memory cache for placeholderSrc = '¡+Y°MemberExpressionÍdÍˆY°MemberExpressionÍdÍyU®ThisExpressionÍdÍhLªIdentifierÍiÍy°imageKnifeOptionÂÂLªIdentifierÍzÍˆ®placeholderSrcÂÂÂS³ExpressionStatementÍ¤ÍÌX´AssignmentExpressionÍ¤ÍË¡=Y°MemberExpressionÍ¤Í±U®ThisExpressionÍ¤Í¨LªIdentifierÍ©Í±¨pixelMapÂÂY°MemberExpressionÍ´ÍËLªIdentifierÍ´ÍÄ°memoryCachePlaceLªIdentifierÍÅÍË¦sourceÂÂM®BlockStatementÍşÍµ‘S³ExpressionStatementÍÍT®CallExpressionÍÍY°MemberExpressionÍÍ$LªIdentifierÍÍ §LogUtilLªIdentifierÍ!Í$£logÂÂ‘W°BinaryExpressionÍ%ÍœR§LiteralÍ%ÍuÙNaboutToAppear fail load placeholderSrc from memory cache for placeholderSrc = ÙP'aboutToAppear fail load placeholderSrc from memory cache for placeholderSrc = '¡+Y°MemberExpressionÍxÍœY°MemberExpressionÍxÍU®ThisExpressionÍxÍ|LªIdentifierÍ}Í°imageKnifeOptionÂÂLªIdentifierÍÍœ®placeholderSrcÂÂÂÀÀN°MethodDefinitionÍïÍ LÂÂLªIdentifierÍïÍÿ°aboutToDisappear¦methodO²FunctionExpressionÍÿÍ LÀÂÂÂM®BlockStatementÍ Í L’S³ExpressionStatementÍ Í #T®CallExpressionÍ Í "Y°MemberExpressionÍ Í  U®ThisExpressionÍ Í LªIdentifierÍ Í  ®emitterDestroyÂÂÂS³ExpressionStatementÍ -Í ET®CallExpressionÍ -Í DY°MemberExpressionÍ -Í BU®ThisExpressionÍ -Í 1LªIdentifierÍ 2Í B°clearLastRequestÂÂÂN°MethodDefinitionÍ RÍ ÚÂÂLªIdentifierÍ RÍ `®aboutToRecycle¦methodO²FunctionExpressionÍ `Í ÚÀÂÂÂM®BlockStatementÍ cÍ Ú“S³ExpressionStatementÍ nÍ ‘X´AssignmentExpressionÍ nÍ ¡=Y°MemberExpressionÍ nÍ {U®ThisExpressionÍ nÍ rLªIdentifierÍ sÍ {¨pixelMapÂÂY°MemberExpressionÍ ~Í LªIdentifierÍ ~Í Š¬ImageContentLªIdentifierÍ ‹Í ¥EMPTYÂÂS³ExpressionStatementÍ ›Í ±T®CallExpressionÍ ›Í °Y°MemberExpressionÍ ›Í ®U®ThisExpressionÍ ›Í ŸLªIdentifierÍ  Í ®®emitterDestroyÂÂÂS³ExpressionStatementÍ »Í ÓT®CallExpressionÍ »Í ÒY°MemberExpressionÍ »Í ĞU®ThisExpressionÍ »Í ¿LªIdentifierÍ ÀÍ Ğ°clearLastRequestÂÂÂN°MethodDefinitionÍ àÍ!ÆÂÂLªIdentifierÍ àÍ î®emitterDestroy¦methodO²FunctionExpressionÍ îÍ!ÆÀÂÂÂM®BlockStatementÍ ñÍ!Æ‘V«IfStatementÍ üÍ!¿W±LogicalExpressionÍ! Í!\W°BinaryExpressionÍ! Í!:Q¯UnaryExpressionÍ! Í!-¦typeofÃS¯ChainExpressionÍ!Í!-Y°MemberExpressionÍ!Í!-Y°MemberExpressionÍ!Í!%Y°MemberExpressionÍ!Í!U®ThisExpressionÍ!Í!LªIdentifierÍ!Í!§requestÂÂLªIdentifierÍ!Í!%°imageKnifeOptionÂÃLªIdentifierÍ!&Í!-§loadSrcÂÂ£===R§LiteralÍ!2Í!:¦string¨'string'¢&&Q¯UnaryExpressionÍ!>Í!\¡!ÃS¯ChainExpressionÍ!?Í!\Y°MemberExpressionÍ!?Í!\Y°MemberExpressionÍ!?Í!KU®ThisExpressionÍ!?Í!CLªIdentifierÍ!DÍ!K§requestÂÂLªIdentifierÍ!MÍ!\¯drawMainSuccessÂÃM®BlockStatementÍ!^Í!¿‘S³ExpressionStatementÍ!mÍ!´T®CallExpressionÍ!mÍ!³Y°MemberExpressionÍ!mÍ!yLªIdentifierÍ!mÍ!t§emitterLªIdentifierÍ!uÍ!y¤emitÂÂ‘W°BinaryExpressionÍ!zÍ!²Y°MemberExpressionÍ!zÍ!ŸY°MemberExpressionÍ!zÍ!—Y°MemberExpressionÍ!zÍ!†U®ThisExpressionÍ!zÍ!~LªIdentifierÍ!Í!†§requestÂÂLªIdentifierÍ!‡Í!—°imageKnifeOptionÂÂLªIdentifierÍ!˜Í!Ÿ§loadSrcÂÂ¡+Y°MemberExpressionÍ!¢Í!²U®ThisExpressionÍ!¢Í!¦LªIdentifierÍ!§Í!²«componentIdÂÂÂÀN°MethodDefinitionÍ!ùÍ$JÂÂLªIdentifierÍ!ùÍ"	°clearLastRequest¦methodO²FunctionExpressionÍ"	Í$JÀÂÂÂM®BlockStatementÍ"Í$J‘V«IfStatementÍ"Í$CW°BinaryExpressionÍ"Í"5Y°MemberExpressionÍ"Í"'U®ThisExpressionÍ"Í"LªIdentifierÍ" Í"'§requestÂÂ£!==LªIdentifierÍ",Í"5©undefinedM®BlockStatementÍ"7Í$C”S³ExpressionStatementÍ"FÍ"X´AssignmentExpressionÍ"FÍ"€¡=Y°MemberExpressionÍ"FÍ"_Y°MemberExpressionÍ"FÍ"RU®ThisExpressionÍ"FÍ"JLªIdentifierÍ"KÍ"R§requestÂÂLªIdentifierÍ"SÍ"_¬requestStateÂÂY°MemberExpressionÍ"bÍ"€LªIdentifierÍ"bÍ"x¶ImageKnifeRequestStateLªIdentifierÍ"yÍ"€§DESTROYÂÂV«IfStatementÍ"Í#ìW±LogicalExpressionÍ"“Í"ßW°BinaryExpressionÍ"“Í"¹Y°MemberExpressionÍ"“Í"«Y°MemberExpressionÍ"“Í"ŸU®ThisExpressionÍ"“Í"—LªIdentifierÍ"˜Í"Ÿ§requestÂÂLªIdentifierÍ" Í"««taskRequestÂÂ£!==LªIdentifierÍ"°Í"¹©undefined¢&&Q¯UnaryExpressionÍ"½Í"ß¡!ÃT®CallExpressionÍ"¾Í"ßY°MemberExpressionÍ"¾Í"İY°MemberExpressionÍ"¾Í"ÖY°MemberExpressionÍ"¾Í"ÊU®ThisExpressionÍ"¾Í"ÂLªIdentifierÍ"ÃÍ"Ê§requestÂÂLªIdentifierÍ"ËÍ"Ö«taskRequestÂÂLªIdentifierÍ"×Í"İ¦isDoneÂÂÂM®BlockStatementÍ"áÍ#ì‘Ôra–¤type¥start£end¥block§handler©finalizer¬TryStatementÍ"ôÍ#İM®BlockStatementÍ"øÍ#L‘S³ExpressionStatementÍ#Í#9T®CallExpressionÍ#Í#8Y°MemberExpressionÍ#Í#LªIdentifierÍ#Í#¨taskpoolLªIdentifierÍ#Í#¦cancelÂÂ‘Y°MemberExpressionÍ#Í#7Y°MemberExpressionÍ#Í#+U®ThisExpressionÍ#Í##LªIdentifierÍ#$Í#+§requestÂÂLªIdentifierÍ#,Í#7«taskRequestÂÂÂÔrb•¤type¥start£end¥param¤body«CatchClauseÍ#^Í#İLªIdentifierÍ#eÍ#j¥errorM®BlockStatementÍ#lÍ#İ‘S³ExpressionStatementÍ#ƒÍ#ÊT®CallExpressionÍ#ƒÍ#ÉY°MemberExpressionÍ#ƒÍ#LªIdentifierÍ#ƒÍ#Š§LogUtilLªIdentifierÍ#‹Í#¥errorÂÂ‘\¯TemplateLiteralÍ#‘Í#È‘LªIdentifierÍ#ÁÍ#Æ¥error’]¯TemplateElementÍ#’Í#¿^Ù-ImageKnifeComponent; clearLastRequest error: Ù-ImageKnifeComponent; clearLastRequest error: Â]¯TemplateElementÍ#ÇÍ#Ç^  ÃÂÀÀS³ExpressionStatementÍ#úÍ$T®CallExpressionÍ#úÍ$Y°MemberExpressionÍ#úÍ$Y°MemberExpressionÍ#úÍ$U®ThisExpressionÍ#úÍ#şLªIdentifierÍ#ÿÍ$§requestÂÂLªIdentifierÍ$Í$§destroyÂÂÂS³ExpressionStatementÍ$Í$8X´AssignmentExpressionÍ$Í$7¡=Y°MemberExpressionÍ$Í$+U®ThisExpressionÍ$Í$#LªIdentifierÍ$$Í$+§requestÂÂLªIdentifierÍ$.Í$7©undefinedÀN°MethodDefinitionÍ$PÍ-ÖÂÂLªIdentifierÍ$PÍ$]­initialRender¦methodO²FunctionExpressionÍ$]Í-ÖÀÂÂÂM®BlockStatementÍ$`Í-Ö‘S³ExpressionStatementÍ$kÍ-ÏT®CallExpressionÍ$kÍ-ÎY°MemberExpressionÍ$kÍ$‰U®ThisExpressionÍ$kÍ$oLªIdentifierÍ$pÍ$‰¹observeComponentCreation2ÂÂ’O·ArrowFunctionExpressionÍ$ŠÍ-ÆÀÂÂÂ’LªIdentifierÍ$‹Í$‘¦elmtIdLªIdentifierÍ$“Í$¢¯isInitialRenderM®BlockStatementÍ$§Í-ÆœS³ExpressionStatementÍ$¶Í$ÒT®CallExpressionÍ$¶Í$ÑY°MemberExpressionÍ$¶Í$ÂLªIdentifierÍ$¶Í$»¥ImageLªIdentifierÍ$¼Í$Â¦createÂÂ‘Y°MemberExpressionÍ$ÃÍ$ĞU®ThisExpressionÍ$ÃÍ$ÇLªIdentifierÍ$ÈÍ$Ğ¨pixelMapÂÂÂS³ExpressionStatementÍ$àÍ%ƒT®CallExpressionÍ$àÍ%‚Y°MemberExpressionÍ$àÍ$ïLªIdentifierÍ$àÍ$å¥ImageLªIdentifierÍ$æÍ$ï©debugLineÂÂ’R§LiteralÍ$ğÍ%mÙ{oh_modules/.ohpm/@ohos+imageknife@3.2.10/oh_modules/@ohos/imageknife/src/main/ets/components/ImageKnifeComponent.ets(120:5)Ù}"oh_modules/.ohpm/@ohos+imageknife@3.2.10/oh_modules/@ohos/imageknife/src/main/ets/components/ImageKnifeComponent.ets(120:5)"R§LiteralÍ%oÍ%°@ohos/imageknife²"@ohos/imageknife"ÂS³ExpressionStatementÍ%‘Í%ĞT®CallExpressionÍ%‘Í%ÏY°MemberExpressionÍ%‘Í%§LªIdentifierÍ%‘Í%–¥ImageLªIdentifierÍ%—Í%§°dynamicRangeModeÂÂ‘Y°MemberExpressionÍ%¨Í%ÎY°MemberExpressionÍ%¨Í%½U®ThisExpressionÍ%¨Í%¬LªIdentifierÍ%­Í%½°imageKnifeOptionÂÂLªIdentifierÍ%¾Í%Î°dynamicRangeModeÂÂÂS³ExpressionStatementÍ%ŞÍ&T®CallExpressionÍ%ŞÍ&Y°MemberExpressionÍ%ŞÍ%ïLªIdentifierÍ%ŞÍ%ã¥ImageLªIdentifierÍ%äÍ%ï«colorFilterÂÂ‘Y°MemberExpressionÍ%ğÍ&Y°MemberExpressionÍ%ğÍ&U®ThisExpressionÍ%ğÍ%ôLªIdentifierÍ%õÍ&°imageKnifeOptionÂÂLªIdentifierÍ&Í&²drawingColorFilterÂÂÂS³ExpressionStatementÍ&(Í&HT®CallExpressionÍ&(Í&GY°MemberExpressionÍ&(Í&7LªIdentifierÍ&(Í&-¥ImageLªIdentifierÍ&.Í&7©objectFitÂÂ‘Y°MemberExpressionÍ&8Í&FU®ThisExpressionÍ&8Í&<LªIdentifierÍ&=Í&F©objectFitÂÂÂS³ExpressionStatementÍ&VÍ&“T®CallExpressionÍ&VÍ&’Y°MemberExpressionÍ&VÍ&aLªIdentifierÍ&VÍ&[¥ImageLªIdentifierÍ&\Í&a¥widthÂÂ‘T®CallExpressionÍ&bÍ&‘Y°MemberExpressionÍ&bÍ&}LªIdentifierÍ&bÍ&p®ObservedObjectLªIdentifierÍ&qÍ&}¬GetRawObjectÂÂ‘Y°MemberExpressionÍ&~Í&U®ThisExpressionÍ&~Í&‚LªIdentifierÍ&ƒÍ&­adaptiveWidthÂÂÂÂS³ExpressionStatementÍ&¡Í&àT®CallExpressionÍ&¡Í&ßY°MemberExpressionÍ&¡Í&­LªIdentifierÍ&¡Í&¦¥ImageLªIdentifierÍ&§Í&­¦heightÂÂ‘T®CallExpressionÍ&®Í&ŞY°MemberExpressionÍ&®Í&ÉLªIdentifierÍ&®Í&¼®ObservedObjectLªIdentifierÍ&½Í&É¬GetRawObjectÂÂ‘Y°MemberExpressionÍ&ÊÍ&İU®ThisExpressionÍ&ÊÍ&ÎLªIdentifierÍ&ÏÍ&İ®adaptiveHeightÂÂÂÂS³ExpressionStatementÍ&îÍ'T®CallExpressionÍ&îÍ'Y°MemberExpressionÍ&îÍ&úLªIdentifierÍ&îÍ&ó¥ImageLªIdentifierÍ&ôÍ&ú¦borderÂÂ‘Y°MemberExpressionÍ&ûÍ'Y°MemberExpressionÍ&ûÍ'U®ThisExpressionÍ&ûÍ&ÿLªIdentifierÍ' Í'°imageKnifeOptionÂÂLªIdentifierÍ'Í'¦borderÂÂÂS³ExpressionStatementÍ''Í'ET®CallExpressionÍ''Í'DY°MemberExpressionÍ''Í'5LªIdentifierÍ''Í',¥ImageLªIdentifierÍ'-Í'5¨syncLoadÂÂ‘Y°MemberExpressionÍ'6Í'CU®ThisExpressionÍ'6Í':LªIdentifierÍ';Í'C¨syncLoadÂÂÂS³ExpressionStatementÍ'SÍ'jT®CallExpressionÍ'SÍ'iY°MemberExpressionÍ'SÍ'bLªIdentifierÍ'SÍ'X¥ImageLªIdentifierÍ'YÍ'b©draggableÂÂ‘R§LiteralÍ'cÍ'hÂ¥falseÂS³ExpressionStatementÍ'xÍ'«T®CallExpressionÍ'xÍ'ªY°MemberExpressionÍ'xÍ'ˆLªIdentifierÍ'xÍ'}¥ImageLªIdentifierÍ'~Í'ˆªonCompleteÂÂ‘Y°MemberExpressionÍ'‰Í'©Y°MemberExpressionÍ'‰Í'U®ThisExpressionÍ'‰Í'LªIdentifierÍ'Í'°imageKnifeOptionÂÂLªIdentifierÍ'ŸÍ'©ªonCompleteÂÂÂS³ExpressionStatementÍ'¹Í-»T®CallExpressionÍ'¹Í-ºY°MemberExpressionÍ'¹Í'ËLªIdentifierÍ'¹Í'¾¥ImageLªIdentifierÍ'¿Í'Ë¬onSizeChangeÂÂ‘O·ArrowFunctionExpressionÍ'ÌÍ-¹ÀÂÂÂ’LªIdentifierÍ'ÍÍ'Õ¨oldValueLªIdentifierÍ'×Í'ß¨newValueM®BlockStatementÍ'äÍ-¹•S³ExpressionStatementÍ'÷Í(X´AssignmentExpressionÍ'÷Í(¡=Y°MemberExpressionÍ'÷Í(U®ThisExpressionÍ'÷Í'ûLªIdentifierÍ'üÍ(¬currentWidthÂÂY°MemberExpressionÍ(Í(LªIdentifierÍ(Í(¨newValueLªIdentifierÍ(Í(¥widthÂÂS³ExpressionStatementÍ(,Í(QX´AssignmentExpressionÍ(,Í(P¡=Y°MemberExpressionÍ(,Í(>U®ThisExpressionÍ(,Í(0LªIdentifierÍ(1Í(>­currentHeightÂÂY°MemberExpressionÍ(AÍ(PLªIdentifierÍ(AÍ(I¨newValueLªIdentifierÍ(JÍ(P¦heightÂÂS³ExpressionStatementÍ(cÍ(ƒX´AssignmentExpressionÍ(cÍ(‚¡=Y°MemberExpressionÍ(cÍ(qU®ThisExpressionÍ(cÍ(gLªIdentifierÍ(hÍ(q©lastWidthÂÂY°MemberExpressionÍ(tÍ(‚LªIdentifierÍ(tÍ(|¨oldValueLªIdentifierÍ(}Í(‚¥widthÂÂS³ExpressionStatementÍ(•Í(·X´AssignmentExpressionÍ(•Í(¶¡=Y°MemberExpressionÍ(•Í(¤U®ThisExpressionÍ(•Í(™LªIdentifierÍ(šÍ(¤ªlastHeightÂÂY°MemberExpressionÍ(§Í(¶LªIdentifierÍ(§Í(¯¨oldValueLªIdentifierÍ(°Í(¶¦heightÂÂV«IfStatementÍ(ÉÍ-ªW±LogicalExpressionÍ(ÍÍ)$W°BinaryExpressionÍ(ÍÍ(ãY°MemberExpressionÍ(ÍÍ(ŞU®ThisExpressionÍ(ÍÍ(ÑLªIdentifierÍ(ÒÍ(Ş¬currentWidthÂÂ¢<=R§LiteralÍ(âÍ(ã ¡0¢||W±LogicalExpressionÍ(èÍ)#W°BinaryExpressionÍ(èÍ)Y°MemberExpressionÍ(èÍ(öU®ThisExpressionÍ(èÍ(ìLªIdentifierÍ(íÍ(ö©objectFitÂÂ£!==Y°MemberExpressionÍ(ûÍ)LªIdentifierÍ(ûÍ)¨ImageFitLªIdentifierÍ)Í)¤AutoÂÂ¢&&W°BinaryExpressionÍ)Í)#Y°MemberExpressionÍ)Í)U®ThisExpressionÍ)Í)LªIdentifierÍ)Í)­currentHeightÂÂ¢<=R§LiteralÍ)"Í)# ¡0M®BlockStatementÍ)&Í)qM®BlockStatementÍ)ˆÍ-ª‘V«IfStatementÍ)åÍ-—W±LogicalExpressionÍ)éÍ*5W°BinaryExpressionÍ)éÍ*Y°MemberExpressionÍ)éÍ)ûU®ThisExpressionÍ)éÍ)íLªIdentifierÍ)îÍ)û­currentHeightÂÂ¢!=Y°MemberExpressionÍ)ÿÍ*U®ThisExpressionÍ)ÿÍ*LªIdentifierÍ*Í*ªlastHeightÂÂ¢||W°BinaryExpressionÍ*Í*5Y°MemberExpressionÍ*Í*#U®ThisExpressionÍ*Í*LªIdentifierÍ*Í*#¬currentWidthÂÂ¢!=Y°MemberExpressionÍ*'Í*5U®ThisExpressionÍ*'Í*+LªIdentifierÍ*,Í*5©lastWidthÂÂM®BlockStatementÍ*7Í-—’S³ExpressionStatementÍ*RÍ,T®CallExpressionÍ*RÍ,Y°MemberExpressionÍ*RÍ*]LªIdentifierÍ*RÍ*Y§LogUtilLªIdentifierÍ*ZÍ*]£logÂÂ‘W°BinaryExpressionÍ*^Í,W°BinaryExpressionÍ*^Í+îW°BinaryExpressionÍ*^Í+½W°BinaryExpressionÍ*^Í+–W°BinaryExpressionÍ*^Í+bW°BinaryExpressionÍ*^Í+;W°BinaryExpressionÍ*^Í+W°BinaryExpressionÍ*^Í*çW°BinaryExpressionÍ*^Í*ºW°BinaryExpressionÍ*^Í*¥W°BinaryExpressionÍ*^Í*—R§LiteralÍ*^Í*ƒÙ#onSizeChange execute request:width=Ù%'onSizeChange execute request:width='¡+Y°MemberExpressionÍ*†Í*—U®ThisExpressionÍ*†Í*ŠLªIdentifierÍ*‹Í*—¬currentWidthÂÂ¡+R§LiteralÍ*šÍ*¥© height= «' height= '¡+Y°MemberExpressionÍ*¨Í*ºU®ThisExpressionÍ*¨Í*¬LªIdentifierÍ*­Í*º­currentHeightÂÂ¡+R§LiteralÍ*ÚÍ*ç« loadSrc = ­' loadSrc = '¡+Y°MemberExpressionÍ*êÍ+Y°MemberExpressionÍ*êÍ*ÿU®ThisExpressionÍ*êÍ*îLªIdentifierÍ*ïÍ*ÿ°imageKnifeOptionÂÂLªIdentifierÍ+ Í+§loadSrcÂÂ¡+R§LiteralÍ+'Í+;² placeholderSrc = ´' placeholderSrc = '¡+Y°MemberExpressionÍ+>Í+bY°MemberExpressionÍ+>Í+SU®ThisExpressionÍ+>Í+BLªIdentifierÍ+CÍ+S°imageKnifeOptionÂÂLªIdentifierÍ+TÍ+b®placeholderSrcÂÂ¡+R§LiteralÍ+‚Í+–² errorholderSrc = ´' errorholderSrc = '¡+Y°MemberExpressionÍ+™Í+½Y°MemberExpressionÍ+™Í+®U®ThisExpressionÍ+™Í+LªIdentifierÍ+Í+®°imageKnifeOptionÂÂLªIdentifierÍ+¯Í+½®errorholderSrcÂÂ¡+R§LiteralÍ+İÍ+î¯ componentId = ±' componentId = '¡+Y°MemberExpressionÍ+ñÍ,U®ThisExpressionÍ+ñÍ+õLªIdentifierÍ+öÍ,«componentIdÂÂÂV«IfStatementÍ,Í-€W±LogicalExpressionÍ,!Í,^W°BinaryExpressionÍ,!Í,AY°MemberExpressionÍ,!Í,/U®ThisExpressionÍ,!Í,%LªIdentifierÍ,&Í,/©objectFitÂÂ£===Y°MemberExpressionÍ,4Í,ALªIdentifierÍ,4Í,<¨ImageFitLªIdentifierÍ,=Í,A¤AutoÂÂ¢&&Y°MemberExpressionÍ,EÍ,^U®ThisExpressionÍ,EÍ,ILªIdentifierÍ,JÍ,^´isImageFitAutoResizeÂÂM®BlockStatementÍ,`Í,¼‘S³ExpressionStatementÍ,Í,¡X´AssignmentExpressionÍ,Í, ¡=Y°MemberExpressionÍ,Í,˜U®ThisExpressionÍ,Í,ƒLªIdentifierÍ,„Í,˜´isImageFitAutoResizeÂÂR§LiteralÍ,›Í, Â¥falseM®BlockStatementÍ,ÛÍ-€‘S³ExpressionStatementÍ,úÍ-eT®CallExpressionÍ,úÍ-dY°MemberExpressionÍ,úÍ-T®CallExpressionÍ,úÍ-Y°MemberExpressionÍ,úÍ-LªIdentifierÍ,úÍ-ªImageKnifeLªIdentifierÍ-Í-«getInstanceÂÂÂLªIdentifierÍ-Í-§executeÂÂ‘T®CallExpressionÍ-Í-cY°MemberExpressionÍ-Í-*U®ThisExpressionÍ-Í-LªIdentifierÍ- Í-*ªgetRequestÂÂ“Y°MemberExpressionÍ-+Í-<U®ThisExpressionÍ-+Í-/LªIdentifierÍ-0Í-<¬currentWidthÂÂY°MemberExpressionÍ->Í-PU®ThisExpressionÍ->Í-BLªIdentifierÍ-CÍ-P­currentHeightÂÂY°MemberExpressionÍ-RÍ-bU®ThisExpressionÍ-RÍ-VLªIdentifierÍ-WÍ-b«componentIdÂÂÂÂÀÂLªIdentifierÍ-ÈÍ-Í¥ImageÂN°MethodDefinitionÍ-ÜÍ1¸ÂÂLªIdentifierÍ-ÜÍ-ñµwatchImageKnifeOption¦methodO²FunctionExpressionÍ-ñÍ1¸ÀÂÂÂM®BlockStatementÍ-ôÍ1¸˜V«IfStatementÍ-ÿÍ.˜W±LogicalExpressionÍ.Í.uW±LogicalExpressionÍ.Í.MW°BinaryExpressionÍ.Í. Y°MemberExpressionÍ.Í.U®ThisExpressionÍ.Í.LªIdentifierÍ.Í.ªlastOptionÂÂ£!==LªIdentifierÍ.Í. ©undefined¢&&W°BinaryExpressionÍ.$Í.MY°MemberExpressionÍ.$Í.3U®ThisExpressionÍ.$Í.(LªIdentifierÍ.)Í.3ªlastOptionÂÂ£===T®CallExpressionÍ.8Í.MY°MemberExpressionÍ.8Í.KU®ThisExpressionÍ.8Í.<LªIdentifierÍ.=Í.K®getChangeValueÂÂÂ¢&&W°BinaryExpressionÍ.QÍ.uY°MemberExpressionÍ.QÍ.^U®ThisExpressionÍ.QÍ.ULªIdentifierÍ.VÍ.^¨pixelMapÂÂ£!==Y°MemberExpressionÍ.cÍ.uLªIdentifierÍ.cÍ.o¬ImageContentLªIdentifierÍ.pÍ.u¥EMPTYÂÂM®BlockStatementÍ.wÍ.˜‘[¯ReturnStatementÍ.†Í.ÀÀS³ExpressionStatementÍ.¢Í.ÊX´AssignmentExpressionÍ.¢Í.É¡=Y°MemberExpressionÍ.¢Í.±U®ThisExpressionÍ.¢Í.¦LªIdentifierÍ.§Í.±ªlastOptionÂÂT®CallExpressionÍ.´Í.ÉY°MemberExpressionÍ.´Í.ÇU®ThisExpressionÍ.´Í.¸LªIdentifierÍ.¹Í.Ç®getChangeValueÂÂÂS³ExpressionStatementÍ.ÔÍ.ìT®CallExpressionÍ.ÔÍ.ëY°MemberExpressionÍ.ÔÍ.éU®ThisExpressionÍ.ÔÍ.ØLªIdentifierÍ.ÙÍ.é°clearLastRequestÂÂÂS³ExpressionStatementÍ.öÍ/Q°UpdateExpressionÍ.öÍ/¢++ÂY°MemberExpressionÍ.öÍ/U®ThisExpressionÍ.öÍ.úLªIdentifierÍ.ûÍ/°componentVersionÂÂS³ExpressionStatementÍ/Í/:X´AssignmentExpressionÍ/Í/9¡=Y°MemberExpressionÍ/Í/1U®ThisExpressionÍ/Í/LªIdentifierÍ/Í/1´isImageFitAutoResizeÂÂR§LiteralÍ/4Í/9Â¥falseS³ExpressionStatementÍ/DÍ/¸X´AssignmentExpressionÍ/DÍ/·¡=Y°MemberExpressionÍ/DÍ/RU®ThisExpressionÍ/DÍ/HLªIdentifierÍ/IÍ/R©objectFitÂÂVµConditionalExpressionÍ/UÍ/·W°BinaryExpressionÍ/UÍ/‚Y°MemberExpressionÍ/UÍ/tY°MemberExpressionÍ/UÍ/jU®ThisExpressionÍ/UÍ/YLªIdentifierÍ/ZÍ/j°imageKnifeOptionÂÂLªIdentifierÍ/kÍ/t©objectFitÂÂ£===LªIdentifierÍ/yÍ/‚©undefinedY°MemberExpressionÍ/…Í/•LªIdentifierÍ/…Í/¨ImageFitLªIdentifierÍ/Í/•§ContainÂÂY°MemberExpressionÍ/˜Í/·Y°MemberExpressionÍ/˜Í/­U®ThisExpressionÍ/˜Í/œLªIdentifierÍ/Í/­°imageKnifeOptionÂÂLªIdentifierÍ/®Í/·©objectFitÂÂS³ExpressionStatementÍ/ÂÍ1<T®CallExpressionÍ/ÂÍ1;Y°MemberExpressionÍ/ÂÍ/ÍLªIdentifierÍ/ÂÍ/É§LogUtilLªIdentifierÍ/ÊÍ/Í£logÂÂ‘W°BinaryExpressionÍ/ÎÍ1:W°BinaryExpressionÍ/ÎÍ1'W°BinaryExpressionÍ/ÎÍ1W°BinaryExpressionÍ/ÎÍ0ßW°BinaryExpressionÍ/ÎÍ0»W°BinaryExpressionÍ/ÎÍ0”W°BinaryExpressionÍ/ÎÍ0pW°BinaryExpressionÍ/ÎÍ0PW°BinaryExpressionÍ/ÎÍ03W°BinaryExpressionÍ/ÎÍ0W°BinaryExpressionÍ/ÎÍ0R§LiteralÍ/ÎÍ/üÙ,watchImageKnifeOption execute request:width=Ù.'watchImageKnifeOption execute request:width='¡+Y°MemberExpressionÍ/ÿÍ0U®ThisExpressionÍ/ÿÍ0LªIdentifierÍ0Í0¬currentWidthÂÂ¡+R§LiteralÍ0Í0© height= «' height= '¡+Y°MemberExpressionÍ0!Í03U®ThisExpressionÍ0!Í0%LªIdentifierÍ0&Í03­currentHeightÂÂ¡+R§LiteralÍ0CÍ0P« loadSrc = ­' loadSrc = '¡+Y°MemberExpressionÍ0SÍ0pY°MemberExpressionÍ0SÍ0hU®ThisExpressionÍ0SÍ0WLªIdentifierÍ0XÍ0h°imageKnifeOptionÂÂLªIdentifierÍ0iÍ0p§loadSrcÂÂ¡+R§LiteralÍ0€Í0”² placeholderSrc = ´' placeholderSrc = '¡+Y°MemberExpressionÍ0—Í0»Y°MemberExpressionÍ0—Í0¬U®ThisExpressionÍ0—Í0›LªIdentifierÍ0œÍ0¬°imageKnifeOptionÂÂLªIdentifierÍ0­Í0»®placeholderSrcÂÂ¡+R§LiteralÍ0ËÍ0ß² errorholderSrc = ´' errorholderSrc = '¡+Y°MemberExpressionÍ0âÍ1Y°MemberExpressionÍ0âÍ0÷U®ThisExpressionÍ0âÍ0æLªIdentifierÍ0çÍ0÷°imageKnifeOptionÂÂLªIdentifierÍ0øÍ1®errorholderSrcÂÂ¡+R§LiteralÍ1Í1'¯ componentId = ±' componentId = '¡+Y°MemberExpressionÍ1*Í1:U®ThisExpressionÍ1*Í1.LªIdentifierÍ1/Í1:«componentIdÂÂÂS³ExpressionStatementÍ1FÍ1±T®CallExpressionÍ1FÍ1°Y°MemberExpressionÍ1FÍ1fT®CallExpressionÍ1FÍ1^Y°MemberExpressionÍ1FÍ1\LªIdentifierÍ1FÍ1PªImageKnifeLªIdentifierÍ1QÍ1\«getInstanceÂÂÂLªIdentifierÍ1_Í1f§executeÂÂ‘T®CallExpressionÍ1gÍ1¯Y°MemberExpressionÍ1gÍ1vU®ThisExpressionÍ1gÍ1kLªIdentifierÍ1lÍ1vªgetRequestÂÂ“Y°MemberExpressionÍ1wÍ1ˆU®ThisExpressionÍ1wÍ1{LªIdentifierÍ1|Í1ˆ¬currentWidthÂÂY°MemberExpressionÍ1ŠÍ1œU®ThisExpressionÍ1ŠÍ1LªIdentifierÍ1Í1œ­currentHeightÂÂY°MemberExpressionÍ1Í1®U®ThisExpressionÍ1Í1¢LªIdentifierÍ1£Í1®«componentIdÂÂÂÂN°MethodDefinitionÍ1¾Í2„ÂÂLªIdentifierÍ1¾Í1Ï±getCurrentContext¦methodO²FunctionExpressionÍ1ÏÍ2„ÀÂÂÂM®BlockStatementÍ1ÒÍ2„’V«IfStatementÍ1İÍ2XW°BinaryExpressionÍ1áÍ2Y°MemberExpressionÍ1áÍ1ôU®ThisExpressionÍ1áÍ1åLªIdentifierÍ1æÍ1ô®currentContextÂÂ¢==LªIdentifierÍ1øÍ2©undefinedM®BlockStatementÍ2Í2X‘S³ExpressionStatementÍ2Í2MX´AssignmentExpressionÍ2Í2L¡=Y°MemberExpressionÍ2Í2%U®ThisExpressionÍ2Í2LªIdentifierÍ2Í2%®currentContextÂÂT®CallExpressionÍ2(Í2LY°MemberExpressionÍ2(Í2JT®CallExpressionÍ2(Í2;Y°MemberExpressionÍ2(Í29U®ThisExpressionÍ2(Í2,LªIdentifierÍ2-Í29¬getUIContextÂÂÂLªIdentifierÍ2<Í2J®getHostContextÂÂÂÀ[¯ReturnStatementÍ2bÍ2}Y°MemberExpressionÍ2iÍ2|U®ThisExpressionÍ2iÍ2mLªIdentifierÍ2nÍ2|®currentContextÂÂN°MethodDefinitionÍ2ŠÍ;ÂÂLªIdentifierÍ2ŠÍ2”ªgetRequest¦methodO²FunctionExpressionÍ2”Í;ÀÂÂÂ“LªIdentifierÍ2•Í2š¥widthLªIdentifierÍ2œÍ2¢¦heightLªIdentifierÍ2¤Í2¯«componentIdM®BlockStatementÍ2±Í;’S³ExpressionStatementÍ2¼Í:ùX´AssignmentExpressionÍ2¼Í:ø¡=Y°MemberExpressionÍ2¼Í2ÈU®ThisExpressionÍ2¼Í2ÀLªIdentifierÍ2ÁÍ2È§requestÂÂZ­NewExpressionÍ2ËÍ:øLªIdentifierÍ2ÏÍ2à±ImageKnifeRequest—Y°MemberExpressionÍ2áÍ2öU®ThisExpressionÍ2áÍ2åLªIdentifierÍ2æÍ2ö°imageKnifeOptionÂÂVµConditionalExpressionÍ2øÍ3^W°BinaryExpressionÍ2øÍ3#Y°MemberExpressionÍ2øÍ3Y°MemberExpressionÍ2øÍ3U®ThisExpressionÍ2øÍ2üLªIdentifierÍ2ıÍ3°imageKnifeOptionÂÂLªIdentifierÍ3Í3§contextÂÂ£!==LªIdentifierÍ3Í3#©undefinedY°MemberExpressionÍ3&Í3CY°MemberExpressionÍ3&Í3;U®ThisExpressionÍ3&Í3*LªIdentifierÍ3+Í3;°imageKnifeOptionÂÂLªIdentifierÍ3<Í3C§contextÂÂT®CallExpressionÍ3FÍ3^Y°MemberExpressionÍ3FÍ3\U®ThisExpressionÍ3FÍ3JLªIdentifierÍ3KÍ3\±getCurrentContextÂÂÂT®CallExpressionÍ3`Í3€Y°MemberExpressionÍ3`Í3yT®CallExpressionÍ3`Í3sY°MemberExpressionÍ3`Í3qU®ThisExpressionÍ3`Í3dLªIdentifierÍ3eÍ3q¬getUIContextÂÂÂLªIdentifierÍ3tÍ3y¥vp2pxÂÂ‘LªIdentifierÍ3zÍ3¥widthÂT®CallExpressionÍ3‚Í3£Y°MemberExpressionÍ3‚Í3›T®CallExpressionÍ3‚Í3•Y°MemberExpressionÍ3‚Í3“U®ThisExpressionÍ3‚Í3†LªIdentifierÍ3‡Í3“¬getUIContextÂÂÂLªIdentifierÍ3–Í3›¥vp2pxÂÂ‘LªIdentifierÍ3œÍ3¢¦heightÂY°MemberExpressionÍ3¥Í3ºU®ThisExpressionÍ3¥Í3©LªIdentifierÍ3ªÍ3º°componentVersionÂÂÔrc”¤type¥start£endªproperties°ObjectExpressionÍ3¼Í:ê‘Ôrd™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍ3ËÍ:ßÂÂÂLªIdentifierÍ3ËÍ3×¬showPixelMapO·ArrowFunctionExpressionÍ3ÙÍ:ßÀÂÂÂ”LªIdentifierÍ3ÚÍ3á§versionLªIdentifierÍ3ãÍ3ë¨pixelMapLªIdentifierÍ3íÍ3ú­requestSourceLªIdentifierÍ3üÍ4 ¤sizeM®BlockStatementÍ4Í:ß•V«IfStatementÍ4Í4„W°BinaryExpressionÍ4Í4=LªIdentifierÍ4Í4#§version£!==Y°MemberExpressionÍ4(Í4=U®ThisExpressionÍ4(Í4,LªIdentifierÍ4-Í4=°componentVersionÂÂM®BlockStatementÍ4?Í4„‘[¯ReturnStatementÍ4VÍ4]ÀÀS³ExpressionStatementÍ4–Í4¯X´AssignmentExpressionÍ4–Í4®¡=Y°MemberExpressionÍ4–Í4£U®ThisExpressionÍ4–Í4šLªIdentifierÍ4›Í4£¨pixelMapÂÂLªIdentifierÍ4¦Í4®¨pixelMapS³ExpressionStatementÍ4ÁÍ5ŸT®CallExpressionÍ4ÁÍ5Y°MemberExpressionÍ4ÁÍ4ÍLªIdentifierÍ4ÁÍ4È§LogUtilLªIdentifierÍ4ÉÍ4Í¤infoÂÂ‘W°BinaryExpressionÍ4ÎÍ5W°BinaryExpressionÍ4ÎÍ5†W°BinaryExpressionÍ4ÎÍ5fW°BinaryExpressionÍ4ÎÍ5EW°BinaryExpressionÍ4ÎÍ5"W°BinaryExpressionÍ4ÎÍ5W°BinaryExpressionÍ4ÎÍ5R§LiteralÍ4ÎÍ4è¸image load showPixelMap:º'image load showPixelMap:'¡+S¯ChainExpressionÍ4ëÍ5Y°MemberExpressionÍ4ëÍ5Y°MemberExpressionÍ4ëÍ4÷U®ThisExpressionÍ4ëÍ4ïLªIdentifierÍ4ğÍ4÷§requestÂÂLªIdentifierÍ4ùÍ5«componentIdÂÃ¡+R§LiteralÍ5Í5©,srcType:«',srcType:'¡+LªIdentifierÍ5Í5"­requestSource¡+R§LiteralÍ5:Í5E©,version:«',version:'¡+S¯ChainExpressionÍ5HÍ5fY°MemberExpressionÍ5HÍ5fY°MemberExpressionÍ5HÍ5TU®ThisExpressionÍ5HÍ5LLªIdentifierÍ5MÍ5T§requestÂÂLªIdentifierÍ5VÍ5f°componentVersionÂÃ¡+R§LiteralÍ5~Í5†¦,size:¨',size:'¡+T®CallExpressionÍ5‰Í5Y°MemberExpressionÍ5‰Í5—LªIdentifierÍ5‰Í5¤JSONLªIdentifierÍ5Í5—©stringifyÂÂ‘LªIdentifierÍ5˜Í5œ¤sizeÂÂV«IfStatementÍ5±Í7W±LogicalExpressionÍ5µÍ6¸W±LogicalExpressionÍ5¶Í6‘W±LogicalExpressionÍ5¶Í6<W°BinaryExpressionÍ5¶Í5çY°MemberExpressionÍ5¶Í5ÕY°MemberExpressionÍ5¶Í5ËU®ThisExpressionÍ5¶Í5ºLªIdentifierÍ5»Í5Ë°imageKnifeOptionÂÂLªIdentifierÍ5ÌÍ5Õ©objectFitÂÂ£===Y°MemberExpressionÍ5ÚÍ5çLªIdentifierÍ5ÚÍ5â¨ImageFitLªIdentifierÍ5ãÍ5ç¤AutoÂÂ¢||W°BinaryExpressionÍ6 Í6<Y°MemberExpressionÍ6 Í6*Y°MemberExpressionÍ6 Í6U®ThisExpressionÍ6 Í6LªIdentifierÍ6Í6°imageKnifeOptionÂÂLªIdentifierÍ6Í6*´placeholderObjectFitÂÂ£===Y°MemberExpressionÍ6/Í6<LªIdentifierÍ6/Í67¨ImageFitLªIdentifierÍ68Í6<¤AutoÂÂ¢||W°BinaryExpressionÍ6UÍ6‘Y°MemberExpressionÍ6UÍ6Y°MemberExpressionÍ6UÍ6jU®ThisExpressionÍ6UÍ6YLªIdentifierÍ6ZÍ6j°imageKnifeOptionÂÂLªIdentifierÍ6kÍ6´errorholderObjectFitÂÂ£===Y°MemberExpressionÍ6„Í6‘LªIdentifierÍ6„Í6Œ¨ImageFitLªIdentifierÍ6Í6‘¤AutoÂÂ¢&&W°BinaryExpressionÍ6–Í6¸Y°MemberExpressionÍ6–Í6¯U®ThisExpressionÍ6–Í6šLªIdentifierÍ6›Í6¯´isImageFitAutoResizeÂÂ¢==R§LiteralÍ6³Í6¸Â¥falseM®BlockStatementÍ6ºÍ7‘S³ExpressionStatementÍ6ÑÍ6òX´AssignmentExpressionÍ6ÑÍ6ñ¡=Y°MemberExpressionÍ6ÑÍ6êU®ThisExpressionÍ6ÑÍ6ÕLªIdentifierÍ6ÖÍ6ê´isImageFitAutoResizeÂÂR§LiteralÍ6íÍ6ñÃ¤trueÀV«IfStatementÍ7Í:ĞW°BinaryExpressionÍ7Í7GLªIdentifierÍ7Í7(­requestSource¢==Y°MemberExpressionÍ7,Í7GLªIdentifierÍ7,Í7C·ImageKnifeRequestSourceLªIdentifierÍ7DÍ7G£SRCÂÂM®BlockStatementÍ7IÍ83’S³ExpressionStatementÍ7`Í7¾X´AssignmentExpressionÍ7`Í7½¡=Y°MemberExpressionÍ7`Í7nU®ThisExpressionÍ7`Í7dLªIdentifierÍ7eÍ7n©objectFitÂÂW±LogicalExpressionÍ7ŠÍ7½Y°MemberExpressionÍ7ŠÍ7©Y°MemberExpressionÍ7ŠÍ7ŸU®ThisExpressionÍ7ŠÍ7LªIdentifierÍ7Í7Ÿ°imageKnifeOptionÂÂLªIdentifierÍ7 Í7©©objectFitÂÂ¢??Y°MemberExpressionÍ7­Í7½LªIdentifierÍ7­Í7µ¨ImageFitLªIdentifierÍ7¶Í7½§ContainÂÂS³ExpressionStatementÍ7ÔÍ8 X´AssignmentExpressionÍ7ÔÍ8¡=Y°MemberExpressionÍ7ÔÍ7çU®ThisExpressionÍ7ÔÍ7ØLªIdentifierÍ7ÙÍ7ç®adaptiveHeightÂÂVµConditionalExpressionÍ7êÍ8W°BinaryExpressionÍ7êÍ8
+Y°MemberExpressionÍ7êÍ7øU®ThisExpressionÍ7êÍ7îLªIdentifierÍ7ïÍ7ø©objectFitÂÂ£===Y°MemberExpressionÍ7ıÍ8
+LªIdentifierÍ7ıÍ8¨ImageFitLªIdentifierÍ8Í8
+¤AutoÂÂLªIdentifierÍ8Í8©undefinedR§LiteralÍ8Í8¤100%¦'100%'V«IfStatementÍ8JÍ:ĞW°BinaryExpressionÍ8NÍ8ƒLªIdentifierÍ8NÍ8[­requestSource¢==Y°MemberExpressionÍ8_Í8ƒLªIdentifierÍ8_Í8v·ImageKnifeRequestSourceLªIdentifierÍ8wÍ8ƒ¬PLACE_HOLDERÂÂM®BlockStatementÍ8…Í9Ÿ’S³ExpressionStatementÍ8œÍ9*X´AssignmentExpressionÍ8œÍ9)¡=Y°MemberExpressionÍ8œÍ8ªU®ThisExpressionÍ8œÍ8 LªIdentifierÍ8¡Í8ª©objectFitÂÂW±LogicalExpressionÍ8ÆÍ9)Y°MemberExpressionÍ8ÆÍ8ğY°MemberExpressionÍ8ÆÍ8ÛU®ThisExpressionÍ8ÆÍ8ÊLªIdentifierÍ8ËÍ8Û°imageKnifeOptionÂÂLªIdentifierÍ8ÜÍ8ğ´placeholderObjectFitÂÂ¢??W±LogicalExpressionÍ8õÍ9(Y°MemberExpressionÍ8õÍ9Y°MemberExpressionÍ8õÍ9
+U®ThisExpressionÍ8õÍ8ùLªIdentifierÍ8úÍ9
+°imageKnifeOptionÂÂLªIdentifierÍ9Í9©objectFitÂÂ¢??Y°MemberExpressionÍ9Í9(LªIdentifierÍ9Í9 ¨ImageFitLªIdentifierÍ9!Í9(§ContainÂÂS³ExpressionStatementÍ9@Í9ŒX´AssignmentExpressionÍ9@Í9‹¡=Y°MemberExpressionÍ9@Í9SU®ThisExpressionÍ9@Í9DLªIdentifierÍ9EÍ9S®adaptiveHeightÂÂVµConditionalExpressionÍ9VÍ9‹W°BinaryExpressionÍ9VÍ9vY°MemberExpressionÍ9VÍ9dU®ThisExpressionÍ9VÍ9ZLªIdentifierÍ9[Í9d©objectFitÂÂ£===Y°MemberExpressionÍ9iÍ9vLªIdentifierÍ9iÍ9q¨ImageFitLªIdentifierÍ9rÍ9v¤AutoÂÂLªIdentifierÍ9yÍ9‚©undefinedR§LiteralÍ9…Í9‹¤100%¦'100%'M®BlockStatementÍ9¶Í:Ğ’S³ExpressionStatementÍ9ÍÍ:[X´AssignmentExpressionÍ9ÍÍ:Z¡=Y°MemberExpressionÍ9ÍÍ9ÛU®ThisExpressionÍ9ÍÍ9ÑLªIdentifierÍ9ÒÍ9Û©objectFitÂÂW±LogicalExpressionÍ9÷Í:ZY°MemberExpressionÍ9÷Í:!Y°MemberExpressionÍ9÷Í:U®ThisExpressionÍ9÷Í9ûLªIdentifierÍ9üÍ:°imageKnifeOptionÂÂLªIdentifierÍ:Í:!´errorholderObjectFitÂÂ¢??W±LogicalExpressionÍ:&Í:YY°MemberExpressionÍ:&Í:EY°MemberExpressionÍ:&Í:;U®ThisExpressionÍ:&Í:*LªIdentifierÍ:+Í:;°imageKnifeOptionÂÂLªIdentifierÍ:<Í:E©objectFitÂÂ¢??Y°MemberExpressionÍ:IÍ:YLªIdentifierÍ:IÍ:Q¨ImageFitLªIdentifierÍ:RÍ:Y§ContainÂÂS³ExpressionStatementÍ:qÍ:½X´AssignmentExpressionÍ:qÍ:¼¡=Y°MemberExpressionÍ:qÍ:„U®ThisExpressionÍ:qÍ:uLªIdentifierÍ:vÍ:„®adaptiveHeightÂÂVµConditionalExpressionÍ:‡Í:¼W°BinaryExpressionÍ:‡Í:§Y°MemberExpressionÍ:‡Í:•U®ThisExpressionÍ:‡Í:‹LªIdentifierÍ:ŒÍ:•©objectFitÂÂ£===Y°MemberExpressionÍ:šÍ:§LªIdentifierÍ:šÍ:¢¨ImageFitLªIdentifierÍ:£Í:§¤AutoÂÂLªIdentifierÍ:ªÍ:³©undefinedR§LiteralÍ:¶Í:¼¤100%¦'100%'¤initLªIdentifierÍ:ìÍ:÷«componentId[¯ReturnStatementÍ;Í;Y°MemberExpressionÍ;
+Í;U®ThisExpressionÍ;
+Í;LªIdentifierÍ;Í;§requestÂÂN°MethodDefinitionÍ;$Í;\ÂÂLªIdentifierÍ;$Í;,¨rerender¦methodO²FunctionExpressionÍ;,Í;\ÀÂÂÂM®BlockStatementÍ;/Í;\‘S³ExpressionStatementÍ;:Í;UT®CallExpressionÍ;:Í;TY°MemberExpressionÍ;:Í;RU®ThisExpressionÍ;:Í;>LªIdentifierÍ;?Í;R³updateDirtyElementsÂÂÂÀ—Ôre•¤type¥start£endªspecifiers¦source±ImportDeclarationÌ€Ì×’Ôrf•¤type¥start£end¨imported¥local¯ImportSpecifierÌ‰ÌšLªIdentifierÌ‰Ìš±ImageKnifeRequestLªIdentifierÌ‰Ìš±ImageKnifeRequestf¯ImportSpecifierÌœÌ²LªIdentifierÌœÌ²¶ImageKnifeRequestStateLªIdentifierÌœÌ²¶ImageKnifeRequestStateR§LiteralÌºÌÖº../model/ImageKnifeRequest¼'../model/ImageKnifeRequest'e±ImportDeclarationÌÙÍ‘f¯ImportSpecifierÌâÌìLªIdentifierÌâÌìªImageKnifeLªIdentifierÌâÌìªImageKnifeR§LiteralÌôÍ­../ImageKnife¯'../ImageKnife'e±ImportDeclarationÍÍ1‘f¯ImportSpecifierÍÍLªIdentifierÍÍ§LogUtilLªIdentifierÍÍ§LogUtilR§LiteralÍÍ0°../utils/LogUtil²'../utils/LogUtil'e±ImportDeclarationÍ3Íu‘f¯ImportSpecifierÍ<ÍSLªIdentifierÍ<ÍS·ImageKnifeRequestSourceLªIdentifierÍ<ÍS·ImageKnifeRequestSourceR§LiteralÍ[Ít·../model/ImageKnifeData¹'../model/ImageKnifeData'e±ImportDeclarationÍwÍ²‘f¯ImportSpecifierÍ€ÍLªIdentifierÍ€Í°DefaultEngineKeyLªIdentifierÍ€Í°DefaultEngineKeyR§LiteralÍ˜Í±·../key/DefaultEngineKey¹'../key/DefaultEngineKey'e±ImportDeclarationÍ´Íß‘Ôrg”¤type¥start£end¥local¶ImportDefaultSpecifierÍ»ÍÂLªIdentifierÍ»ÍÂ§emitterR§LiteralÍÈÍŞ´@ohos.events.emitter¶"@ohos.events.emitter"e±ImportDeclarationÍáÍ‘g¶ImportDefaultSpecifierÍèÍğLªIdentifierÍèÍğ¨taskpoolR§LiteralÍöÍ®@ohos.taskpool°"@ohos.taskpool"

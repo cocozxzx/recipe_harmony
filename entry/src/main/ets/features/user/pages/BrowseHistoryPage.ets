@@ -37,7 +37,7 @@ export struct BrowseHistoryPage {
       TopBar({
         title: $r('app.string.history_title'),
         actionIcon: $r('app.media.ic_delete'),
-        onAction: () => this.clearDialog.open()
+        onAction: (): void => { this.clearDialog.open(); }
       })
 
       StateView({

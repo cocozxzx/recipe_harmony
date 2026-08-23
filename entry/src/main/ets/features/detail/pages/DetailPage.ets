@@ -221,9 +221,14 @@ export struct DetailPage {
 
   /** detail 在 SUCCESS 态下必然非空；这里收敛一次判空，避免每处都写 ?. */
   private detail(): RecipeDetail {
-    return this.vm.detail ?? ({
+    const fallback: RecipeDetail = {
+      id: '', name: '', coverImage: '', summary: '',
+      difficulty: 0, calorie: 0, cookTime: 0, baseServings: 0,
+      tagId: '', tagName: '', favoriteCount: 0, likeCount: 0,
+      favorited: false, liked: false,
       ingredients: [], steps: [], tips: []
-    } as object as RecipeDetail);
+    };
+    return this.vm.detail ?? fallback;
   }
 
   private share(): void {

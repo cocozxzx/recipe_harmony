@@ -14,7 +14,20 @@ import { Formatter } from '../../../commons/utils/Formatter';
  */
 @ComponentV2
 export struct AiGeneratedCard {
-  @Param recipe: AiGeneratedRecipe = {} as AiGeneratedRecipe;
+  @Param recipe: AiGeneratedRecipe = {
+    id: '',
+    name: '',
+    summary: '',
+    difficulty: 0,
+    calorie: 0,
+    cookTime: 0,
+    baseServings: 0,
+    ingredients: [],
+    steps: [],
+    tips: [],
+    favorited: false,
+    createTime: ''
+  };
   @Param expandable: boolean = true;
   @Local expanded: boolean = false;
   @Event onToggleFavorite: () => void = () => {};

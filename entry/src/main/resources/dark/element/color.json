@@ -1,3 +1,19 @@
 {
-  "color": []
+  "color": [
+    { "name": "brand_primary_light", "value": "#1A3D2E" },
+    { "name": "accent_light",        "value": "#3D2A1A" },
+
+    { "name": "bg_page",             "value": "#121614" },
+    { "name": "bg_surface",          "value": "#1C2220" },
+    { "name": "bg_sunken",           "value": "#0E1210" },
+    { "name": "divider",             "value": "#2A3330" },
+
+    { "name": "text_primary",        "value": "#E8EFEA" },
+    { "name": "text_secondary",      "value": "#A3B0A9" },
+    { "name": "text_tertiary",       "value": "#6B7C74" },
+    { "name": "text_disabled",       "value": "#4A5550" },
+
+    { "name": "skeleton_base",       "value": "#2A3330" },
+    { "name": "skeleton_shine",      "value": "#1C2220" }
+  ]
 }

@@ -35,6 +35,9 @@ function getRefreshSession(): rcp.Session {
         transfer: {
           timeout: { connectMs: 10000, transferMs: 15000 }
         }
+      },
+      headers: {
+        'content-type': 'application/json'
       }
     });
   }
@@ -49,9 +52,7 @@ async function doRefresh(): Promise<boolean> {
   try {
     const body: RefreshReq = { refreshToken: refreshToken };
     const url: string = `${BuildProfile.API_BASE_URL as string}${ApiPaths.AUTH_REFRESH}`;
-    const resp: rcp.Response = await getRefreshSession().post(url, JSON.stringify(body), {
-      headers: { 'content-type': 'application/json' }
-    });
+    const resp: rcp.Response = await getRefreshSession().post(url, JSON.stringify(body));
     const text: string = resp.toString() ?? '';
     const parsed: ApiResponseDto<RefreshResultDto> = JSON.parse(text) as ApiResponseDto<RefreshResultDto>;
     if (parsed.code !== BizCode.SUCCESS || parsed.data === null || parsed.data === undefined) {

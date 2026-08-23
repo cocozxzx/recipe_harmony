@@ -1,0 +1,11 @@
+pkg_modules/.ohpm/@ohos+imageknife@3.2.10/pkg_modules/@ohos/imageknife:pkg_modules/.ohpm/@ohos+imageknife@3.2.10/pkg_modules/@ohos/imageknife/index
+pkg_modules@entry/@ohos/imageknife:pkg_modules/.ohpm/@ohos+imageknife@3.2.10/pkg_modules/@ohos/imageknife
+pkg_modules/.ohpm/@ohos+gpu_transform@1.0.4/pkg_modules/@ohos/gpu_transform:pkg_modules/.ohpm/@ohos+gpu_transform@1.0.4/pkg_modules/@ohos/gpu_transform/index
+pkg_modules/.ohpm/@ohos+imageknife@3.2.10/pkg_modules/@ohos/gpu_transform:pkg_modules/.ohpm/@ohos+gpu_transform@1.0.4/pkg_modules/@ohos/gpu_transform
+@system.app:@native.system.app
+@ohos.app:@native.ohos.app
+@system.router:@native.system.router
+@system.curves:@native.system.curves
+@ohos.curves:@native.ohos.curves
+@system.matrix4:@native.system.matrix4
+@ohos.matrix4:@native.ohos.matrix4

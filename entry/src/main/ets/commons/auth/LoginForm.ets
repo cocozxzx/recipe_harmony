@@ -74,7 +74,7 @@ export struct LoginForm {
 
       PrimaryButton({
         text: $r('app.string.login_submit'),
-        enabled: this.vm.canSubmit,
+        btnEnabled: this.vm.canSubmit,
         loading: this.vm.submitting,
         onTap: () => this.vm.submit()
       })
@@ -132,21 +132,21 @@ export struct LoginForm {
       if (this.vm.mode !== LoginMode.SMS) {
         TextButton({
           text: $r('app.string.login_switch_sms'),
-          size: $r('app.float.font_body_sm'),
+          textSize: $r('app.float.font_body_sm'),
           onTap: () => this.vm.switchMode(LoginMode.SMS)
         })
       }
       if (this.vm.mode !== LoginMode.PASSWORD) {
         TextButton({
           text: $r('app.string.login_switch_password'),
-          size: $r('app.float.font_body_sm'),
+          textSize: $r('app.float.font_body_sm'),
           onTap: () => this.vm.switchMode(LoginMode.PASSWORD)
         })
       }
       if (this.vm.mode !== LoginMode.EMAIL) {
         TextButton({
           text: $r('app.string.login_switch_email'),
-          size: $r('app.float.font_body_sm'),
+          textSize: $r('app.float.font_body_sm'),
           onTap: () => this.vm.switchMode(LoginMode.EMAIL)
         })
       }

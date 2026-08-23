@@ -55,9 +55,10 @@ export class NetError extends Error {
   }
 }
 
-/** 业务码约定 */
+/** 业务码约定，与后端 com.eat.common.enums.ErrorCode 对齐 */
 export class BizCode {
-  static readonly SUCCESS: number = 0;
+  /** 后端成功码是 200（不是 0），改这里之前先看 ErrorCode.SUCCESS */
+  static readonly SUCCESS: number = 200;
   static readonly UNAUTHORIZED: number = 401;
   static readonly FORBIDDEN: number = 403;
   static readonly NOT_FOUND: number = 404;

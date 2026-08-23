@@ -9,6 +9,13 @@ const TAG: string = 'HttpClient';
 const TIMEOUT_CONNECT_MS: number = 10000;
 const TIMEOUT_TRANSFER_MS: number = 15000;
 
+/** 本地接口：用于构建 multipart 文件字段，绕过 SDK 类型属性名差异 */
+interface MultipartFileField {
+  contentType: string;
+  remoteFileName: string;
+  filePath: string;
+}
+
 /** 查询参数容器。ArkTS 不支持动态属性访问，用显式 append 构建。 */
 export class QueryParams {
   private parts: string[] = [];
@@ -60,9 +67,7 @@ export class HttpClient {
               transferMs: TIMEOUT_TRANSFER_MS
             }
           },
-          processing: {
-            validateServerCertificate: true
-          }
+          processing: {}
         },
         headers: {
           'content-type': 'application/json',
@@ -101,7 +106,12 @@ export class HttpClient {
   /** multipart 上传，目前只用于头像 */
   static async upload<T>(path: string, filePath: string, fieldName: string = 'file'): Promise<T> {
     const form: rcp.MultipartForm = new rcp.MultipartForm({});
-    form.fields[fieldName] = { contentType: 'application/octet-stream', remoteFileName: 'avatar.jpg', filePath: filePath } as rcp.MultipartField;
+    const field: MultipartFileField = {
+      contentType: 'application/octet-stream',
+      remoteFileName: 'avatar.jpg',
+      filePath: filePath
+    };
+    form.fields[fieldName] = field as object as rcp.MultipartFormFieldValue;
     return HttpClient.execute<T>(() => HttpClient.getSession().post(HttpClient.url(path), form));
   }
 

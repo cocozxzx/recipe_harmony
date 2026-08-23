@@ -1,0 +1,305 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚ9/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+export class FileTypeUtil {
+    constructor() {
+        this.fileSignatureMap = {
+            // æ·»åŠ æ–‡ä»¶ç±»å‹å’Œå¯¹åº”çš„æ–‡ä»¶å¤´éƒ¨ç‰¹å¾
+            'jpg': [new Uint8Array([0xFF, 0xD8])],
+            'png': [new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])],
+            'gif': [new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]), new Uint8Array([0x47, 0x49, 0x46, 0x38])],
+            'bmp': [new Uint8Array([0x42, 0x4D])],
+            'svg': [new Uint8Array([0x3C, 0x3F, 0x78, 0x6D, 0x6C]), new Uint8Array([0x3C, 0x73, 0x76, 0x67, 0x20])],
+            'webp': [new Uint8Array([0x52, 0x49, 0x46, 0x46])],
+            'ico': [new Uint8Array([0x00, 0x00, 0x01, 0x00])],
+            'tiff': [new Uint8Array([0x49, 0x20, 0x49]), new Uint8Array([0x49, 0x49, 0x2A, 0x00]), new Uint8Array([0x4D, 0x4D, 0x00, 0x2A]), new Uint8Array([0x4D, 0x4D, 0x00, 0x2B])],
+            // æ·»åŠ æ›´å¤šçš„æ–‡ä»¶ç±»å‹å’Œç‰¹å¾
+            'heic': [new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]), new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x69, 0x66, 0x31])],
+        };
+    }
+    isImage(arraybuffer) {
+        let value = this.getFileType(arraybuffer);
+        if (value == SupportFormat.jpg ||
+            value == SupportFormat.png ||
+            value == SupportFormat.tiff ||
+            value == SupportFormat.webp ||
+            value == SupportFormat.bmp ||
+            value == SupportFormat.gif ||
+            value == SupportFormat.svg ||
+            value == SupportFormat.heic ||
+            value == SupportFormat.ico) {
+            return true;
+        }
+        return false;
+    }
+    getFileType(file) {
+        const fileData = new Uint8Array(file);
+        let hasMatched = false;
+        let matchedFileType = '';
+        Object.keys(this.fileSignatureMap).map((fileType) => {
+            if (!hasMatched) {
+                const bufferList = this.fileSignatureMap[fileType];
+                for (let i = 0; i < bufferList.length; i++) {
+                    let signature = bufferList[i];
+                    if (this.matchesSignature(fileData, signature, fileType)) {
+                        hasMatched = true;
+                        matchedFileType = fileType;
+                        break;
+                    }
+                }
+            }
+            else {
+                // ç”±äºmapå‡½æ•°ä¼šè¾“å‡ºæ‰€æœ‰çš„keys, æ‰€ä»¥åŒ¹é…ä¹‹åä¸å†éœ€è¦æ‰§è¡Œä»»ä½•é€»è¾‘
+            }
+        });
+        if (hasMatched) {
+            return matchedFileType;
+        }
+        return null; // è‹¥æ— æ³•è¯†åˆ«æ–‡ä»¶ç±»å‹ï¼Œè¿”å›null
+    }
+    matchesSignature(fileData, signature, fileType) {
+        if (fileData.length < signature.length) {
+            return false; // æ–‡ä»¶é•¿åº¦ä¸è¶³ï¼Œæ— æ³•åŒ¹é…é­”æ•°
+        }
+        for (let i = fileType == 'heic' ? 4 : 0; i < signature.length; i++) {
+            if (fileData[i] !== signature[i]) {
+                return false; // é­”æ•°ä¸åŒ¹é…
+            }
+        }
+        return true; // æ–‡ä»¶å¤´éƒ¨é­”æ•°åŒ¹é…
+    }
+}
+export var PhotoFormat;
+(function (PhotoFormat) {
+    PhotoFormat["jpg"] = "jpg,0,FFD8";
+    PhotoFormat["png"] = "png,0,89504E470D0A1A0A";
+    PhotoFormat["bmp"] = "bmp,0,424D";
+    PhotoFormat["gif"] = "gif,0,474946383961";
+    PhotoFormat["svg"] = "svg,0,3C3F786D6C";
+    PhotoFormat["webp"] = "webp,0,52494646";
+    PhotoFormat["tiff"] = "tiff,0,492049|49492A00|4D4D002A|4D4D002B";
+})(PhotoFormat || (PhotoFormat = {}));
+export var SupportFormat;
+(function (SupportFormat) {
+    SupportFormat["jpg"] = "jpg";
+    SupportFormat["png"] = "png";
+    SupportFormat["webp"] = "webp";
+    SupportFormat["bmp"] = "bmp";
+    SupportFormat["gif"] = "gif";
+    SupportFormat["svg"] = "svg";
+    SupportFormat["tiff"] = "tiff";
+    SupportFormat["heic"] = "heic";
+    SupportFormat["ico"] = "ico";
+})(SupportFormat || (SupportFormat = {}));
+//# sourceMappingURL=FileTypeUtil.js.mapÂÙC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\utils\FileTypeUtil.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚw/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+export class FileTypeUtil {
+  private fileSignatureMap: Record<string, Array<Uint8Array>> = {
+    // æ·»åŠ æ–‡ä»¶ç±»å‹å’Œå¯¹åº”çš„æ–‡ä»¶å¤´éƒ¨ç‰¹å¾
+    'jpg': [new Uint8Array([0xFF, 0xD8])],
+    'png': [new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])],
+    'gif': [new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]),new Uint8Array([0x47, 0x49, 0x46, 0x38])],
+    'bmp': [new Uint8Array([0x42, 0x4D])],
+    'svg': [new Uint8Array([0x3C, 0x3F, 0x78, 0x6D, 0x6C]),new Uint8Array([0x3C, 0x73, 0x76, 0x67, 0x20])],
+    'webp': [new Uint8Array([0x52, 0x49, 0x46, 0x46])],
+    'ico': [new Uint8Array([0x00,0x00,0x01,0x00])],
+    'tiff': [new Uint8Array([0x49, 0x20, 0x49]), new Uint8Array([0x49, 0x49, 0x2A, 0x00]), new Uint8Array([0x4D, 0x4D, 0x00, 0x2A]), new Uint8Array([0x4D, 0x4D, 0x00, 0x2B])],
+    // æ·»åŠ æ›´å¤šçš„æ–‡ä»¶ç±»å‹å’Œç‰¹å¾
+    'heic': [new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]),new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x69, 0x66, 0x31])],
+  };
+
+
+  constructor() {
+  }
+
+  isImage(arraybuffer: ArrayBuffer) {
+    let value = this.getFileType(arraybuffer);
+    if (
+      value == SupportFormat.jpg ||
+        value == SupportFormat.png ||
+        value == SupportFormat.tiff ||
+        value == SupportFormat.webp ||
+        value == SupportFormat.bmp ||
+        value == SupportFormat.gif ||
+        value == SupportFormat.svg ||
+        value == SupportFormat.heic ||
+        value == SupportFormat.ico
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  getFileType(file: ArrayBuffer): string | null {
+    const fileData = new Uint8Array(file);
+    let hasMatched = false;
+    let matchedFileType = ''
+    Object.keys(this.fileSignatureMap).map((fileType)=>{
+      if(!hasMatched) {
+        const bufferList = this.fileSignatureMap[fileType];
+        for (let i = 0; i < bufferList.length; i++) {
+          let signature = bufferList[i];
+          if (this.matchesSignature(fileData, signature,fileType)) {
+            hasMatched = true;
+            matchedFileType = fileType;
+            break
+          }
+        }
+      }else{
+        // ç”±äºmapå‡½æ•°ä¼šè¾“å‡ºæ‰€æœ‰çš„keys, æ‰€ä»¥åŒ¹é…ä¹‹åä¸å†éœ€è¦æ‰§è¡Œä»»ä½•é€»è¾‘
+      }
+    })
+    if(hasMatched){
+      return matchedFileType;
+    }
+    return null; // è‹¥æ— æ³•è¯†åˆ«æ–‡ä»¶ç±»å‹ï¼Œè¿”å›null
+  }
+
+
+  matchesSignature(fileData: Uint8Array, signature: Uint8Array,fileType:string): boolean {
+    if (fileData.length < signature.length) {
+      return false; // æ–‡ä»¶é•¿åº¦ä¸è¶³ï¼Œæ— æ³•åŒ¹é…é­”æ•°
+    }
+
+    for (let i = fileType == 'heic' ? 4 : 0; i < signature.length; i++) {
+      if (fileData[i] !== signature[i]) {
+        return false; // é­”æ•°ä¸åŒ¹é…
+      }
+    }
+    return true; // æ–‡ä»¶å¤´éƒ¨é­”æ•°åŒ¹é…
+  }
+}
+
+
+export enum PhotoFormat {
+  jpg = 'jpg,0,FFD8',
+  png = 'png,0,89504E470D0A1A0A',
+  bmp = 'bmp,0,424D',
+  gif = 'gif,0,474946383961',
+  svg = 'svg,0,3C3F786D6C',
+  webp = 'webp,0,52494646',
+  tiff = 'tiff,0,492049|49492A00|4D4D002A|4D4D002B'
+}
+
+export enum SupportFormat {
+  jpg = 'jpg',
+  png = 'png',
+  webp = 'webp',
+  bmp = 'bmp',
+  gif = 'gif',
+  svg = 'svg',
+  tiff = 'tiff',
+  heic = 'heic',
+  ico = 'ico'
+}
+ÀA“ÔrD–§version¤fileªsourceRoot§sources¥names¨mappings¯FileTypeUtil.js ‘°FileTypeUtil.etsÜ h‘”    ‘” ””   ” ” ” ‘”  “” 
+” ”  Ì@’” ” ” ” 	” ” ” ”" ”# ”$ ”(  ”* "”. &”/ '”0 (”1 )Ü ” ” 	” ” ” ”" ”# ”$ ”(  ”* "”. &”0 (”4 ,”6 .”: 2”< 4”Ì@ 8”ÌB :”ÌF >”ÌH Ì@”ÌL ÌD”ÌN ÌF”ÌR ÌJ”ÌS ÌK”ÌT ÌL”ÌU ÌMÜ $” ” 	” ” ” ”" ”# ”$ ”(  ”* "”. &”0 (”4 ,”6 .”: 2”< 4”Ì@ 8”ÌB :”ÌF >”ÌG ?”ÌH Ì@”ÌJ ÌA”ÌN ÌE”ÌX ÌO”ÌY ÌP”ÌZ ÌQ”Ì^ ÌU”Ì` ÌW”Ìd Ì[”Ìf Ì]”Ìj Ìa”Ìl Ìc”Ìp Ìg”Ìq Ìh”Ìr Ìi”Ìs Ìj” ” 	” ” ” ”" ”# ”$ ”(  ”* "”. &”/ '”0 (”1 )Ü $” ” 	” ” ” ”" ”# ”$ ”(  ”* "”. &”0 (”4 ,”6 .”: 2”< 4”Ì@ 8”ÌA 9”ÌB :”ÌD ;”ÌH ?”ÌR ÌI”ÌS ÌJ”ÌT ÌK”ÌX ÌO”ÌZ ÌQ”Ì^ ÌU”Ì` ÌW”Ìd Ì[”Ìf Ì]”Ìj Ìa”Ìl Ìc”Ìp Ìg”Ìq Ìh”Ìr Ìi”Ìs ÌjÜ ” ” 
+” ” ” ”# ”$ ”% ”) !”+ #”/ '”1 )”5 -”7 /”; 3”< 4”= 5”> 6Ü ” ” 	” ” ” ”" ”# ”$ ”(  ”* !”. %”0 &”4 *”6 +”: /”; 0”< 1”= 2Ü :” ” 
+” ” ” ”# ”$ ”% ”) !”+ #”/ '”1 )”5 -”6 .”7 /”9 1”= 5”ÌG ?”ÌH Ì@”ÌI ÌA”ÌM ÌE”ÌO ÌG”ÌS ÌK”ÌU ÌM”ÌY ÌQ”Ì[ ÌS”Ì_ ÌW”Ì` ÌX”Ìa ÌY”Ìc Ì[”Ìg Ì_”Ìq Ìi”Ìr Ìj”Ìs Ìk”Ìw Ìo”Ìy Ìq”Ì} Ìu”Ì Ìw”Ìƒ Ì{”Ì… Ì}”Ì‰ Ì”ÌŠ Ì‚”Ì‹ Ìƒ”Ì Ì…”Ì‘ Ì‰”Ì› Ì“”Ìœ Ì””Ì Ì•”Ì¡ Ì™”Ì£ Ì›”Ì§ ÌŸ”Ì© Ì¡”Ì­ Ì¥”Ì¯ Ì§”Ì³ Ì«”Ì´ Ì¬”Ìµ Ì­”Ì¶ Ì®’” ” Ü @” ” 
+” ” ” ”# ”$ ”% ”) !”+ #”/ '”1 )”5 -”7 /”; 3”= 5”ÌA 9”ÌC ;”ÌG ?”ÌI ÌA”ÌM ÌE”ÌO ÌG”ÌS ÌK”ÌU ÌM”ÌY ÌQ”Ì[ ÌS”Ì_ ÌW”Ìa ÌY”Ìe Ì]”Ìg Ì_”Ìk Ìc”Ìl Ìd”Ìm Ìe”Ìo Ìf”Ìs Ìj”Ì} Ìt”Ì~ Ìu”Ì Ìv”Ìƒ Ìz”Ì… Ì|”Ì‰ Ì€”Ì‹ Ì‚”Ì Ì†”Ì‘ Ìˆ”Ì• ÌŒ”Ì— Ì”Ì› Ì’”Ì Ì””Ì¡ Ì˜”Ì£ Ìš”Ì§ Ì”Ì© Ì ”Ì­ Ì¤”Ì¯ Ì¦”Ì³ Ìª”Ìµ Ì¬”Ì¹ Ì°”Ì» Ì²”Ì¿ Ì¶”ÌÁ Ì¸”ÌÅ Ì¼”ÌÆ Ì½”ÌÇ Ì¾”ÌÈ Ì¿’”	 ”
+ ’” !” !”” #” #	” #
+” #"›” $” $” $” $” $” $”$ $ ”% $!”0 $,”1 $-”2 $.—” %” &” &” &”" &”# &”& & –” '” '” '”" '”# '”& '"–” (” (” (”" (”# (”' (#–” )” )” )”" )”# )”' )#–” *” *” *”" *”# *”& *"–” +” +” +”" +”# +”& +"–” ,” ,” ,”" ,”# ,”& ,"–” -” -” -”" -”# -”' -#—” .” .” .”" .”# .”& ."”( /”” 0” 0” 0” 0‘”	 1”” 2” 2” 2” 2’” 3” 3”” 5” 5” 5” 5š” 6” 6
+” 6” 6” 6”' 6#”( 6$”, 6(”- 6)”. 6*–” 7” 7” 7” 7” 7” 7–” 8” 8” 8” 8”  8”! 8Ü ” 9” 9
+” 9” 9” 9” 9” 9”) 9%”* 9&”+ 9'”. 9*”/ 9+”0 9,”8 94”: 95”< 97•” :” :	” :
+” :” :›” ;” ;”  ;”# ;”' ;”( ; ”8 ;0”9 ;1”ÌA ;9”ÌB ;:”ÌC ;;Ü ” <” <” <” <” <” <”  <”! <”$ <”. <&”/ <'”5 <-”7 </”8 <0”: <2”< <4™” =
+” =”! =”$ =”. =$”/ =%”0 =&”1 ='”2 =(” >
+” >” >” >”- >#”. >$”6 >,”8 >.”ÌA >7”ÌC >8”ÌK >Ì@”ÌL >ÌA”ÌN >ÌC•” ?”" ?”% ?”) ?”* ?•” Ì@”' Ì@”* Ì@”2 Ì@&”3 Ì@'’” ÌA” ÌA‘” ÌB‘” ÌC	‘” ÌD‘” ÌD’” ÌE”6 ÌE.‘” ÌF”” ÌG”	 ÌG”
+ ÌG” ÌG”” ÌH” ÌH” ÌH” ÌH”” ÌI” ÌI”" ÌI”# ÌI‘”	 ÌJ–” ÌK” ÌK” ÌK” ÌK” ÌK”( ÌK$’” ÌL” ÌL˜” ÌO” ÌO” ÌO” ÌO'” ÌO)”( ÌO>”* ÌO?”2 ÌOÌNš” ÌP” ÌP” ÌP” ÌP” ÌP” ÌP”' ÌP#”( ÌP$”. ÌP*”0 ÌP,–” ÌQ” ÌQ” ÌQ” ÌQ” ÌQ”* ÌQ$‘”	 ÌRÜ ” ÌT” ÌT	” ÌT” ÌT” ÌT” ÌT”! ÌT”' ÌT#”( ÌT$”) ÌT%”* ÌT&”+ ÌT'”, ÌT(”- ÌT)”. ÌT*”/ ÌT+”1 ÌT-”2 ÌT.”5 ÌT1”> ÌT:”? ÌT;”ÌE ÌTÌA”ÌG ÌTÌC”ÌH ÌTÌD”ÌJ ÌTÌF”ÌL ÌTÌHœ” ÌU” ÌU
+” ÌU” ÌU” ÌU” ÌU”  ÌU”) ÌU#”* ÌU$”+ ÌU%”, ÌU&”. ÌU(–” ÌV” ÌV” ÌV” ÌV” ÌV”& ÌV‘” ÌW‘”	 ÌX–” ÌY” ÌY” ÌY” ÌY” ÌY”  ÌY’” ÌZ” ÌZ‘” Ì[•”  Ì^ ” Ì^” Ì^ ” Ì^” Ìf“”  Ì^ ” Ì^” Ì^“” Ì_”% Ì_”& Ì_“” Ì`”1 Ì` ”2 Ì` “” Ìa”% Ìa”& Ìa“” Ìb”- Ìb”. Ìb“” Ìc”+ Ìc”, Ìc“” Ìd”+ Ìd”, Ìd“” Ìe”ÌD Ìe3”ÌE Ìe3—”  Ìf ” Ìf” Ì^” Ì^” Ì^” Ì^”& Ìf•”  Ìh ” Ìh” Ìh ” Ìh” Ìr“”  Ìh ” Ìh” Ìh“” Ìi”  Ìi”! Ìi“” Ìj”  Ìj”! Ìj“” Ìk”" Ìk”# Ìk“” Ìl”  Ìl”! Ìl“” Ìm”  Ìm”! Ìm“” Ìn”  Ìn”! Ìn“” Ìo”" Ìo”# Ìo“” Ìp”" Ìp”# Ìp“” Ìq”  Ìq”! Ìq—”  Ìr ” Ìr” Ìh” Ìh” Ìh”" Ìh”* ÌrÔrE–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜ i‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ÔrF’§missing¦pluginÃ¦genAbcÂÔ  ÔrG”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache“ÔrH–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍnÍÿÔrI–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍuÍÿÔrJ”¤type¥start£end¤nameªIdentifierÍ{Í‡¬FileTypeUtilÀÔrK”¤type¥start£end¤body©ClassBodyÍˆÍÿ”ÔrL˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍÍÃÂÂJªIdentifierÍÍš«constructor«constructorÔrM™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍšÍÃÀÂÂÂK®BlockStatementÍÍÃ‘ÔrN”¤type¥start£endªexpression³ExpressionStatementÍ¨Í¼ÔrO–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍ¨Í»¡=ÔrP—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍ¨Í½ÔrQ“¤type¥start£end®ThisExpressionÍ¨Í¬JªIdentifierÍ­Í½°fileSignatureMapÂÂÔrR”¤type¥start£endªproperties°ObjectExpressionÍÀÍ»™ÔrS™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍğÍÂÂÂÔrT•¤type¥start£end¥value£raw§LiteralÍğÍõ£jpg¥'jpg'ÔrU”¤type¥start£end¨elements¯ArrayExpressionÍ÷Í‘ÔrV•¤type¥start£end¦callee©arguments­NewExpressionÍøÍJªIdentifierÍüÍªUint8Array‘U¯ArrayExpressionÍÍ’T§LiteralÍÍÌÿ¤0xFFT§LiteralÍÍÌØ¤0xD8¤initS¨PropertyÍ$ÍmÂÂÂT§LiteralÍ$Í)£png¥'png'U¯ArrayExpressionÍ+Ím‘V­NewExpressionÍ,ÍlJªIdentifierÍ0Í:ªUint8Array‘U¯ArrayExpressionÍ;Ík˜T§LiteralÍ<Í@Ì‰¤0x89T§LiteralÍBÍFÌP¤0x50T§LiteralÍHÍLÌN¤0x4ET§LiteralÍNÍRÌG¤0x47T§LiteralÍTÍX¤0x0DT§LiteralÍZÍ^
+¤0x0AT§LiteralÍ`Íd¤0x1AT§LiteralÍfÍj
+¤0x0A¤initS¨PropertyÍ|ÍãÂÂÂT§LiteralÍ|Í£gif¥'gif'U¯ArrayExpressionÍƒÍã’V­NewExpressionÍ„Í¸JªIdentifierÍˆÍ’ªUint8Array‘U¯ArrayExpressionÍ“Í·–T§LiteralÍ”Í˜ÌG¤0x47T§LiteralÍšÍÌI¤0x49T§LiteralÍ Í¤ÌF¤0x46T§LiteralÍ¦Íª8¤0x38T§LiteralÍ¬Í°9¤0x39T§LiteralÍ²Í¶Ìa¤0x61V­NewExpressionÍºÍâJªIdentifierÍ¾ÍÈªUint8Array‘U¯ArrayExpressionÍÉÍá”T§LiteralÍÊÍÎÌG¤0x47T§LiteralÍĞÍÔÌI¤0x49T§LiteralÍÖÍÚÌF¤0x46T§LiteralÍÜÍà8¤0x38¤initS¨PropertyÍòÍÂÂÂT§LiteralÍòÍ÷£bmp¥'bmp'U¯ArrayExpressionÍùÍ‘V­NewExpressionÍúÍJªIdentifierÍşÍªUint8Array‘U¯ArrayExpressionÍ	Í’T§LiteralÍ
+ÍÌB¤0x42T§LiteralÍÍÌM¤0x4D¤initS¨PropertyÍ&ÍÂÂÂT§LiteralÍ&Í+£svg¥'svg'U¯ArrayExpressionÍ-Í’V­NewExpressionÍ.Í\JªIdentifierÍ2Í<ªUint8Array‘U¯ArrayExpressionÍ=Í[•T§LiteralÍ>ÍB<¤0x3CT§LiteralÍDÍH?¤0x3FT§LiteralÍJÍNÌx¤0x78T§LiteralÍPÍTÌm¤0x6DT§LiteralÍVÍZÌl¤0x6CV­NewExpressionÍ^ÍŒJªIdentifierÍbÍlªUint8Array‘U¯ArrayExpressionÍmÍ‹•T§LiteralÍnÍr<¤0x3CT§LiteralÍtÍxÌs¤0x73T§LiteralÍzÍ~Ìv¤0x76T§LiteralÍ€Í„Ìg¤0x67T§LiteralÍ†ÍŠ ¤0x20¤initS¨PropertyÍœÍÎÂÂÂT§LiteralÍœÍ¢¤webp¦'webp'U¯ArrayExpressionÍ¤ÍÎ‘V­NewExpressionÍ¥ÍÍJªIdentifierÍ©Í³ªUint8Array‘U¯ArrayExpressionÍ´ÍÌ”T§LiteralÍµÍ¹ÌR¤0x52T§LiteralÍ»Í¿ÌI¤0x49T§LiteralÍÁÍÅÌF¤0x46T§LiteralÍÇÍËÌF¤0x46¤initS¨PropertyÍİÍÂÂÂT§LiteralÍİÍâ£ico¥'ico'U¯ArrayExpressionÍäÍ‘V­NewExpressionÍåÍJªIdentifierÍéÍóªUint8Array‘U¯ArrayExpressionÍôÍ”T§LiteralÍõÍù ¤0x00T§LiteralÍûÍÿ ¤0x00T§LiteralÍÍ¤0x01T§LiteralÍÍ ¤0x00¤initS¨PropertyÍÍÇÂÂÂT§LiteralÍÍ#¤tiff¦'tiff'U¯ArrayExpressionÍ%ÍÇ”V­NewExpressionÍ&ÍHJªIdentifierÍ*Í4ªUint8Array‘U¯ArrayExpressionÍ5ÍG“T§LiteralÍ6Í:ÌI¤0x49T§LiteralÍ<Í@ ¤0x20T§LiteralÍBÍFÌI¤0x49V­NewExpressionÍJÍrJªIdentifierÍNÍXªUint8Array‘U¯ArrayExpressionÍYÍq”T§LiteralÍZÍ^ÌI¤0x49T§LiteralÍ`ÍdÌI¤0x49T§LiteralÍfÍj*¤0x2AT§LiteralÍlÍp ¤0x00V­NewExpressionÍtÍœJªIdentifierÍxÍ‚ªUint8Array‘U¯ArrayExpressionÍƒÍ›”T§LiteralÍ„ÍˆÌM¤0x4DT§LiteralÍŠÍÌM¤0x4DT§LiteralÍÍ” ¤0x00T§LiteralÍ–Íš*¤0x2AV­NewExpressionÍÍÆJªIdentifierÍ¢Í¬ªUint8Array‘U¯ArrayExpressionÍ­ÍÅ”T§LiteralÍ®Í²ÌM¤0x4DT§LiteralÍ´Í¸ÌM¤0x4DT§LiteralÍºÍ¾ ¤0x00T§LiteralÍÀÍÄ+¤0x2B¤initS¨PropertyÍóÍ¯ÂÂÂT§LiteralÍóÍù¤heic¦'heic'U¯ArrayExpressionÍûÍ¯’V­NewExpressionÍüÍTJªIdentifierÍ Í
+ªUint8Array‘U¯ArrayExpressionÍÍSœT§LiteralÍÍ ¤0x00T§LiteralÍÍ ¤0x00T§LiteralÍÍ ¤0x00T§LiteralÍÍ"¤0x18T§LiteralÍ$Í(Ìf¤0x66T§LiteralÍ*Í.Ìt¤0x74T§LiteralÍ0Í4Ìy¤0x79T§LiteralÍ6Í:Ìp¤0x70T§LiteralÍ<Í@Ìh¤0x68T§LiteralÍBÍFÌe¤0x65T§LiteralÍHÍLÌi¤0x69T§LiteralÍNÍRÌc¤0x63V­NewExpressionÍVÍ®JªIdentifierÍZÍdªUint8Array‘U¯ArrayExpressionÍeÍ­œT§LiteralÍfÍj ¤0x00T§LiteralÍlÍp ¤0x00T§LiteralÍrÍv ¤0x00T§LiteralÍxÍ|¤0x1CT§LiteralÍ~Í‚Ìf¤0x66T§LiteralÍ„ÍˆÌt¤0x74T§LiteralÍŠÍÌy¤0x79T§LiteralÍÍ”Ìp¤0x70T§LiteralÍ–ÍšÌm¤0x6DT§LiteralÍœÍ Ìi¤0x69T§LiteralÍ¢Í¦Ìf¤0x66T§LiteralÍ¨Í¬1¤0x31¤initL°MethodDefinitionÍÉÍÜÂÂJªIdentifierÍÉÍĞ§isImage¦methodM²FunctionExpressionÍĞÍÜÀÂÂÂ‘JªIdentifierÍÑÍÜ«arraybufferK®BlockStatementÍŞÍÜ“ÔrW•¤type¥start£end¬declarations¤kind³VariableDeclarationÍéÍ‘ÔrX•¤type¥start£end¢id¤init²VariableDeclaratorÍíÍJªIdentifierÍíÍò¥valueÔrY–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍõÍP°MemberExpressionÍõÍQ®ThisExpressionÍõÍùJªIdentifierÍúÍ«getFileTypeÂÂ‘JªIdentifierÍÍ«arraybufferÂ£letÔrZ–¤type¥start£end¤testªconsequent©alternate«IfStatementÍÍ¾Ôr[–¤type¥start£end¤left¨operator¥right±LogicalExpressionÍ!Í–[±LogicalExpressionÍ!Ík[±LogicalExpressionÍ!Í?[±LogicalExpressionÍ!Í[±LogicalExpressionÍ!Íé[±LogicalExpressionÍ!Í¾[±LogicalExpressionÍ!Í’[±LogicalExpressionÍ!Íf[°BinaryExpressionÍ!Í;JªIdentifierÍ!Í&¥value¢==P°MemberExpressionÍ*Í;JªIdentifierÍ*Í7­SupportFormatJªIdentifierÍ8Í;£jpgÂÂ¢||[°BinaryExpressionÍLÍfJªIdentifierÍLÍQ¥value¢==P°MemberExpressionÍUÍfJªIdentifierÍUÍb­SupportFormatJªIdentifierÍcÍf£pngÂÂ¢||[°BinaryExpressionÍwÍ’JªIdentifierÍwÍ|¥value¢==P°MemberExpressionÍ€Í’JªIdentifierÍ€Í­SupportFormatJªIdentifierÍÍ’¤tiffÂÂ¢||[°BinaryExpressionÍ£Í¾JªIdentifierÍ£Í¨¥value¢==P°MemberExpressionÍ¬Í¾JªIdentifierÍ¬Í¹­SupportFormatJªIdentifierÍºÍ¾¤webpÂÂ¢||[°BinaryExpressionÍÏÍéJªIdentifierÍÏÍÔ¥value¢==P°MemberExpressionÍØÍéJªIdentifierÍØÍå­SupportFormatJªIdentifierÍæÍé£bmpÂÂ¢||[°BinaryExpressionÍúÍJªIdentifierÍúÍÿ¥value¢==P°MemberExpressionÍÍJªIdentifierÍÍ­SupportFormatJªIdentifierÍÍ£gifÂÂ¢||[°BinaryExpressionÍ%Í?JªIdentifierÍ%Í*¥value¢==P°MemberExpressionÍ.Í?JªIdentifierÍ.Í;­SupportFormatJªIdentifierÍ<Í?£svgÂÂ¢||[°BinaryExpressionÍPÍkJªIdentifierÍPÍU¥value¢==P°MemberExpressionÍYÍkJªIdentifierÍYÍf­SupportFormatJªIdentifierÍgÍk¤heicÂÂ¢||[°BinaryExpressionÍ|Í–JªIdentifierÍ|Í¥value¢==P°MemberExpressionÍ…Í–JªIdentifierÍ…Í’­SupportFormatJªIdentifierÍ“Í–£icoÂÂK®BlockStatementÍ˜Í¾‘Ôr\”¤type¥start£end¨argument¯ReturnStatementÍ§Í³T§LiteralÍ®Í²Ã¤trueÀ\¯ReturnStatementÍÈÍÕT§LiteralÍÏÍÔÂ¥falseL°MethodDefinitionÍâÍpÂÂJªIdentifierÍâÍí«getFileType¦methodM²FunctionExpressionÍíÍpÀÂÂÂ‘JªIdentifierÍîÍò¤fileK®BlockStatementÍôÍp–W³VariableDeclarationÍÿÍ	%‘X²VariableDeclaratorÍ	Í	$JªIdentifierÍ	Í	¨fileDataV­NewExpressionÍ	Í	$JªIdentifierÍ	Í	ªUint8Array‘JªIdentifierÍ	Í	#¤file¥constW³VariableDeclarationÍ	/Í	F‘X²VariableDeclaratorÍ	3Í	EJªIdentifierÍ	3Í	=ªhasMatchedT§LiteralÍ	@Í	EÂ¥false£letW³VariableDeclarationÍ	PÍ	i‘X²VariableDeclaratorÍ	TÍ	hJªIdentifierÍ	TÍ	c¯matchedFileTypeT§LiteralÍ	fÍ	h ¢''£letN³ExpressionStatementÍ	sÍôY®CallExpressionÍ	sÍóP°MemberExpressionÍ	sÍ	™Y®CallExpressionÍ	sÍ	•P°MemberExpressionÍ	sÍ	~JªIdentifierÍ	sÍ	y¦ObjectJªIdentifierÍ	zÍ	~¤keysÂÂ‘P°MemberExpressionÍ	Í	”Q®ThisExpressionÍ	Í	ƒJªIdentifierÍ	„Í	”°fileSignatureMapÂÂÂJªIdentifierÍ	–Í	™£mapÂÂ‘M·ArrowFunctionExpressionÍ	šÍòÀÂÂÂ‘JªIdentifierÍ	›Í	£¨fileTypeK®BlockStatementÍ	¨Íò‘Z«IfStatementÍ	·ÍçÔr]–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍ	»Í	Æ¡!ÃJªIdentifierÍ	¼Í	ÆªhasMatchedK®BlockStatementÍ	ÈÍŒ’W³VariableDeclarationÍ	ÛÍ
+‘X²VariableDeclaratorÍ	áÍ
+JªIdentifierÍ	áÍ	ëªbufferListP°MemberExpressionÍ	îÍ
+P°MemberExpressionÍ	îÍ
+Q®ThisExpressionÍ	îÍ	òJªIdentifierÍ	óÍ
+°fileSignatureMapÂÂJªIdentifierÍ
+Í
+¨fileTypeÃÂ¥constÔr^—¤type¥start£end¤init¤test¦update¤body¬ForStatementÍ
+ Í}W³VariableDeclarationÍ
+%Í
+.‘X²VariableDeclaratorÍ
+)Í
+.JªIdentifierÍ
+)Í
+*¡iT§LiteralÍ
+-Í
+. ¡0£let[°BinaryExpressionÍ
+0Í
+EJªIdentifierÍ
+0Í
+1¡i¡<P°MemberExpressionÍ
+4Í
+EJªIdentifierÍ
+4Í
+>ªbufferListJªIdentifierÍ
+?Í
+E¦lengthÂÂ]°UpdateExpressionÍ
+GÍ
+J¢++ÂJªIdentifierÍ
+GÍ
+H¡iK®BlockStatementÍ
+LÍ}’W³VariableDeclarationÍ
+cÍ
+‘X²VariableDeclaratorÍ
+gÍ
+€JªIdentifierÍ
+gÍ
+p©signatureP°MemberExpressionÍ
+sÍ
+€JªIdentifierÍ
+sÍ
+}ªbufferListJªIdentifierÍ
+~Í
+¡iÃÂ£letZ«IfStatementÍ
+—ÍjY®CallExpressionÍ
+›Í
+ÏP°MemberExpressionÍ
+›Í
+°Q®ThisExpressionÍ
+›Í
+ŸJªIdentifierÍ
+ Í
+°°matchesSignatureÂÂ“JªIdentifierÍ
+±Í
+¹¨fileDataJªIdentifierÍ
+»Í
+Ä©signatureJªIdentifierÍ
+ÆÍ
+Î¨fileTypeÂK®BlockStatementÍ
+ÑÍj“N³ExpressionStatementÍ
+ìÍ
+şO´AssignmentExpressionÍ
+ìÍ
+ı¡=JªIdentifierÍ
+ìÍ
+öªhasMatchedT§LiteralÍ
+ùÍ
+ıÃ¤trueN³ExpressionStatementÍÍ3O´AssignmentExpressionÍÍ2¡=JªIdentifierÍÍ'¯matchedFileTypeJªIdentifierÍ*Í2¨fileTypeÔr_”¤type¥start£end¥label®BreakStatementÍMÍSÀÀK®BlockStatementÍŸÍçÂZ«IfStatementÍşÍ?JªIdentifierÍÍªhasMatchedK®BlockStatementÍÍ?‘\¯ReturnStatementÍÍ4JªIdentifierÍ$Í3¯matchedFileTypeÀ\¯ReturnStatementÍIÍUT§LiteralÍPÍTÀ¤nullL°MethodDefinitionÍvÍüÂÂJªIdentifierÍvÍ†°matchesSignature¦methodM²FunctionExpressionÍ†ÍüÀÂÂÂ“JªIdentifierÍ‡Í¨fileDataJªIdentifierÍ‘Íš©signatureJªIdentifierÍœÍ¤¨fileTypeK®BlockStatementÍ¦Íü“Z«IfStatementÍ±Í[°BinaryExpressionÍµÍ×P°MemberExpressionÍµÍÄJªIdentifierÍµÍ½¨fileDataJªIdentifierÍ¾ÍÄ¦lengthÂÂ¡<P°MemberExpressionÍÇÍ×JªIdentifierÍÇÍĞ©signatureJªIdentifierÍÑÍ×¦lengthÂÂK®BlockStatementÍÙÍ‘\¯ReturnStatementÍèÍõT§LiteralÍïÍôÂ¥falseÀ^¬ForStatementÍÍÓW³VariableDeclarationÍ ÍB‘X²VariableDeclaratorÍ$ÍBJªIdentifierÍ$Í%¡iZµConditionalExpressionÍ(ÍB[°BinaryExpressionÍ(Í:JªIdentifierÍ(Í0¨fileType¢==T§LiteralÍ4Í:¤heic¦'heic'T§LiteralÍ=Í>¡4T§LiteralÍAÍB ¡0£let[°BinaryExpressionÍDÍXJªIdentifierÍDÍE¡i¡<P°MemberExpressionÍHÍXJªIdentifierÍHÍQ©signatureJªIdentifierÍRÍX¦lengthÂÂ]°UpdateExpressionÍZÍ]¢++ÂJªIdentifierÍZÍ[¡iK®BlockStatementÍ_ÍÓ‘Z«IfStatementÍnÍÈ[°BinaryExpressionÍrÍP°MemberExpressionÍrÍ}JªIdentifierÍrÍz¨fileDataJªIdentifierÍ{Í|¡iÃÂ£!==P°MemberExpressionÍ‚ÍJªIdentifierÍ‚Í‹©signatureJªIdentifierÍŒÍ¡iÃÂK®BlockStatementÍÍÈ‘\¯ReturnStatementÍ£Í°T§LiteralÍªÍ¯Â¥falseÀ\¯ReturnStatementÍİÍéT§LiteralÍäÍèÃ¤trueÀH¶ExportNamedDeclarationÍÍW³VariableDeclarationÍÍ‘X²VariableDeclaratorÍÍJªIdentifierÍÍ«PhotoFormatÀ£varÀH¶ExportNamedDeclarationÍ´ÍÍW³VariableDeclarationÍ»ÍÍ‘X²VariableDeclaratorÍ¿ÍÌJªIdentifierÍ¿ÍÌ­SupportFormatÀ£varÀ

@@ -1,0 +1,350 @@
+Ôr@Ÿªassertions¤code´customTransformCache¬dependencies¢id¤meta±moduleSideEffects¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies®transformFiles¨cacheAstÔrAÚj/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { PixelMapTransformation } from './PixelMapTransformation';
+/**
+ * å›¾ç‰‡å˜æ¢ï¼šåœ†ç¯è£å‰ªæ•ˆæœ
+ */
+export class CropCircleWithBorderTransformation extends PixelMapTransformation {
+    constructor(borderSize, value) {
+        "use sendable";
+        super();
+        this.mBorderSize = 5;
+        this.mCenterX = 0;
+        this.mCenterY = 0;
+        this.mRadius = 0;
+        this.mRColor = 0;
+        this.mGColor = 0;
+        this.mBColor = 0;
+        this.mRColor = value.g_color;
+        this.mGColor = value.g_color;
+        this.mBColor = value.b_color;
+        this.mBorderSize = borderSize;
+    }
+    getConstructorParams() {
+        return JSON.stringify([this.mBorderSize, {
+                r_color: this.mRColor,
+                g_color: this.mGColor,
+                b_color: this.mBColor
+            }]);
+    }
+    getName() {
+        return this.constructor.name + ';mBorderSize:' + this.mBorderSize + ';mCenterX:' + this.mCenterX + ';mCenterY:'
+            + this.mCenterY + ';mRadius:' + this.mRadius + ';mRColor:' + this.mRColor + ';mGColor:' + this.mGColor + ';mBColor:' + this.mBColor;
+    }
+    async transform(context, toTransform, width, height) {
+        return await this.transformPixelMap(toTransform);
+    }
+    async transformPixelMap(pixelMap) {
+        let imageInfo = await pixelMap.getImageInfo();
+        let size = {
+            width: imageInfo.size.width,
+            height: imageInfo.size.height
+        };
+        if (!size) {
+            console.error('CropCircleWithBorderTransformation The image size does not exist.');
+            return pixelMap;
+        }
+        let height = size.height;
+        let width = size.width;
+        this.mRadius = 0;
+        if (width > height) {
+            this.mRadius = height / 2;
+        }
+        else {
+            this.mRadius = width / 2;
+        }
+        this.mCenterX = width / 2;
+        this.mCenterY = height / 2;
+        let bufferData = new ArrayBuffer(pixelMap.getPixelBytesNumber());
+        await pixelMap.readPixelsToBuffer(bufferData);
+        let dataArray = new Uint8Array(bufferData);
+        for (let h = 0; h <= height; h++) {
+            for (let w = 0; w <= width; w++) {
+                // ä¸åœ¨å¤§åœ†ä¹‹å†…çš„è®¾ç½®é€æ˜
+                // åœ¨å¤§åœ†ä¸å°åœ†ä¹‹é—´çš„  è®¾ç½®rgbå€¼
+                // å°åœ†ä¹‹å†…çš„ä¸å˜
+                let isSmallCircle = this.isContainsSmallCircle(w, h);
+                let isBigCircle = this.isContainsCircle(w, h);
+                if (isSmallCircle) {
+                    continue;
+                }
+                let index = (h * width + w) * 4;
+                if (!isBigCircle) {
+                    // è®¾ç½®é€æ˜
+                    dataArray[index] = 0;
+                    dataArray[index + 1] = 0;
+                    dataArray[index + 2] = 0;
+                    dataArray[index + 3] = 0;
+                }
+                else {
+                    // è®¾ç½®broke
+                    dataArray[index] = this.mRColor;
+                    dataArray[index + 1] = this.mGColor;
+                    dataArray[index + 2] = this.mBColor;
+                }
+            }
+        }
+        await pixelMap.writeBufferToPixels(bufferData);
+        return pixelMap;
+    }
+    isContainsCircle(x, y) {
+        let a = Math.pow((this.mCenterX - x), 2);
+        let b = Math.pow((this.mCenterY - y), 2);
+        let c = Math.sqrt((a + b));
+        return c <= this.mRadius;
+    }
+    isContainsSmallCircle(x, y) {
+        let a = Math.pow((this.mCenterX - x), 2);
+        let b = Math.pow((this.mCenterY - y), 2);
+        let c = Math.sqrt((a + b));
+        return c <= (this.mRadius - this.mBorderSize);
+    }
+}
+//# sourceMappingURL=CropCircleWithBorderTransformation.js.mapÂ‘ÙœC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\PixelMapTransformation.etsÙ¨C:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\CropCircleWithBorderTransformation.etsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¬shouldEmitJsÂÂÙjC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife°@ohos/imageknife¦3.2.10Ù%C:\Users\coco\Desktop\eat\eat_harmonyÔrC’§pkgNameªpkgVersion°@ohos/imageknife¦3.2.10ÃÃÚ+/*
+ * Copyright (C) 2024 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import { PixelMapTransformation } from './PixelMapTransformation';
+import { Size } from '@kit.ArkUI';
+import { image } from '@kit.ImageKit';
+
+export interface rgbColor {
+  r_color: number,
+  g_color: number,
+  b_color: number,
+}
+
+/**
+ * å›¾ç‰‡å˜æ¢ï¼šåœ†ç¯è£å‰ªæ•ˆæœ
+ */
+@Sendable
+export class CropCircleWithBorderTransformation extends PixelMapTransformation {
+  private mBorderSize: number = 5;
+  private mCenterX: number = 0;
+  private mCenterY: number = 0;
+  private mRadius: number = 0;
+  private mRColor: number = 0;
+  private mGColor: number = 0;
+  private mBColor: number = 0;
+
+  constructor(borderSize: number, value: rgbColor) {
+    super();
+    this.mRColor = value.g_color;
+    this.mGColor = value.g_color;
+    this.mBColor = value.b_color;
+    this.mBorderSize = borderSize;
+  }
+
+  getConstructorParams() {
+    return JSON.stringify([this.mBorderSize, {
+      r_color: this.mRColor,
+      g_color: this.mGColor,
+      b_color: this.mBColor
+    }]);
+  }
+
+  getName(): string {
+    return this.constructor.name + ';mBorderSize:' + this.mBorderSize + ';mCenterX:' + this.mCenterX + ';mCenterY:'
+      + this.mCenterY + ';mRadius:' + this.mRadius + ';mRColor:' + this.mRColor + ';mGColor:' + this.mGColor + ';mBColor:' + this.mBColor;
+  }
+
+  async transform(context: Context, toTransform: PixelMap, width: number, height: number): Promise<PixelMap> {
+    return await this.transformPixelMap(toTransform);
+  }
+
+  private async transformPixelMap(pixelMap: PixelMap): Promise<PixelMap> {
+    let imageInfo: image.ImageInfo = await pixelMap.getImageInfo();
+    let size: Size = {
+      width: imageInfo.size.width,
+      height: imageInfo.size.height
+    };
+    if (!size) {
+      console.error('CropCircleWithBorderTransformation The image size does not exist.');
+      return pixelMap;
+    }
+    let height: number = size.height;
+    let width: number = size.width;
+    this.mRadius = 0;
+    if (width > height) {
+      this.mRadius = height / 2;
+    } else {
+      this.mRadius = width / 2;
+    }
+    this.mCenterX = width / 2;
+    this.mCenterY = height / 2;
+
+
+    let bufferData = new ArrayBuffer(pixelMap.getPixelBytesNumber());
+    await pixelMap.readPixelsToBuffer(bufferData);
+
+    let dataArray = new Uint8Array(bufferData);
+
+    for (let h = 0; h <= height; h++) {
+      for (let w = 0; w <= width; w++) {
+        // ä¸åœ¨å¤§åœ†ä¹‹å†…çš„è®¾ç½®é€æ˜
+        // åœ¨å¤§åœ†ä¸å°åœ†ä¹‹é—´çš„  è®¾ç½®rgbå€¼
+        // å°åœ†ä¹‹å†…çš„ä¸å˜
+        let isSmallCircle: boolean = this.isContainsSmallCircle(w, h);
+        let isBigCircle: boolean = this.isContainsCircle(w, h);
+        if (isSmallCircle) {
+          continue;
+        }
+
+        let index = (h * width + w) * 4;
+        if (!isBigCircle) {
+          // è®¾ç½®é€æ˜
+          dataArray[index] = 0;
+          dataArray[index+1] = 0;
+          dataArray[index+2] = 0;
+          dataArray[index+3] = 0;
+        } else {
+          // è®¾ç½®broke
+          dataArray[index] = this.mRColor;
+          dataArray[index+1] = this.mGColor;
+          dataArray[index+2] = this.mBColor;
+        }
+      }
+    }
+    await pixelMap.writeBufferToPixels(bufferData);
+    return pixelMap;
+  }
+
+  isContainsCircle(x: number, y: number): boolean {
+    let a: number = Math.pow((this.mCenterX - x), 2);
+    let b: number = Math.pow((this.mCenterY - y), 2);
+    let c: number = Math.sqrt((a + b));
+    return c <= this.mRadius;
+  }
+
+  isContainsSmallCircle(x: number, y: number): boolean {
+    let a: number = Math.pow((this.mCenterX - x), 2);
+    let b: number = Math.pow((this.mCenterY - y), 2);
+    let c: number = Math.sqrt((a + b));
+    return c <= (this.mRadius - this.mBorderSize);
+  }
+}ÀÔrD‘¸./PixelMapTransformationÔrE—ªassertions¨external¢id¤meta±moduleSideEffectsªresolvedByµsyntheticNamedExportsAÂÙœC:\Users\coco\Desktop\eat\eat_harmony\oh_modules\.ohpm\@ohos+imageknife@3.2.10\oh_modules\@ohos\imageknife\src\main\ets\transform\PixelMapTransformation.etsAÃªoh-resolveÂ“ÔrF–§version¤fileªsourceRoot§sources¥names¨mappingsÙ%CropCircleWithBorderTransformation.js ‘Ù&CropCircleWithBorderTransformation.etsÜ r‘”    ‘” ˜”   ” ”	 	” ”! !”' '”ÌA ÌA”ÌB ÌB‘”   ‘” –”   ” ” ”/ 0”8 8”ÌN ÌN•” %” %” % ” %"”! %1”” &” &	” &” &•” 
+” ”  ” !” "•” 
+” ” ” ” •” 
+” ” ” ” •”  
+”  ”  ”  ”  •” !
+” !” !” !” !•” "
+” "” "” "” "•” #
+” #” #” #” #™” '” '” '	” '” '” '” '”$ ' ”% '!™” (” (” (	” (” (” (” (”$ ( ”% (!™” )” )” )	” )” )” )” )”$ ) ”% )!—” *” *” *	” *” *”% *!”& *"‘” +’” -” -›” .” .” .” .” .” .” .”# .”$ . ”/ .+”1 .-–” /” /” /” /” /”% /–” 0” 0” 0” 0” 0”% 0–” 1” 1” 1” 1” 1”% 1”” 2” 2” 2” 2’” 3” 3’” 5” 5	Ü ” 6” 6” 6” 6” 6”  6”$ 6 ”' 6#”6 62”9 65”= 69”> 6:”ÌI 6ÌE”ÌL 6ÌH”ÌX 6ÌT”Ì[ 6ÌW”Ì_ 6Ì[”Ì` 6Ì\”Ìh 6Ìd”Ìk 6Ìg”Ìw 6ÌsÜ ” 7” 7” 7” 7” 7”) 7#”, 7&”0 7*”1 7+”8 72”; 75”ÌF 7Ì@”ÌI 7ÌC”ÌM 7ÌG”ÌN 7ÌH”ÌU 7ÌO”ÌX 7ÌR”Ìc 7Ì]”Ìf 7Ì`”Ìj 7Ìd”Ìk 7Ìe”Ìr 7Ìl”Ìu 7Ìo”Ì€ 7Ìz”Ìƒ 7Ì}”Ì‡ 7Ì”Ìˆ 7Ì‚”Ì 7Ì‰”Ì 7ÌŠ’” 8” 8œ” :”	 :”
+ :” :” :” :"” :$”( :9”* :;”/ :ÌH”1 :ÌJ”7 :ÌXš” ;” ;” ;” ;” ;”+ ;'”, ;(”7 ;3”8 ;4”9 ;5’” <” <–” >
+”	 >”
+ >” >!” >"”$ >4š” ?” ?” ?” ?%” ?+”& ?3”' ?4”3 ?Ì@”5 ?ÌB”6 ?ÌC”” Ì@” Ì@” Ì@” Ì@˜” ÌA” ÌA” ÌA” ÌA” ÌA”! ÌA”" ÌA”' ÌA!˜” ÌB” ÌB” ÌB” ÌB” ÌB”" ÌB”# ÌB”) ÌB#’”	 ÌC”
+ ÌC•” ÌD” ÌD” ÌD	” ÌD” ÌD˜” ÌE” ÌE” ÌE” ÌE” ÌE”Ì] ÌEÌW”Ì^ ÌEÌX”Ì_ ÌEÌY”” ÌF” ÌF” ÌF” ÌF‘”	 ÌG˜” ÌH” ÌH” ÌH” ÌH” ÌH” ÌH”  ÌH$”! ÌH%˜” ÌI” ÌI” ÌI” ÌI” ÌI” ÌI” ÌI"” ÌI#—” ÌJ” ÌJ” ÌJ	” ÌJ” ÌJ” ÌJ” ÌJ–” ÌK” ÌK” ÌK” ÌK” ÌK” ÌK™” ÌL” ÌL
+” ÌL” ÌL” ÌL”! ÌL”$ ÌL”% ÌL”& ÌL ‘”	 ÌM‘” ÌM™” ÌN” ÌN
+” ÌN” ÌN” ÌN”  ÌN”# ÌN”$ ÌN”% ÌN‘”	 ÌO™” ÌP” ÌP” ÌP	” ÌP” ÌP” ÌP”  ÌP”! ÌP”" ÌP™” ÌQ” ÌQ” ÌQ	” ÌQ” ÌQ” ÌQ”! ÌQ”" ÌQ”# ÌQ” ÌT” ÌT” ÌT” ÌT” ÌT”( ÌT$”) ÌT%”1 ÌT-”2 ÌT.”ÌE ÌTÌA”ÌG ÌTÌC”ÌH ÌTÌD”ÌI ÌTÌE™” ÌU” ÌU
+” ÌU” ÌU”) ÌU%”* ÌU&”4 ÌU0”5 ÌU1”6 ÌU2š” ÌW” ÌW” ÌW” ÌW” ÌW”& ÌW"”' ÌW#”1 ÌW-”2 ÌW.”3 ÌW/” ÌY” ÌY	” ÌY” ÌY” ÌY” ÌY” ÌY” ÌY” ÌY”# ÌY”% ÌY!”& ÌY"”( ÌY$”* ÌY&” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ” ÌZ”! ÌZ”& ÌZ ”( ÌZ"”) ÌZ#”+ ÌZ%”- ÌZ'’” Ì[” Ì[’” Ì\”$ Ì\’” Ì]” Ì]” Ì^” Ì^”! Ì^”$ Ì^%”( Ì^)”) Ì^*”> Ì^?”? Ì^Ì@”Ì@ Ì^ÌA”ÌB Ì^ÌC”ÌC Ì^ÌD”ÌD Ì^ÌE”ÌE Ì^ÌF” Ì_” Ì_” Ì_”" Ì_#”& Ì_'”' Ì_(”7 Ì_8”8 Ì_9”9 Ì_:”; Ì_<”< Ì_=”= Ì_>”> Ì_?”” Ì`” Ì`”! Ì`”# Ì`’” Ìa
+” Ìa‘” Ìb	” Ìd” Ìd” Ìd” Ìd” Ìd” Ìd”! Ìd”& Ìd”) Ìd!”* Ìd"”+ Ìd#”. Ìd&”/ Ìd'”0 Ìd(•” Ìe” Ìe” Ìe”  Ìe”" Ìe’” Ìf
+” Ìf˜” Ìg
+” Ìg” Ìg”# Ìg”$ Ìg”' Ìg”( Ìg”) Ìgš” Ìh
+” Ìh” Ìh”# Ìh”& Ìh”' Ìh”( Ìh”+ Ìh”, Ìh ”- Ìh!š” Ìi
+” Ìi” Ìi”# Ìi”& Ìi”' Ìi”( Ìi”+ Ìi”, Ìi ”- Ìi!š” Ìj
+” Ìj” Ìj”# Ìj”& Ìj”' Ìj”( Ìj”+ Ìj”, Ìj ”- Ìj!‘” Ìk	‘” Ìk’” Ìl
+” Ìlš” Ìm
+” Ìm” Ìm”# Ìm”$ Ìm”' Ìm”+ Ìm!”, Ìm"”3 Ìm)”4 Ìm*œ” Ìn
+” Ìn” Ìn”# Ìn”& Ìn”' Ìn”( Ìn”+ Ìn”/ Ìn#”0 Ìn$”7 Ìn+”8 Ìn,œ” Ìo
+” Ìo” Ìo”# Ìo”& Ìo”' Ìo”( Ìo”+ Ìo”/ Ìo#”0 Ìo$”7 Ìo+”8 Ìo,‘” Ìp	‘” Ìq‘”	 Ìr™” Ìs” Ìs
+” Ìs” Ìs”* Ìs&”+ Ìs'”5 Ìs1”6 Ìs2”7 Ìs3”” Ìt” Ìt” Ìt” Ìt’” Ìu” Ìu–” Ìw” Ìw” Ìw” Ìw” Ìw” Ìw'Ü ” Ìx” Ìx” Ìx	” Ìx” Ìx” Ìx” Ìx” Ìx” Ìx” Ìx"” Ìx#”' Ìx+”* Ìx.”+ Ìx/”, Ìx0”. Ìx2”/ Ìx3”0 Ìx4”1 Ìx5Ü ” Ìy” Ìy” Ìy	” Ìy” Ìy” Ìy” Ìy” Ìy” Ìy” Ìy"” Ìy#”' Ìy+”* Ìy.”+ Ìy/”, Ìy0”. Ìy2”/ Ìy3”0 Ìy4”1 Ìy5Ÿ” Ìz” Ìz” Ìz	” Ìz” Ìz” Ìz” Ìz” Ìz” Ìz” Ìz ” Ìz#”  Ìz$”! Ìz%”" Ìz&”# Ìz'˜” Ì{” Ì{” Ì{” Ì{” Ì{” Ì{”  Ì{”! Ì{’” Ì|” Ì|–” Ì~” Ì~” Ì~” Ì~!” Ì~#” Ì~,Ü ” Ì” Ì” Ì	” Ì” Ì” Ì” Ì” Ì” Ì” Ì"” Ì#”' Ì+”* Ì.”+ Ì/”, Ì0”. Ì2”/ Ì3”0 Ì4”1 Ì5Ü ” Ì€” Ì€” Ì€	” Ì€” Ì€” Ì€” Ì€” Ì€” Ì€” Ì€"” Ì€#”' Ì€+”* Ì€.”+ Ì€/”, Ì€0”. Ì€2”/ Ì€3”0 Ì€4”1 Ì€5Ÿ” Ì” Ì” Ì	” Ì” Ì” Ì” Ì” Ì” Ì” Ì ” Ì#”  Ì$”! Ì%”" Ì&”# Ì'” Ì‚” Ì‚” Ì‚” Ì‚” Ì‚” Ì‚” Ì‚”! Ì‚”$ Ì‚ ”( Ì‚$”) Ì‚%”4 Ì‚0”5 Ì‚1”6 Ì‚2’” Ìƒ” Ìƒ‘” Ì„ÔrG–§version¤file§sources®sourcesContent¥names¨mappingsÀ‘À‘ÀÜ s‘”    ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”  	 ‘”  
+ ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”   ‘”    ‘”  ! ‘”  " ‘”  # ‘”  $ ‘”  % ‘”  & ‘”  ' ‘”  ( ‘”  ) ‘”  * ‘”  + ‘”  , ‘”  - ‘”  . ‘”  / ‘”  0 ‘”  1 ‘”  2 ‘”  3 ‘”  4 ‘”  5 ‘”  6 ‘”  7 ‘”  8 ‘”  9 ‘”  : ‘”  ; ‘”  < ‘”  = ‘”  > ‘”  ? ‘”  Ì@ ‘”  ÌA ‘”  ÌB ‘”  ÌC ‘”  ÌD ‘”  ÌE ‘”  ÌF ‘”  ÌG ‘”  ÌH ‘”  ÌI ‘”  ÌJ ‘”  ÌK ‘”  ÌL ‘”  ÌM ‘”  ÌN ‘”  ÌO ‘”  ÌP ‘”  ÌQ ‘”  ÌR ‘”  ÌS ‘”  ÌT ‘”  ÌU ‘”  ÌV ‘”  ÌW ‘”  ÌX ‘”  ÌY ‘”  ÌZ ‘”  Ì[ ‘”  Ì\ ‘”  Ì] ‘”  Ì^ ‘”  Ì_ ‘”  Ì` ‘”  Ìa ‘”  Ìb ‘”  Ìc ‘”  Ìd ‘”  Ìe ‘”  Ìf ‘”  Ìg ‘”  Ìh ‘”  Ìi ‘”  Ìj ‘”  Ìk ‘”  Ìl ‘”  Ìm ‘”  Ìn ‘”  Ìo ‘”  Ìp ‘”  Ìq ‘”  Ìr ÔrH’§missing¦pluginÃ¦genAbcÂÔ  ÔrI”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache‘ÔrJ–¤type¥start£end«declarationªspecifiers¦source¶ExportNamedDeclarationÍÌÍÌÔrK–¤type¥start£end¢idªsuperClass¤body°ClassDeclarationÍÓÍÌÔrL”¤type¥start£end¤nameªIdentifierÍÙÍûÙ"CropCircleWithBorderTransformationLªIdentifierÍÍ¶PixelMapTransformationÔrM”¤type¥start£end¤body©ClassBodyÍÍÌ—ÔrN˜¤type¥start£end¦static¨computed£key¤kind¥value°MethodDefinitionÍ"ÍÔÂÂLªIdentifierÍ"Í-«constructor«constructorÔrO™¤type¥start£end¢idªexpression©generator¥async¦params¤body²FunctionExpressionÍ-ÍÔÀÂÂÂ’LªIdentifierÍ.Í8ªborderSizeLªIdentifierÍ:Í?¥valueM®BlockStatementÍAÍÔÔrP•¤type¥start£endªexpression©directive³ExpressionStatementÍLÍ[ÔrQ•¤type¥start£end¥value£raw§LiteralÍLÍZ¬use sendable®"use sendable"¬use sendableÔrR”¤type¥start£endªexpression³ExpressionStatementÍeÍmÔrS–¤type¥start£end¦callee©arguments¨optional®CallExpressionÍeÍlÔrT“¤type¥start£end¥SuperÍeÍjÂR³ExpressionStatementÍwÍŒÔrU–¤type¥start£end¨operator¤left¥right´AssignmentExpressionÍwÍ‹¡=ÔrV—¤type¥start£end¦object¨property¨computed¨optional°MemberExpressionÍwÍ‡T®ThisExpressionÍwÍ{LªIdentifierÍ|Í‡«mBorderSizeÂÂQ§LiteralÍŠÍ‹¡5R³ExpressionStatementÍ–Í¨U´AssignmentExpressionÍ–Í§¡=V°MemberExpressionÍ–Í£T®ThisExpressionÍ–ÍšLªIdentifierÍ›Í£¨mCenterXÂÂQ§LiteralÍ¦Í§ ¡0R³ExpressionStatementÍ²ÍÄU´AssignmentExpressionÍ²ÍÃ¡=V°MemberExpressionÍ²Í¿T®ThisExpressionÍ²Í¶LªIdentifierÍ·Í¿¨mCenterYÂÂQ§LiteralÍÂÍÃ ¡0R³ExpressionStatementÍÎÍßU´AssignmentExpressionÍÎÍŞ¡=V°MemberExpressionÍÎÍÚT®ThisExpressionÍÎÍÒLªIdentifierÍÓÍÚ§mRadiusÂÂQ§LiteralÍİÍŞ ¡0R³ExpressionStatementÍéÍúU´AssignmentExpressionÍéÍù¡=V°MemberExpressionÍéÍõT®ThisExpressionÍéÍíLªIdentifierÍîÍõ§mRColorÂÂQ§LiteralÍøÍù ¡0R³ExpressionStatementÍÍU´AssignmentExpressionÍÍ¡=V°MemberExpressionÍÍT®ThisExpressionÍÍLªIdentifierÍ	Í§mGColorÂÂQ§LiteralÍÍ ¡0R³ExpressionStatementÍÍ0U´AssignmentExpressionÍÍ/¡=V°MemberExpressionÍÍ+T®ThisExpressionÍÍ#LªIdentifierÍ$Í+§mBColorÂÂQ§LiteralÍ.Í/ ¡0R³ExpressionStatementÍ:ÍWU´AssignmentExpressionÍ:ÍV¡=V°MemberExpressionÍ:ÍFT®ThisExpressionÍ:Í>LªIdentifierÍ?ÍF§mRColorÂÂV°MemberExpressionÍIÍVLªIdentifierÍIÍN¥valueLªIdentifierÍOÍV§g_colorÂÂR³ExpressionStatementÍaÍ~U´AssignmentExpressionÍaÍ}¡=V°MemberExpressionÍaÍmT®ThisExpressionÍaÍeLªIdentifierÍfÍm§mGColorÂÂV°MemberExpressionÍpÍ}LªIdentifierÍpÍu¥valueLªIdentifierÍvÍ}§g_colorÂÂR³ExpressionStatementÍˆÍ¥U´AssignmentExpressionÍˆÍ¤¡=V°MemberExpressionÍˆÍ”T®ThisExpressionÍˆÍŒLªIdentifierÍÍ”§mBColorÂÂV°MemberExpressionÍ—Í¤LªIdentifierÍ—Íœ¥valueLªIdentifierÍÍ¤§b_colorÂÂR³ExpressionStatementÍ¯ÍÍU´AssignmentExpressionÍ¯ÍÌ¡=V°MemberExpressionÍ¯Í¿T®ThisExpressionÍ¯Í³LªIdentifierÍ´Í¿«mBorderSizeÂÂLªIdentifierÍÂÍÌªborderSizeN°MethodDefinitionÍÚÍ¶ÂÂLªIdentifierÍÚÍî´getConstructorParams¦methodO²FunctionExpressionÍîÍ¶ÀÂÂÂM®BlockStatementÍñÍ¶‘ÔrW”¤type¥start£end¨argument¯ReturnStatementÍüÍ¯S®CallExpressionÍÍ®V°MemberExpressionÍÍLªIdentifierÍÍ¤JSONLªIdentifierÍÍ©stringifyÂÂ‘ÔrX”¤type¥start£end¨elements¯ArrayExpressionÍÍ­’V°MemberExpressionÍÍ#T®ThisExpressionÍÍLªIdentifierÍÍ#«mBorderSizeÂÂÔrY”¤type¥start£endªproperties°ObjectExpressionÍ%Í¬“ÔrZ™¤type¥start£end¦method©shorthand¨computed£key¥value¤kind¨PropertyÍ8ÍMÂÂÂLªIdentifierÍ8Í?§r_colorV°MemberExpressionÍAÍMT®ThisExpressionÍAÍELªIdentifierÍFÍM§mRColorÂÂ¤initZ¨PropertyÍ`ÍuÂÂÂLªIdentifierÍ`Íg§g_colorV°MemberExpressionÍiÍuT®ThisExpressionÍiÍmLªIdentifierÍnÍu§mGColorÂÂ¤initZ¨PropertyÍˆÍÂÂÂLªIdentifierÍˆÍ§b_colorV°MemberExpressionÍ‘ÍT®ThisExpressionÍ‘Í•LªIdentifierÍ–Í§mBColorÂÂ¤initÂN°MethodDefinitionÍ¼ÍÙÂÂLªIdentifierÍ¼ÍÃ§getName¦methodO²FunctionExpressionÍÃÍÙÀÂÂÂM®BlockStatementÍÆÍÙ‘W¯ReturnStatementÍÑÍÒÔr[–¤type¥start£end¤left¨operator¥right°BinaryExpressionÍØÍÑ[°BinaryExpressionÍØÍÂ[°BinaryExpressionÍØÍ´[°BinaryExpressionÍØÍ¥[°BinaryExpressionÍØÍ—[°BinaryExpressionÍØÍˆ[°BinaryExpressionÍØÍz[°BinaryExpressionÍØÍk[°BinaryExpressionÍØÍ][°BinaryExpressionÍØÍ@[°BinaryExpressionÍØÍ1[°BinaryExpressionÍØÍ![°BinaryExpressionÍØÍ[°BinaryExpressionÍØÍÿV°MemberExpressionÍØÍíV°MemberExpressionÍØÍèT®ThisExpressionÍØÍÜLªIdentifierÍİÍè«constructorÂÂLªIdentifierÍéÍí¤nameÂÂ¡+Q§LiteralÍğÍÿ­;mBorderSize:¯';mBorderSize:'¡+V°MemberExpressionÍÍT®ThisExpressionÍÍLªIdentifierÍÍ«mBorderSizeÂÂ¡+Q§LiteralÍÍ!ª;mCenterX:¬';mCenterX:'¡+V°MemberExpressionÍ$Í1T®ThisExpressionÍ$Í(LªIdentifierÍ)Í1¨mCenterXÂÂ¡+Q§LiteralÍ4Í@ª;mCenterY:¬';mCenterY:'¡+V°MemberExpressionÍPÍ]T®ThisExpressionÍPÍTLªIdentifierÍUÍ]¨mCenterYÂÂ¡+Q§LiteralÍ`Ík©;mRadius:«';mRadius:'¡+V°MemberExpressionÍnÍzT®ThisExpressionÍnÍrLªIdentifierÍsÍz§mRadiusÂÂ¡+Q§LiteralÍ}Íˆ©;mRColor:«';mRColor:'¡+V°MemberExpressionÍ‹Í—T®ThisExpressionÍ‹ÍLªIdentifierÍÍ—§mRColorÂÂ¡+Q§LiteralÍšÍ¥©;mGColor:«';mGColor:'¡+V°MemberExpressionÍ¨Í´T®ThisExpressionÍ¨Í¬LªIdentifierÍ­Í´§mGColorÂÂ¡+Q§LiteralÍ·ÍÂ©;mBColor:«';mBColor:'¡+V°MemberExpressionÍÅÍÑT®ThisExpressionÍÅÍÉLªIdentifierÍÊÍÑ§mBColorÂÂN°MethodDefinitionÍßÍWÂÂLªIdentifierÍåÍî©transform¦methodO²FunctionExpressionÍîÍWÀÂÂÃ”LªIdentifierÍïÍö§contextLªIdentifierÍøÍ«toTransformLªIdentifierÍÍ
+¥widthLªIdentifierÍÍ¦heightM®BlockStatementÍÍW‘W¯ReturnStatementÍÍPW¯AwaitExpressionÍ&ÍOS®CallExpressionÍ,ÍOV°MemberExpressionÍ,ÍBT®ThisExpressionÍ,Í0LªIdentifierÍ1ÍB±transformPixelMapÂÂ‘LªIdentifierÍCÍN«toTransformÂN°MethodDefinitionÍ]Í	ÂÂLªIdentifierÍcÍt±transformPixelMap¦methodO²FunctionExpressionÍtÍ	ÀÂÂÃ‘LªIdentifierÍuÍ}¨pixelMapM®BlockStatementÍÍ	ŸÔr\•¤type¥start£end¬declarations¤kind³VariableDeclarationÍŠÍ¸‘Ôr]•¤type¥start£end¢id¤init²VariableDeclaratorÍÍ·LªIdentifierÍÍ—©imageInfoW¯AwaitExpressionÍšÍ·S®CallExpressionÍ Í·V°MemberExpressionÍ ÍµLªIdentifierÍ Í¨¨pixelMapLªIdentifierÍ©Íµ¬getImageInfoÂÂÂ£let\³VariableDeclarationÍÂÍ/‘]²VariableDeclaratorÍÆÍ.LªIdentifierÍÆÍÊ¤sizeY°ObjectExpressionÍÍÍ.’Z¨PropertyÍÜÍ÷ÂÂÂLªIdentifierÍÜÍá¥widthV°MemberExpressionÍãÍ÷V°MemberExpressionÍãÍñLªIdentifierÍãÍì©imageInfoLªIdentifierÍíÍñ¤sizeÂÂLªIdentifierÍòÍ÷¥widthÂÂ¤initZ¨PropertyÍÍ#ÂÂÂLªIdentifierÍÍ¦heightV°MemberExpressionÍÍ#V°MemberExpressionÍÍLªIdentifierÍÍ©imageInfoLªIdentifierÍÍ¤sizeÂÂLªIdentifierÍÍ#¦heightÂÂ¤init£letÔr^–¤type¥start£end¤testªconsequent©alternate«IfStatementÍ9ÍÏÔr_–¤type¥start£end¨operator¦prefix¨argument¯UnaryExpressionÍ=ÍB¡!ÃLªIdentifierÍ>ÍB¤sizeM®BlockStatementÍDÍÏ’R³ExpressionStatementÍSÍ¦S®CallExpressionÍSÍ¥V°MemberExpressionÍSÍ`LªIdentifierÍSÍZ§consoleLªIdentifierÍ[Í`¥errorÂÂ‘Q§LiteralÍaÍ¤ÙACropCircleWithBorderTransformation The image size does not exist.ÙC'CropCircleWithBorderTransformation The image size does not exist.'ÂW¯ReturnStatementÍ´ÍÄLªIdentifierÍ»ÍÃ¨pixelMapÀ\³VariableDeclarationÍÙÍò‘]²VariableDeclaratorÍİÍñLªIdentifierÍİÍã¦heightV°MemberExpressionÍæÍñLªIdentifierÍæÍê¤sizeLªIdentifierÍëÍñ¦heightÂÂ£let\³VariableDeclarationÍüÍ	‘]²VariableDeclaratorÍ	 Í	LªIdentifierÍ	 Í	¥widthV°MemberExpressionÍ	Í	LªIdentifierÍ	Í	¤sizeLªIdentifierÍ	Í	¥widthÂÂ£letR³ExpressionStatementÍ	Í	.U´AssignmentExpressionÍ	Í	-¡=V°MemberExpressionÍ	Í	)T®ThisExpressionÍ	Í	!LªIdentifierÍ	"Í	)§mRadiusÂÂQ§LiteralÍ	,Í	- ¡0^«IfStatementÍ	8Í	Â[°BinaryExpressionÍ	<Í	JLªIdentifierÍ	<Í	A¥width¡>LªIdentifierÍ	DÍ	J¦heightM®BlockStatementÍ	LÍ	€‘R³ExpressionStatementÍ	[Í	uU´AssignmentExpressionÍ	[Í	t¡=V°MemberExpressionÍ	[Í	gT®ThisExpressionÍ	[Í	_LªIdentifierÍ	`Í	g§mRadiusÂÂ[°BinaryExpressionÍ	jÍ	tLªIdentifierÍ	jÍ	p¦height¡/Q§LiteralÍ	sÍ	t¡2M®BlockStatementÍ	Í	Â‘R³ExpressionStatementÍ	Í	·U´AssignmentExpressionÍ	Í	¶¡=V°MemberExpressionÍ	Í	ªT®ThisExpressionÍ	Í	¢LªIdentifierÍ	£Í	ª§mRadiusÂÂ[°BinaryExpressionÍ	­Í	¶LªIdentifierÍ	­Í	²¥width¡/Q§LiteralÍ	µÍ	¶¡2R³ExpressionStatementÍ	ÌÍ	æU´AssignmentExpressionÍ	ÌÍ	å¡=V°MemberExpressionÍ	ÌÍ	ÙT®ThisExpressionÍ	ÌÍ	ĞLªIdentifierÍ	ÑÍ	Ù¨mCenterXÂÂ[°BinaryExpressionÍ	ÜÍ	åLªIdentifierÍ	ÜÍ	á¥width¡/Q§LiteralÍ	äÍ	å¡2R³ExpressionStatementÍ	ğÍ
+U´AssignmentExpressionÍ	ğÍ
+
+¡=V°MemberExpressionÍ	ğÍ	ıT®ThisExpressionÍ	ğÍ	ôLªIdentifierÍ	õÍ	ı¨mCenterYÂÂ[°BinaryExpressionÍ
+ Í
+
+LªIdentifierÍ
+ Í
+¦height¡/Q§LiteralÍ
+	Í
+
+¡2\³VariableDeclarationÍ
+Í
+V‘]²VariableDeclaratorÍ
+Í
+ULªIdentifierÍ
+Í
+#ªbufferDataÔr`•¤type¥start£end¦callee©arguments­NewExpressionÍ
+&Í
+ULªIdentifierÍ
+*Í
+5«ArrayBuffer‘S®CallExpressionÍ
+6Í
+TV°MemberExpressionÍ
+6Í
+RLªIdentifierÍ
+6Í
+>¨pixelMapLªIdentifierÍ
+?Í
+R³getPixelBytesNumberÂÂÂ£letR³ExpressionStatementÍ
+`Í
+W¯AwaitExpressionÍ
+`Í
+S®CallExpressionÍ
+fÍ
+V°MemberExpressionÍ
+fÍ
+LªIdentifierÍ
+fÍ
+n¨pixelMapLªIdentifierÍ
+oÍ
+²readPixelsToBufferÂÂ‘LªIdentifierÍ
+‚Í
+ŒªbufferDataÂ\³VariableDeclarationÍ
+˜Í
+Ã‘]²VariableDeclaratorÍ
+œÍ
+ÂLªIdentifierÍ
+œÍ
+¥©dataArray`­NewExpressionÍ
+¨Í
+ÂLªIdentifierÍ
+¬Í
+¶ªUint8Array‘LªIdentifierÍ
+·Í
+ÁªbufferData£letÔra—¤type¥start£end¤init¤test¦update¤body¬ForStatementÍ
+ÍÍ¯\³VariableDeclarationÍ
+ÒÍ
+Û‘]²VariableDeclaratorÍ
+ÖÍ
+ÛLªIdentifierÍ
+ÖÍ
+×¡hQ§LiteralÍ
+ÚÍ
+Û ¡0£let[°BinaryExpressionÍ
+İÍ
+èLªIdentifierÍ
+İÍ
+Ş¡h¢<=LªIdentifierÍ
+âÍ
+è¦height_°UpdateExpressionÍ
+êÍ
+í¢++ÂLªIdentifierÍ
+êÍ
+ë¡hM®BlockStatementÍ
+ïÍ¯‘a¬ForStatementÍ
+şÍ¤\³VariableDeclarationÍÍ‘]²VariableDeclaratorÍÍLªIdentifierÍÍ¡wQ§LiteralÍÍ ¡0£let[°BinaryExpressionÍÍLªIdentifierÍÍ¡w¢<=LªIdentifierÍÍ¥width_°UpdateExpressionÍÍ¢++ÂLªIdentifierÍÍ¡wM®BlockStatementÍÍ¤•\³VariableDeclarationÍ”ÍÉ‘]²VariableDeclaratorÍ˜ÍÈLªIdentifierÍ˜Í¥­isSmallCircleS®CallExpressionÍ¨ÍÈV°MemberExpressionÍ¨ÍÂT®ThisExpressionÍ¨Í¬LªIdentifierÍ­ÍÂµisContainsSmallCircleÂÂ’LªIdentifierÍÃÍÄ¡wLªIdentifierÍÆÍÇ¡hÂ£let\³VariableDeclarationÍÛÍ	‘]²VariableDeclaratorÍßÍLªIdentifierÍßÍê«isBigCircleS®CallExpressionÍíÍV°MemberExpressionÍíÍT®ThisExpressionÍíÍñLªIdentifierÍòÍ°isContainsCircleÂÂ’LªIdentifierÍÍ¡wLªIdentifierÍÍ¡hÂ£let^«IfStatementÍÍaLªIdentifierÍÍ,­isSmallCircleM®BlockStatementÍ.Ía‘Ôrb”¤type¥start£end¥label±ContinueStatementÍEÍNÀÀ\³VariableDeclarationÍsÍ“‘]²VariableDeclaratorÍwÍ’LªIdentifierÍwÍ|¥index[°BinaryExpressionÍÍ’[°BinaryExpressionÍ€Í[°BinaryExpressionÍ€Í‰LªIdentifierÍ€Í¡h¡*LªIdentifierÍ„Í‰¥width¡+LªIdentifierÍŒÍ¡w¡*Q§LiteralÍ‘Í’¡4£let^«IfStatementÍ¥Í•_¯UnaryExpressionÍ©Íµ¡!ÃLªIdentifierÍªÍµ«isBigCircleM®BlockStatementÍ·Í ”R³ExpressionStatementÍëÍ U´AssignmentExpressionÍëÍÿ¡=V°MemberExpressionÍëÍûLªIdentifierÍëÍô©dataArrayLªIdentifierÍõÍú¥indexÃÂQ§LiteralÍşÍÿ ¡0R³ExpressionStatementÍÍ/U´AssignmentExpressionÍÍ.¡=V°MemberExpressionÍÍ*LªIdentifierÍÍ©dataArray[°BinaryExpressionÍ Í)LªIdentifierÍ Í%¥index¡+Q§LiteralÍ(Í)¡1ÃÂQ§LiteralÍ-Í. ¡0R³ExpressionStatementÍEÍ^U´AssignmentExpressionÍEÍ]¡=V°MemberExpressionÍEÍYLªIdentifierÍEÍN©dataArray[°BinaryExpressionÍOÍXLªIdentifierÍOÍT¥index¡+Q§LiteralÍWÍX¡2ÃÂQ§LiteralÍ\Í] ¡0R³ExpressionStatementÍtÍU´AssignmentExpressionÍtÍŒ¡=V°MemberExpressionÍtÍˆLªIdentifierÍtÍ}©dataArray[°BinaryExpressionÍ~Í‡LªIdentifierÍ~Íƒ¥index¡+Q§LiteralÍ†Í‡¡3ÃÂQ§LiteralÍ‹ÍŒ ¡0M®BlockStatementÍ·Í•“R³ExpressionStatementÍîÍU´AssignmentExpressionÍîÍ¡=V°MemberExpressionÍîÍşLªIdentifierÍîÍ÷©dataArrayLªIdentifierÍøÍı¥indexÃÂV°MemberExpressionÍÍT®ThisExpressionÍÍLªIdentifierÍÍ§mRColorÂÂR³ExpressionStatementÍ$ÍHU´AssignmentExpressionÍ$ÍG¡=V°MemberExpressionÍ$Í8LªIdentifierÍ$Í-©dataArray[°BinaryExpressionÍ.Í7LªIdentifierÍ.Í3¥index¡+Q§LiteralÍ6Í7¡1ÃÂV°MemberExpressionÍ;ÍGT®ThisExpressionÍ;Í?LªIdentifierÍ@ÍG§mGColorÂÂR³ExpressionStatementÍ^Í‚U´AssignmentExpressionÍ^Í¡=V°MemberExpressionÍ^ÍrLªIdentifierÍ^Íg©dataArray[°BinaryExpressionÍhÍqLªIdentifierÍhÍm¥index¡+Q§LiteralÍpÍq¡2ÃÂV°MemberExpressionÍuÍT®ThisExpressionÍuÍyLªIdentifierÍzÍ§mBColorÂÂR³ExpressionStatementÍ¹ÍèW¯AwaitExpressionÍ¹ÍçS®CallExpressionÍ¿ÍçV°MemberExpressionÍ¿ÍÛLªIdentifierÍ¿ÍÇ¨pixelMapLªIdentifierÍÈÍÛ³writeBufferToPixelsÂÂ‘LªIdentifierÍÜÍæªbufferDataÂW¯ReturnStatementÍòÍLªIdentifierÍùÍ¨pixelMapN°MethodDefinitionÍÍÜÂÂLªIdentifierÍÍ°isContainsCircle¦methodO²FunctionExpressionÍÍÜÀÂÂÂ’LªIdentifierÍ Í!¡xLªIdentifierÍ#Í$¡yM®BlockStatementÍ&ÍÜ”\³VariableDeclarationÍ1ÍZ‘]²VariableDeclaratorÍ5ÍYLªIdentifierÍ5Í6¡aS®CallExpressionÍ9ÍYV°MemberExpressionÍ9ÍALªIdentifierÍ9Í=¤MathLªIdentifierÍ>ÍA£powÂÂ’[°BinaryExpressionÍCÍTV°MemberExpressionÍCÍPT®ThisExpressionÍCÍGLªIdentifierÍHÍP¨mCenterXÂÂ¡-LªIdentifierÍSÍT¡xQ§LiteralÍWÍX¡2Â£let\³VariableDeclarationÍdÍ‘]²VariableDeclaratorÍhÍŒLªIdentifierÍhÍi¡bS®CallExpressionÍlÍŒV°MemberExpressionÍlÍtLªIdentifierÍlÍp¤MathLªIdentifierÍqÍt£powÂÂ’[°BinaryExpressionÍvÍ‡V°MemberExpressionÍvÍƒT®ThisExpressionÍvÍzLªIdentifierÍ{Íƒ¨mCenterYÂÂ¡-LªIdentifierÍ†Í‡¡yQ§LiteralÍŠÍ‹¡2Â£let\³VariableDeclarationÍ—Í²‘]²VariableDeclaratorÍ›Í±LªIdentifierÍ›Íœ¡cS®CallExpressionÍŸÍ±V°MemberExpressionÍŸÍ¨LªIdentifierÍŸÍ£¤MathLªIdentifierÍ¤Í¨¤sqrtÂÂ‘[°BinaryExpressionÍªÍ¯LªIdentifierÍªÍ«¡a¡+LªIdentifierÍ®Í¯¡bÂ£letW¯ReturnStatementÍ¼ÍÕ[°BinaryExpressionÍÃÍÔLªIdentifierÍÃÍÄ¡c¢<=V°MemberExpressionÍÈÍÔT®ThisExpressionÍÈÍÌLªIdentifierÍÍÍÔ§mRadiusÂÂN°MethodDefinitionÍâÍÉÂÂLªIdentifierÍâÍ÷µisContainsSmallCircle¦methodO²FunctionExpressionÍ÷ÍÉÀÂÂÂ’LªIdentifierÍøÍù¡xLªIdentifierÍûÍü¡yM®BlockStatementÍşÍÉ”\³VariableDeclarationÍ	Í2‘]²VariableDeclaratorÍÍ1LªIdentifierÍÍ¡aS®CallExpressionÍÍ1V°MemberExpressionÍÍLªIdentifierÍÍ¤MathLªIdentifierÍÍ£powÂÂ’[°BinaryExpressionÍÍ,V°MemberExpressionÍÍ(T®ThisExpressionÍÍLªIdentifierÍ Í(¨mCenterXÂÂ¡-LªIdentifierÍ+Í,¡xQ§LiteralÍ/Í0¡2Â£let\³VariableDeclarationÍ<Íe‘]²VariableDeclaratorÍ@ÍdLªIdentifierÍ@ÍA¡bS®CallExpressionÍDÍdV°MemberExpressionÍDÍLLªIdentifierÍDÍH¤MathLªIdentifierÍIÍL£powÂÂ’[°BinaryExpressionÍNÍ_V°MemberExpressionÍNÍ[T®ThisExpressionÍNÍRLªIdentifierÍSÍ[¨mCenterYÂÂ¡-LªIdentifierÍ^Í_¡yQ§LiteralÍbÍc¡2Â£let\³VariableDeclarationÍoÍŠ‘]²VariableDeclaratorÍsÍ‰LªIdentifierÍsÍt¡cS®CallExpressionÍwÍ‰V°MemberExpressionÍwÍ€LªIdentifierÍwÍ{¤MathLªIdentifierÍ|Í€¤sqrtÂÂ‘[°BinaryExpressionÍ‚Í‡LªIdentifierÍ‚Íƒ¡a¡+LªIdentifierÍ†Í‡¡bÂ£letW¯ReturnStatementÍ”ÍÂ[°BinaryExpressionÍ›ÍÁLªIdentifierÍ›Íœ¡c¢<=[°BinaryExpressionÍ¡ÍÀV°MemberExpressionÍ¡Í­T®ThisExpressionÍ¡Í¥LªIdentifierÍ¦Í­§mRadiusÂÂ¡-V°MemberExpressionÍ°ÍÀT®ThisExpressionÍ°Í´LªIdentifierÍµÍÀ«mBorderSizeÂÂÀ‘Ôrc•¤type¥start£endªspecifiers¦source±ImportDeclarationÍnÍ°‘Ôrd•¤type¥start£end¨imported¥local¯ImportSpecifierÍwÍLªIdentifierÍwÍ¶PixelMapTransformationLªIdentifierÍwÍ¶PixelMapTransformationQ§LiteralÍ•Í¯¸./PixelMapTransformationº'./PixelMapTransformation'

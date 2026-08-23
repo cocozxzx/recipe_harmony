@@ -73,12 +73,16 @@ export struct AccountPage {
       title: $r('app.string.account_delete'),
       danger: true,
       showDivider: false,
-      onTap: () => this.deleteDialog.open()
+      onTap: (): void => { this.deleteDialog.open(); }
     })
   }
 
   private user(): UserInfo {
-    return this.auth.user ?? ({ bindings: [] } as object as UserInfo);
+    const fallback: UserInfo = {
+      id: '', nickname: '', avatar: '', phone: '', email: '',
+      hasPassword: false, favoriteCount: 0, likeCount: 0, bindings: []
+    };
+    return this.auth.user ?? fallback;
   }
 
   /** 后端已做脱敏，前端只判断是否为空 */
