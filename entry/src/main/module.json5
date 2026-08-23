@@ -13,8 +13,10 @@
     // ⚠️ 上线前务必去掉：正式环境走 HTTPS，留着等于允许中间人明文读取 token。
     "metadata": [
       {
-        "name": "ohos.net.network_security_config",
-        "resource": "$profile:network_config"
+//        "name": "ohos.net.network_security_config",
+//        "resource": "$profile:network_config"
+        "name": "client_id",
+        "value": "2023500071009563840"
       }
     ],
     "abilities": [
