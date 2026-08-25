@@ -26,7 +26,7 @@ export class Strings {
     try {
       return rm.getStringSync(res.id);
     } catch (e) {
-      Logger.w(TAG, 'getStringSync failed', e as Object);
+      Logger.w(TAG, 'getStringSync failed', e);
       return fallback;
     }
   }

@@ -42,18 +42,24 @@ export class NavUtil {
   static push(name: string, param?: Object): void {
     const stack: NavPathStack | null = NavUtil.stack;
     if (stack === null) {
-      Logger.e(TAG, `push before bind: ${name}`);
+      Logger.e(TAG, 'push before bind: ' + name);
       return;
     }
-    stack.pushPathByName(name, param ?? null, false);
+    stack.pushPathByName(name, param !== undefined && param !== null ? param : null, false);
   }
 
   static pop(): void {
-    NavUtil.stack?.pop();
+    const stack: NavPathStack | null = NavUtil.stack;
+    if (stack !== null) {
+      stack.pop();
+    }
   }
 
   static popToRoot(): void {
-    NavUtil.stack?.clear();
+    const stack: NavPathStack | null = NavUtil.stack;
+    if (stack !== null) {
+      stack.clear();
+    }
   }
 
   /** 切换底部 Tab，可选带上给 AI 页的预填文案 */

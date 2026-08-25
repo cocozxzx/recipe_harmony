@@ -38,8 +38,8 @@ export class MyAiRecipesViewModel {
       this.loadMoreStatus = this.hasMore ? LoadMoreStatus.IDLE : LoadMoreStatus.NO_MORE;
       this.state.success(result.list.length > 0);
     } catch (e) {
-      Logger.e(TAG, 'load failed', e as Object);
-      this.state.error(readableMessage(e as Object));
+      Logger.e(TAG, 'load failed', e);
+      this.state.error(readableMessage(e));
     }
   }
 
@@ -57,7 +57,7 @@ export class MyAiRecipesViewModel {
       this.items.appendAll(result.list);
       this.loadMoreStatus = this.hasMore ? LoadMoreStatus.IDLE : LoadMoreStatus.NO_MORE;
     } catch (e) {
-      Logger.e(TAG, 'loadMore failed', e as Object);
+      Logger.e(TAG, 'loadMore failed', e);
       this.loadMoreStatus = LoadMoreStatus.FAILED;
     } finally {
       this.loading = false;
@@ -72,8 +72,8 @@ export class MyAiRecipesViewModel {
       this.state.success(!this.items.isEmpty());
       Toast.show($r('app.string.favorite_removed'));
     } catch (e) {
-      Logger.e(TAG, 'unfavorite failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'unfavorite failed', e);
+      Toast.show(readableMessage(e));
     }
   }
 }

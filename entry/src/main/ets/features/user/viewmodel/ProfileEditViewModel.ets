@@ -42,15 +42,15 @@ export class ProfileEditViewModel {
       options.maxSelectNumber = 1;
       const photoPicker: picker.PhotoViewPicker = new picker.PhotoViewPicker(context);
       const result: picker.PhotoSelectResult = await photoPicker.select(options);
-      const uris: string[] = result.photoUris ?? [];
+      const uris: string[] = result.photoUris !== null && result.photoUris !== undefined ? result.photoUris : [];
       if (uris.length === 0) {
         return;
       }
       const uploaded: UploadResultDto = await HttpClient.upload<UploadResultDto>(ApiPaths.ME_AVATAR, uris[0]);
       this.avatar = uploaded.url;
     } catch (e) {
-      Logger.e(TAG, 'upload avatar failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'upload avatar failed', e);
+      Toast.show(readableMessage(e));
     } finally {
       this.uploading = false;
     }
@@ -69,8 +69,8 @@ export class ProfileEditViewModel {
       Toast.show($r('app.string.mine_saved'));
       return true;
     } catch (e) {
-      Logger.e(TAG, 'save profile failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'save profile failed', e);
+      Toast.show(readableMessage(e));
       return false;
     } finally {
       this.saving = false;

@@ -51,19 +51,20 @@ async function doRefresh(): Promise<boolean> {
   }
   try {
     const body: RefreshReq = { refreshToken: refreshToken };
-    const url: string = `${BuildProfile.API_BASE_URL as string}${ApiPaths.AUTH_REFRESH}`;
+    const url: string = BuildProfile.API_BASE_URL + ApiPaths.AUTH_REFRESH;
     const resp: rcp.Response = await getRefreshSession().post(url, JSON.stringify(body));
-    const text: string = resp.toString() ?? '';
-    const parsed: ApiResponseDto<RefreshResultDto> = JSON.parse(text) as ApiResponseDto<RefreshResultDto>;
+    const raw: string | null = resp.toString();
+    const text: string = raw !== null && raw !== undefined ? raw : '';
+    const parsed: ApiResponseDto<RefreshResultDto> = JSON.parse(text);
     if (parsed.code !== BizCode.SUCCESS || parsed.data === null || parsed.data === undefined) {
-      Logger.w(TAG, `refresh rejected: code=${parsed.code}`);
+      Logger.w(TAG, 'refresh rejected: code=' + parsed.code.toString());
       return false;
     }
     await TokenManager.save(parsed.data.token, parsed.data.refreshToken);
     Logger.i(TAG, 'token refreshed');
     return true;
   } catch (e) {
-    Logger.e(TAG, 'refresh failed', e as Object);
+    Logger.e(TAG, 'refresh failed', e);
     return false;
   }
 }
@@ -105,7 +106,7 @@ export class AuthInterceptor implements rcp.Interceptor {
     if (response.statusCode !== 401) {
       return response;
     }
-    Logger.i(TAG, `401 on ${context.request.url}, try refresh`);
+    Logger.i(TAG, '401 on ' + context.request.url + ', try refresh');
     const refreshed: boolean = await refreshTokenOnce();
     if (!refreshed) {
       return response;
@@ -119,9 +120,7 @@ export class AuthInterceptor implements rcp.Interceptor {
     if (token.length === 0) {
       return;
     }
-    const headers: rcp.RequestHeaders = context.request.headers ?? {};
-    headers['authorization'] = `Bearer ${token}`;
-    context.request.headers = headers;
+    context.request.headers = { 'authorization': 'Bearer ' + token };
   }
 }
 
@@ -132,11 +131,12 @@ export class LogInterceptor implements rcp.Interceptor {
     const url: string = context.request.url.toString();
     try {
       const response: rcp.Response = await next.handle(context);
-      Logger.d(TAG, `${context.request.method} ${url} -> ${response.statusCode} (${Date.now() - start}ms)`);
+      Logger.d(TAG, context.request.method + ' ' + url + ' -> ' + response.statusCode.toString() + ' (' + (Date.now() - start).toString() + 'ms)');
       return response;
     } catch (e) {
-      Logger.e(TAG, `${context.request.method} ${url} failed (${Date.now() - start}ms)`, e as Object);
-      throw e as Error;
+      Logger.e(TAG, context.request.method + ' ' + url + ' failed (' + (Date.now() - start).toString() + 'ms)', e);
+      const err: Error = e;
+      throw err;
     }
   }
 }

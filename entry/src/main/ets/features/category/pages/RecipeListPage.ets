@@ -7,6 +7,16 @@ import { StateView } from '../../../commons/uikit/StateView';
 import { TopBar } from '../../../commons/uikit/TopBar';
 import { CategoryViewModel } from '../viewmodel/CategoryViewModel';
 
+function parseSort(value: string): RecipeSort {
+  if (value === RecipeSort.FAVORITE) {
+    return RecipeSort.FAVORITE;
+  }
+  if (value === RecipeSort.LIKE) {
+    return RecipeSort.LIKE;
+  }
+  return RecipeSort.LATEST;
+}
+
 /**
  * 通用食谱列表页：从首页标签宫格、"热门榜单-更多"跳转进来。
  * 条件是固定的（一个 tagId 或一种 sort），所以不显示标签栏与筛选栏，
@@ -14,12 +24,12 @@ import { CategoryViewModel } from '../viewmodel/CategoryViewModel';
  */
 @ComponentV2
 export struct RecipeListPage {
-  @Param param: RecipeListParam = { title: '', tagId: '', sort: RecipeSort.LATEST as string };
+  @Param param: RecipeListParam = { title: '', tagId: '', sort: RecipeSort.LATEST };
   @Local vm: CategoryViewModel = new CategoryViewModel();
 
   aboutToAppear(): void {
     this.vm.tagId = this.param.tagId;
-    this.vm.sort = this.param.sort as RecipeSort;
+    this.vm.sort = parseSort(this.param.sort);
     this.vm.reload();
   }
 

@@ -9,7 +9,7 @@ export class Toast {
     try {
       promptAction.showToast({ message: message, duration: durationMs });
     } catch (e) {
-      Logger.e(TAG, 'showToast failed', e as Object);
+      Logger.e(TAG, 'showToast failed', e);
     }
   }
 }

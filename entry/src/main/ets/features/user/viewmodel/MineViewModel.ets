@@ -41,8 +41,8 @@ export class MineViewModel {
       Toast.show($r('app.string.account_deleted'));
       return true;
     } catch (e) {
-      Logger.e(TAG, 'delete account failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'delete account failed', e);
+      Toast.show(readableMessage(e));
       return false;
     } finally {
       this.working = false;

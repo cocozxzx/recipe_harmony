@@ -83,20 +83,20 @@ export class HistoryStore {
 
   private static parseBrowse(raw: string): BrowseHistoryItem[] {
     try {
-      const parsed: BrowseHistoryItem[] = JSON.parse(raw) as BrowseHistoryItem[];
+      const parsed: BrowseHistoryItem[] = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
-      Logger.e(TAG, 'parse browse history failed', e as Object);
+      Logger.e(TAG, 'parse browse history failed', e);
       return [];
     }
   }
 
   private static parseSearch(raw: string): string[] {
     try {
-      const parsed: string[] = JSON.parse(raw) as string[];
+      const parsed: string[] = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
-      Logger.e(TAG, 'parse search history failed', e as Object);
+      Logger.e(TAG, 'parse search history failed', e);
       return [];
     }
   }

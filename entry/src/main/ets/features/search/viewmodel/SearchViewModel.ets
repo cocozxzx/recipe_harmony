@@ -46,7 +46,7 @@ export class SearchViewModel {
       const data: HomeDataDto = await HttpClient.get<HomeDataDto>(ApiPaths.HOME);
       this.hotRecipes = data.hotRecipes;
     } catch (e) {
-      Logger.w(TAG, 'load hot failed', e as Object);
+      Logger.w(TAG, 'load hot failed', e);
     }
   }
 
@@ -76,8 +76,8 @@ export class SearchViewModel {
       this.loadMoreStatus = this.hasMore ? LoadMoreStatus.IDLE : LoadMoreStatus.NO_MORE;
       this.state.success(result.list.length > 0);
     } catch (e) {
-      Logger.e(TAG, 'search failed', e as Object);
-      this.state.error(readableMessage(e as Object));
+      Logger.e(TAG, 'search failed', e);
+      this.state.error(readableMessage(e));
     }
   }
 
@@ -100,7 +100,7 @@ export class SearchViewModel {
       this.results.appendAll(result.list);
       this.loadMoreStatus = this.hasMore ? LoadMoreStatus.IDLE : LoadMoreStatus.NO_MORE;
     } catch (e) {
-      Logger.e(TAG, 'loadMore failed', e as Object);
+      Logger.e(TAG, 'loadMore failed', e);
       this.loadMoreStatus = LoadMoreStatus.FAILED;
     } finally {
       this.loading = false;

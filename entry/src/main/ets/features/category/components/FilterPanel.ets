@@ -50,7 +50,7 @@ export struct FilterPanel {
         Row({ space: 8 }) {
           ForEach(this.cookTimeOptions, (option: CookTimeOption) => {
             TagChip({
-              text: Strings.get(option.label as Resource, ''),
+              text: option.label,
               selected: this.vm.maxCookTime === option.value,
               onTap: () => this.vm.setMaxCookTime(option.value)
             })

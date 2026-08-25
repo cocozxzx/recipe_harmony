@@ -12,8 +12,18 @@ export interface SmsCodeReq {
   scene: string;            // SCENE_LOGIN | SCENE_REGISTER
 }
 
+export interface EmailCodeReq {
+  email: string;
+  scene: string;
+}
+
 export interface SmsLoginReq {
   phone: string;
+  code: string;
+}
+
+export interface EmailLoginReq {
+  email: string;
   code: string;
 }
 

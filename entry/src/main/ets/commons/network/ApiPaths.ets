@@ -6,7 +6,9 @@ export class ApiPaths {
   // 认证
   static readonly AUTH_HUAWEI: string = '/auth/huawei';
   static readonly AUTH_SMS_CODE: string = '/auth/sms/code';
+  static readonly AUTH_EMAIL_CODE: string = '/auth/email/code';
   static readonly AUTH_SMS_LOGIN: string = '/auth/sms/login';
+  static readonly AUTH_EMAIL_LOGIN: string = '/auth/email/login';
   static readonly AUTH_PASSWORD_LOGIN: string = '/auth/password/login';
   static readonly AUTH_CAPTCHA: string = '/auth/captcha';
   static readonly AUTH_REGISTER: string = '/auth/register';
@@ -20,15 +22,15 @@ export class ApiPaths {
   static readonly TAGS: string = '/tags';
 
   static recipeDetail(id: string): string {
-    return `/recipes/${id}`;
+    return '/recipes/' + id;
   }
 
   static recipeFavorite(id: string): string {
-    return `/recipes/${id}/favorite`;
+    return '/recipes/' + id + '/favorite';
   }
 
   static recipeLike(id: string): string {
-    return `/recipes/${id}/like`;
+    return '/recipes/' + id + '/like';
   }
 
   // 个人中心
@@ -42,10 +44,10 @@ export class ApiPaths {
   static readonly AI_CHAT: string = '/ai/chat';
 
   static aiRecipeDetail(id: string): string {
-    return `/ai-recipes/${id}`;
+    return '/ai-recipes/' + id;
   }
 
   static aiRecipeFavorite(id: string): string {
-    return `/ai-recipes/${id}/favorite`;
+    return '/ai-recipes/' + id + '/favorite';
   }
 }

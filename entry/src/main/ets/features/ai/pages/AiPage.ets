@@ -151,7 +151,13 @@ export struct AiPage {
               })
               .backgroundColor($r('app.color.brand_primary_light'))
               .borderRadius($r('app.float.radius_sm'))
-              .onClick(() => this.vm.send(Strings.get(sample as Resource)))
+              .onClick(() => {
+                 if (typeof sample === 'string') {
+                   this.vm.send(sample);
+                 } else {
+                   this.vm.send(Strings.get(sample));
+                 }
+                })
           }, (sample: ResourceStr, index: number) => index.toString())
         }
         .width('100%')

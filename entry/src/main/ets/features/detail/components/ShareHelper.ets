@@ -26,7 +26,7 @@ export class ShareHelper {
         previewMode: systemShare.SharePreviewMode.DETAIL
       });
     } catch (e) {
-      Logger.e(TAG, 'share failed', e as Object);
+      Logger.e(TAG, 'share failed', e);
     }
   }
 }

@@ -97,7 +97,7 @@ export struct AiMessageItem {
 
           Row({ space: 8 }) {
             MiniTag({
-              text: `${match.matchRate}%`,
+              text: match.matchRate.toString() + '%',
               bgColor: $r('app.color.brand_primary_light'),
               textColor: $r('app.color.brand_primary')
             })
@@ -123,7 +123,7 @@ export struct AiMessageItem {
 
   /** 流式中在末尾补一个光标字符，比单独叠一个动画层简单且不引起重排 */
   private streamText(): string {
-    return this.message.streaming ? `${this.message.text}▌` : this.message.text;
+    return this.message.streaming ? this.message.text + '▌' : this.message.text;
   }
 
   private missingText(match: AiRecipeMatch): string {

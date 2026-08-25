@@ -35,7 +35,7 @@ export struct NetImage {
             placeholderSrc: $r('app.media.img_placeholder'),
             errorholderSrc: $r('app.media.img_placeholder'),
             objectFit: this.fit
-          } as ImageKnifeOption
+          }
         })
           .width('100%')
           .height('100%')

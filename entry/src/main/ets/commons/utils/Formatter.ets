@@ -20,9 +20,9 @@ export class Formatter {
       return value.toString();
     }
     if (value < 10000) {
-      return `${(Math.floor(value / 100) / 10).toFixed(1)}k`;
+      return (Math.floor(value / 100) / 10).toFixed(1) + 'k';
     }
-    return `${Math.floor(value / 1000)}k`;
+    return Math.floor(value / 1000).toString() + 'k';
   }
 
   /** 每份热量：向下取整，避免出现 "142.857 大卡" */
@@ -38,7 +38,7 @@ export class Formatter {
     if (phone.length !== 11) {
       return phone;
     }
-    return `${phone.substring(0, 3)}****${phone.substring(7)}`;
+    return phone.substring(0, 3) + '****' + phone.substring(7);
   }
 
   /** 时间戳 -> "今天 14:30" / "8月20日" / "2025年12月1日" */
@@ -50,12 +50,12 @@ export class Formatter {
     if (sameDay) {
       const hh: string = date.getHours().toString().padStart(2, '0');
       const mm: string = date.getMinutes().toString().padStart(2, '0');
-      return `今天 ${hh}:${mm}`;
+      return '今天 ' + hh + ':' + mm;
     }
     if (sameYear) {
-      return `${date.getMonth() + 1}月${date.getDate()}日`;
+      return (date.getMonth() + 1).toString() + '月' + date.getDate().toString() + '日';
     }
-    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    return date.getFullYear().toString() + '年' + (date.getMonth() + 1).toString() + '月' + date.getDate().toString() + '日';
   }
 
   static isPhone(value: string): boolean {

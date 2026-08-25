@@ -5,20 +5,19 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\coco\\.ohos\\config\\default_eat_harmony_dbQyACUdnxpnplA2mkWjtBARACpH1rVh_E6zRhGUF3M=.cer",
+          "certpath": "C:\\Users\\18790\\.ohos\\config\\default_eatharmony_tzVrHrSY8YxjgicHoL9CSzslSPl4JNoKULU9JkWqlUk=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001BC55EDF8E72EAE69D1CFCB672CAA7E410C9BF1F9D08EADDFC675F82C92DDD6A079AA776AFE7EBA0",
-          "profile": "C:\\Users\\coco\\.ohos\\config\\default_eat_harmony_dbQyACUdnxpnplA2mkWjtBARACpH1rVh_E6zRhGUF3M=.p7b",
+          "keyPassword": "0000001B2ACCC8629A80B1241C860296C7CB6F2D7D8B0726E72521C04AABE20120D1EB419A1A28A3E35BE3",
+          "profile": "C:\\Users\\18790\\.ohos\\config\\default_eatharmony_tzVrHrSY8YxjgicHoL9CSzslSPl4JNoKULU9JkWqlUk=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\coco\\.ohos\\config\\default_eat_harmony_dbQyACUdnxpnplA2mkWjtBARACpH1rVh_E6zRhGUF3M=.p12",
-          "storePassword": "0000001BC25061CA0F43F6C1652237C77C95CDAAFA7E5CF7287FA2D9BE734963352CC89EFC633C8FCEFD97"
+          "storeFile": "C:\\Users\\18790\\.ohos\\config\\default_eatharmony_tzVrHrSY8YxjgicHoL9CSzslSPl4JNoKULU9JkWqlUk=.p12",
+          "storePassword": "0000001BC0D7FDAFC69A9A6CBE1201E4F6FCAE683C93F2B219608D31C4C09BCE2CC392771AEEA66255275D"
         }
       }
     ],
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
         "compatibleSdkVersion": "6.1.0(23)",
         "targetSdkVersion": "6.1.0(23)",
         "runtimeOS": "HarmonyOS",

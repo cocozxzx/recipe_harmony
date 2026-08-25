@@ -152,7 +152,7 @@ export struct HomePage {
   }
 
   private openTag(tag: RecipeTag): void {
-    const param: RecipeListParam = { title: tag.name, tagId: tag.id, sort: RecipeSort.LATEST as string };
+    const param: RecipeListParam = { title: tag.name, tagId: tag.id, sort: RecipeSort.LATEST };
     NavUtil.push(RouteNames.RECIPE_LIST, param);
   }
 
@@ -160,7 +160,7 @@ export struct HomePage {
     const param: RecipeListParam = {
       title: Strings.get($r('app.string.home_section_hot')),
       tagId: '',
-      sort: RecipeSort.FAVORITE as string
+      sort: RecipeSort.FAVORITE
     };
     NavUtil.push(RouteNames.RECIPE_LIST, param);
   }

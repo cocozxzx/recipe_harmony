@@ -17,7 +17,7 @@ export class TokenManager {
   static async restore(): Promise<void> {
     TokenManager.token = await PreferenceUtil.getString(PrefKeys.TOKEN);
     TokenManager.refreshToken = await PreferenceUtil.getString(PrefKeys.REFRESH_TOKEN);
-    Logger.i(TAG, `restored, hasToken=${TokenManager.token.length > 0}`);
+    Logger.i(TAG, 'restored, hasToken=' + (TokenManager.token.length > 0).toString());
   }
 
   static getToken(): string {

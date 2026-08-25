@@ -46,10 +46,11 @@ export class AuthService {
     const cached: string = await PreferenceUtil.getString(PrefKeys.USER_INFO);
     if (cached.length > 0) {
       try {
-        service.user = JSON.parse(cached) as UserInfo;
+        const parsed: UserInfo = JSON.parse(cached);
+        service.user = parsed;
         service.isLogin = true;
-      } catch (e) {
-        Logger.e(TAG, 'parse cached user failed', e as Object);
+      } catch (err) {
+        Logger.e(TAG, 'parse cached user failed', err);
       }
     } else {
       service.isLogin = true;
@@ -77,7 +78,7 @@ export class AuthService {
     this.user = result.user;
     this.isLogin = true;
     this.sheetVisible = false;
-    Logger.i(TAG, `login success: ${result.user.id}`);
+    Logger.i(TAG, 'login success: ' + result.user.id);
     this.runPending();
   }
 
@@ -108,8 +109,7 @@ export class AuthService {
       this.isLogin = true;
       await this.cacheUser(info);
     } catch (e) {
-      // 拉取失败不影响已有登录态；若是 401，拦截器已经走过登出流程
-      Logger.w(TAG, 'refreshUser failed', e as Object);
+      Logger.w(TAG, 'refreshUser failed', e);
     }
   }
 
@@ -122,9 +122,8 @@ export class AuthService {
   async logout(): Promise<void> {
     try {
       await AuthRepository.logout();
-    } catch (e) {
-      // 后端登出失败不阻塞本地登出，否则用户会被困在已登录状态
-      Logger.w(TAG, 'server logout failed, clear locally anyway', e as Object);
+    } catch (err) {
+      Logger.w(TAG, 'server logout failed, clear locally anyway', err);
     }
     this.applyLoggedOut();
   }

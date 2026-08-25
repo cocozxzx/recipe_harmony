@@ -54,8 +54,8 @@ export class RegisterViewModel {
       Toast.show($r('app.string.login_code_sent'));
       this.startCountdown();
     } catch (e) {
-      Logger.e(TAG, 'sendCode failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'sendCode failed', e);
+      Toast.show(readableMessage(e));
     }
   }
 
@@ -73,8 +73,8 @@ export class RegisterViewModel {
       await AuthService.get().onLoginSuccess(result);
       Toast.show($r('app.string.register_success'));
     } catch (e) {
-      Logger.e(TAG, 'register failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'register failed', e);
+      Toast.show(readableMessage(e));
     } finally {
       this.submitting = false;
     }

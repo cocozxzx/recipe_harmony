@@ -54,6 +54,6 @@ export struct IngredientList {
 
   private amountText(item: RecipeIngredient): string {
     const value: number = displayAmount(item, this.servings, this.baseServings);
-    return `${Formatter.amount(value)}${item.unit}`;
+    return Formatter.amount(value) + item.unit;
   }
 }

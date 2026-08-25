@@ -52,9 +52,9 @@ export class AiViewModel {
     }
     this.input = '';
     this.seq += 1;
-    const userMessage: AiMessage = AiMessage.user(`u${this.seq}`, message);
+    const userMessage: AiMessage = AiMessage.user('u' + this.seq.toString(), message);
     this.seq += 1;
-    const assistant: AiMessage = AiMessage.assistant(`a${this.seq}`);
+    const assistant: AiMessage = AiMessage.assistant('a' + this.seq.toString());
     assistant.hint = Strings.get($r('app.string.ai_thinking'));
 
     this.messages = this.messages.concat([userMessage, assistant]);
@@ -71,14 +71,17 @@ export class AiViewModel {
 
   /** 用户点"停止生成"。已经流出来的内容保留，不回滚。 */
   stop(): void {
-    this.client?.cancel();
+    if (this.client !== null) {
+      this.client.cancel();
+    }
     this.client = null;
     this.finishCurrent();
   }
 
-  /** 页面销毁时必须调用，否则流会在后台继续跑 */
   dispose(): void {
-    this.client?.cancel();
+    if (this.client !== null) {
+      this.client.cancel();
+    }
     this.client = null;
   }
 
@@ -99,30 +102,30 @@ export class AiViewModel {
     }
     try {
       if (event.event === AiEventName.INTENT) {
-        const dto: AiIntentEventDto = JSON.parse(event.data) as AiIntentEventDto;
+        const dto: AiIntentEventDto = JSON.parse(event.data);
         message.hint = this.hintForScene(dto.scene);
       } else if (event.event === AiEventName.RECIPES) {
-        const dto: AiRecipesEventDto = JSON.parse(event.data) as AiRecipesEventDto;
+        const dto: AiRecipesEventDto = JSON.parse(event.data);
         message.recipes = dto.matches;
         message.resultType = AiResultType.RECIPES;
         message.hint = '';
       } else if (event.event === AiEventName.GENERATING) {
-        const dto: AiGeneratingEventDto = JSON.parse(event.data) as AiGeneratingEventDto;
+        const dto: AiGeneratingEventDto = JSON.parse(event.data);
         message.text += dto.delta;
         message.hint = '';
       } else if (event.event === AiEventName.GENERATED) {
-        const dto: AiGeneratedEventDto = JSON.parse(event.data) as AiGeneratedEventDto;
+        const dto: AiGeneratedEventDto = JSON.parse(event.data);
         message.generated = dto.recipe;
         message.resultType = AiResultType.GENERATED;
         message.hint = '';
       } else if (event.event === AiEventName.ERROR) {
-        const dto: AiErrorEventDto = JSON.parse(event.data) as AiErrorEventDto;
+        const dto: AiErrorEventDto = JSON.parse(event.data);
         this.onStreamError(dto.message);
       } else if (event.event === AiEventName.DONE) {
         this.finishCurrent();
       }
     } catch (e) {
-      Logger.e(TAG, `parse event ${event.event} failed`, e as Object);
+      Logger.e(TAG, 'parse event ' + event.event + ' failed', e);
     }
   }
 
@@ -156,7 +159,7 @@ export class AiViewModel {
   }
 
   private hintForScene(scene: string): string {
-    if (scene === AiScene.FALLBACK_GENERATE as string) {
+    if (scene === AiScene.FALLBACK_GENERATE) {
       return Strings.get($r('app.string.ai_generating'));
     }
     return Strings.get($r('app.string.ai_searching'));
@@ -180,10 +183,10 @@ export class AiViewModel {
       }
       Toast.show(target ? $r('app.string.favorite_added') : $r('app.string.favorite_removed'));
     } catch (e) {
-      Logger.e(TAG, 'toggle ai favorite failed', e as Object);
+      Logger.e(TAG, 'toggle ai favorite failed', e);
       recipe.favorited = !target;
       message.generated = recipe;
-      Toast.show(readableMessage(e as Object));
+      Toast.show(readableMessage(e));
     }
   }
 }

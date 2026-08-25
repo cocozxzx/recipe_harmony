@@ -2,6 +2,8 @@ import { ApiPaths } from '../network/ApiPaths';
 import { HttpClient } from '../network/HttpClient';
 import { EmptyDto } from '../network/dto/Common';
 import {
+  EmailCodeReq,
+  EmailLoginReq,
   HuaweiLoginReq,
   PasswordLoginReq,
   RegisterReq,
@@ -33,13 +35,23 @@ export class AuthRepository {
     await HttpClient.post<EmptyDto>(ApiPaths.AUTH_SMS_CODE, body);
   }
 
+  static async sendEmailCode(email: string, scene: string = SCENE_LOGIN): Promise<void> {
+    const body: EmailCodeReq = { email: email, scene: scene };
+    await HttpClient.post<EmptyDto>(ApiPaths.AUTH_EMAIL_CODE, body);
+  }
+
   static async loginBySms(phone: string, code: string): Promise<AuthResult> {
     const body: SmsLoginReq = { phone: phone, code: code };
     return HttpClient.post<AuthResult>(ApiPaths.AUTH_SMS_LOGIN, body);
   }
 
+  static async loginByEmail(email: string, code: string): Promise<AuthResult> {
+    const body: EmailLoginReq = { email: email, code: code };
+    return HttpClient.post<AuthResult>(ApiPaths.AUTH_EMAIL_LOGIN, body);
+  }
+
   static async loginByPassword(account: string, password: string,
-    captchaKey: string, captchaCode: string): Promise<AuthResult> {
+    captchaKey: string = '', captchaCode: string = ''): Promise<AuthResult> {
     const body: PasswordLoginReq = {
       account: account, password: password, captchaKey: captchaKey, captchaCode: captchaCode
     };

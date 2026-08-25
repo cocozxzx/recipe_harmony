@@ -26,9 +26,27 @@ import { DetailViewModel } from '../viewmodel/DetailViewModel';
 export struct DetailPage {
   @Param param: RecipeDetailParam = { recipeId: '' };
   @Local vm: DetailViewModel = new DetailViewModel();
+  @Local favoriteScale: number = 1.0;
+  @Local likeScale: number = 1.0;
 
   aboutToAppear(): void {
     this.vm.load(this.param.recipeId);
+  }
+
+  @Monitor('vm.favoriteBounce')
+  onFavoriteBounce(): void {
+    this.favoriteScale = 1.3;
+    animateTo({ duration: Motion.bounceDuration, curve: Curve.EaseOut }, () => {
+      this.favoriteScale = 1.0;
+    });
+  }
+
+  @Monitor('vm.likeBounce')
+  onLikeBounce(): void {
+    this.likeScale = 1.3;
+    animateTo({ duration: Motion.bounceDuration, curve: Curve.EaseOut }, () => {
+      this.likeScale = 1.0;
+    });
   }
 
   build() {
@@ -126,7 +144,7 @@ export struct DetailPage {
         .width('100%')
 
       Row({ space: 8 }) {
-        if (this.detail()?.tagName?.length > 0) {
+        if (this.detail().tagName.length > 0) {
           MiniTag({
             text: this.detail().tagName,
             bgColor: $r('app.color.brand_primary_light'),
@@ -173,21 +191,21 @@ export struct DetailPage {
         this.vm.favorited ? $r('app.media.ic_favorite_fill') : $r('app.media.ic_favorite'),
         this.vm.favorited ? $r('app.color.action_favorite') : $r('app.color.text_tertiary'),
         Formatter.count(this.vm.favoriteCount),
-        this.vm.favoriteBounce,
+        this.favoriteScale,
         () => this.vm.toggleFavorite()
       )
       this.actionItem(
         this.vm.liked ? $r('app.media.ic_like_fill') : $r('app.media.ic_like'),
         this.vm.liked ? $r('app.color.action_like') : $r('app.color.text_tertiary'),
         Formatter.count(this.vm.likeCount),
-        this.vm.likeBounce,
+        this.likeScale,
         () => this.vm.toggleLike()
       )
       this.actionItem(
         $r('app.media.ic_share'),
         $r('app.color.text_tertiary'),
         '',
-        0,
+        1.0,
         () => this.share()
       )
     }
@@ -228,13 +246,13 @@ export struct DetailPage {
       favorited: false, liked: false,
       ingredients: [], steps: [], tips: []
     };
-    return this.vm.detail ?? fallback;
+    return this.vm.detail !== null && this.vm.detail !== undefined ? this.vm.detail : fallback;
   }
 
   private share(): void {
     const detail: RecipeDetail = this.detail();
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-    const link: string = `${BuildProfile.SHARE_BASE_URL as string}${detail.id}`;
+    const link: string = BuildProfile.SHARE_BASE_URL + detail.id;
     ShareHelper.share(context, detail.name, detail.summary, link);
   }
 }

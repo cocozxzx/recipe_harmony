@@ -47,18 +47,19 @@ export class SseClient {
 
   /** 发起流式请求。path 为 ApiPaths 中的相对路径。 */
   start(path: string, body: Object): void {
-    const url: string = `${BuildProfile.API_BASE_URL as string}${path}`;
+    const url: string = BuildProfile.API_BASE_URL + path;
     const request: http.HttpRequest = http.createHttp();
     this.request = request;
 
-    const headers: Record<string, string> = {
+    const token: string = TokenManager.getToken();
+    const headers: Record<string, string> = token.length > 0 ? {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      'Authorization': 'Bearer ' + token
+    } : {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream'
     };
-    const token: string = TokenManager.getToken();
-    if (token.length > 0) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
 
     request.on('headersReceive', (rawHeaders: Object) => {
       Logger.d(TAG, 'headers received');
@@ -91,12 +92,12 @@ export class SseClient {
         return;
       }
       if (err !== null && err !== undefined) {
-        Logger.e(TAG, 'stream request failed', err as Object);
+        Logger.e(TAG, 'stream request failed', err);
         this.fail(Strings.get($r('app.string.net_error_unknown'), '连接失败，请稍后重试'));
         return;
       }
       if (statusCode !== 200) {
-        Logger.w(TAG, `stream http status=${statusCode}`);
+        Logger.w(TAG, 'stream http status=' + statusCode.toString());
         const message: string = statusCode >= 500
           ? Strings.get($r('app.string.net_error_server'), '服务开小差了')
           : Strings.get($r('app.string.net_error_unknown'), '出了点问题');
@@ -166,7 +167,7 @@ export class SseClient {
     try {
       this.handler.onEvent(event);
     } catch (e) {
-      Logger.e(TAG, `handler threw on event=${eventName}`, e as Object);
+      Logger.e(TAG, 'handler threw on event=' + eventName, e);
     }
   }
 
@@ -200,7 +201,7 @@ export class SseClient {
       request.off('dataEnd');
       request.destroy();
     } catch (e) {
-      Logger.w(TAG, 'release failed', e as Object);
+      Logger.w(TAG, 'release failed', e);
     }
   }
 }

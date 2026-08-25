@@ -40,8 +40,8 @@ export class MyRecipeListViewModel {
       this.loadMoreStatus = this.hasMore ? LoadMoreStatus.IDLE : LoadMoreStatus.NO_MORE;
       this.state.success(result.list.length > 0);
     } catch (e) {
-      Logger.e(TAG, 'load failed', e as Object);
-      this.state.error(readableMessage(e as Object));
+      Logger.e(TAG, 'load failed', e);
+      this.state.error(readableMessage(e));
     }
   }
 
@@ -59,7 +59,7 @@ export class MyRecipeListViewModel {
       this.items.appendAll(result.list);
       this.loadMoreStatus = this.hasMore ? LoadMoreStatus.IDLE : LoadMoreStatus.NO_MORE;
     } catch (e) {
-      Logger.e(TAG, 'loadMore failed', e as Object);
+      Logger.e(TAG, 'loadMore failed', e);
       this.loadMoreStatus = LoadMoreStatus.FAILED;
     } finally {
       this.loading = false;

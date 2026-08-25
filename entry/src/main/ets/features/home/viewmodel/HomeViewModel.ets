@@ -51,7 +51,7 @@ export class HomeViewModel {
       this.latest.appendAll(result.list);
       this.loadMoreStatus = this.hasMore ? LoadMoreStatus.IDLE : LoadMoreStatus.NO_MORE;
     } catch (e) {
-      Logger.e(TAG, 'loadMore failed', e as Object);
+      Logger.e(TAG, 'loadMore failed', e);
       this.loadMoreStatus = LoadMoreStatus.FAILED;
     } finally {
       this.loading = false;
@@ -73,8 +73,8 @@ export class HomeViewModel {
         || this.hotRecipes.length > 0 || !this.latest.isEmpty();
       this.state.success(hasData);
     } catch (e) {
-      Logger.e(TAG, 'load home failed', e as Object);
-      this.state.error(readableMessage(e as Object));
+      Logger.e(TAG, 'load home failed', e);
+      this.state.error(readableMessage(e));
     }
   }
 }

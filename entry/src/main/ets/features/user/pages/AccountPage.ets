@@ -82,7 +82,7 @@ export struct AccountPage {
       id: '', nickname: '', avatar: '', phone: '', email: '',
       hasPassword: false, favoriteCount: 0, likeCount: 0, bindings: []
     };
-    return this.auth.user ?? fallback;
+    return this.auth.user !== null && this.auth.user !== undefined ? this.auth.user : fallback;
   }
 
   /** 后端已做脱敏，前端只判断是否为空 */
@@ -91,7 +91,8 @@ export struct AccountPage {
   }
 
   private huaweiText(): string {
-    const bindings: OauthBinding[] = this.user().bindings ?? [];
+    const bindings: OauthBinding[] = this.user().bindings !== null && this.user().bindings !== undefined
+      ? this.user().bindings : [];
     const huawei: OauthBinding | undefined =
       bindings.find((it: OauthBinding) => it.platform === PLATFORM_HUAWEI);
     const bound: boolean = huawei !== undefined && huawei.bound;

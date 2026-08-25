@@ -128,6 +128,10 @@
     { "name": "login_huawei_network", "value": "网络异常，请检查网络后重试" },
     { "name": "login_huawei_system", "value": "系统服务异常，请稍后重试" },
     { "name": "login_huawei_failed", "value": "华为账号登录失败，请改用其他方式" },
+    { "name": "login_huawei", "value": "华为账号登录" },
+    { "name": "login_email_invalid", "value": "请输入正确的邮箱" },
+    { "name": "login_email_placeholder", "value": "请输入邮箱地址" },
+    { "name": "login_switch_email", "value": "邮箱验证码登录" },
 
     { "name": "mine_title", "value": "我的" },
     { "name": "mine_guest_slogan", "value": "登录后收藏喜欢的食谱，随时用 AI 帮你配菜" },

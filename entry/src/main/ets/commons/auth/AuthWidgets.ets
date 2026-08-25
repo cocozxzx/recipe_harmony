@@ -63,7 +63,7 @@ export struct AuthCodeField {
       })
         .layoutWeight(1)
 
-      Text(this.countdown > 0 ? `${this.countdown}s` : $r('app.string.login_send_code'))
+      Text(this.countdown > 0 ? this.countdown.toString() + 's' : $r('app.string.login_send_code'))
         .fontSize($r('app.float.font_body_sm'))
         .fontWeight(FontWeight.Medium)
         .fontColor(this.countdown > 0 ? $r('app.color.text_tertiary') : $r('app.color.brand_primary'))

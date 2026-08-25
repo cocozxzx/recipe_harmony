@@ -1,7 +1,7 @@
 /** 标签 Chip。高度 28vp，选中态背景 brand_primary_light、文字 brand_primary。 */
 @ComponentV2
 export struct TagChip {
-  @Param text: string = '';
+  @Param text: ResourceStr = '';
   @Param selected: boolean = false;
   @Event onTap: () => void = () => {};
 

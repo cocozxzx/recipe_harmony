@@ -112,7 +112,7 @@ export struct AiGeneratedCard {
             .fontSize($r('app.float.font_body_sm'))
             .fontColor($r('app.color.text_primary'))
             .layoutWeight(1)
-          Text(`${Formatter.amount(displayAmount(item, this.recipe.baseServings, this.recipe.baseServings))}${item.unit}`)
+          Text(Formatter.amount(displayAmount(item, this.recipe.baseServings, this.recipe.baseServings)) + item.unit)
             .fontSize($r('app.float.font_body_sm'))
             .fontColor($r('app.color.text_secondary'))
         }
@@ -125,7 +125,7 @@ export struct AiGeneratedCard {
         .fontColor($r('app.color.text_primary'))
         .width('100%')
       ForEach(this.recipe.steps, (step: RecipeStep, index: number) => {
-        Text(`${index + 1}. ${step.content}`)
+        Text((index + 1).toString() + '. ' + step.content)
           .fontSize($r('app.float.font_body_sm'))
           .fontColor($r('app.color.text_secondary'))
           .lineHeight(22)

@@ -53,7 +53,7 @@ export struct AboutPage {
   }
 
   private versionText(): string {
-    return `v${BuildProfile.APP_VERSION as string} (${BuildProfile.ENV as string})`;
+    return 'v' + BuildProfile.APP_VERSION + ' (' + BuildProfile.ENV + ')';
   }
 
   private openDoc(docKey: string, title: Resource): void {

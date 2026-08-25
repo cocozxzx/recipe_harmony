@@ -1,8 +1,3 @@
-
-/**
- * 二次确认弹窗。退出登录、清空历史、注销账号都走它。
- * 注销账号场景必须把 `desc` 填成完整的数据删除范围说明——这是应用市场审核项。
- */
 @CustomDialog
 export struct ConfirmDialog {
   controller?: CustomDialogController;
@@ -39,7 +34,12 @@ export struct ConfirmDialog {
           .backgroundColor($r('app.color.bg_sunken'))
           .fontColor($r('app.color.text_secondary'))
           .fontSize($r('app.float.font_title_sm'))
-          .onClick(() => this.controller?.close())
+          .onClick(() => {
+            const ctrl: CustomDialogController | undefined = this.controller;
+            if (ctrl !== undefined && ctrl !== null) {
+              ctrl.close();
+            }
+          })
 
         Button(this.confirmText)
           .type(ButtonType.Normal)
@@ -50,7 +50,10 @@ export struct ConfirmDialog {
           .fontColor($r('app.color.text_on_brand'))
           .fontSize($r('app.float.font_title_sm'))
           .onClick(() => {
-            this.controller?.close();
+            const ctrl: CustomDialogController | undefined = this.controller;
+            if (ctrl !== undefined && ctrl !== null) {
+              ctrl.close();
+            }
             this.onConfirm();
           })
       }

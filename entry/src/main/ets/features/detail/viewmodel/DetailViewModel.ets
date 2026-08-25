@@ -44,8 +44,8 @@ export class DetailViewModel {
       this.state.success(true);
       await this.recordHistory(detail);
     } catch (e) {
-      Logger.e(TAG, 'load detail failed', e as Object);
-      this.state.error(readableMessage(e as Object));
+      Logger.e(TAG, 'load detail failed', e);
+      this.state.error(readableMessage(e));
     }
   }
 
@@ -108,7 +108,7 @@ export class DetailViewModel {
       this.favoriteCount = result.favoriteCount;
       Toast.show(target ? $r('app.string.favorite_added') : $r('app.string.favorite_removed'));
     } catch (e) {
-      Logger.e(TAG, 'toggle favorite failed', e as Object);
+      Logger.e(TAG, 'toggle favorite failed', e);
       this.favorited = !target;
       this.favoriteCount += target ? -1 : 1;
       Toast.show($r('app.string.action_failed'));
@@ -127,7 +127,7 @@ export class DetailViewModel {
       this.likeCount = result.likeCount;
       Toast.show(target ? $r('app.string.like_added') : $r('app.string.like_removed'));
     } catch (e) {
-      Logger.e(TAG, 'toggle like failed', e as Object);
+      Logger.e(TAG, 'toggle like failed', e);
       this.liked = !target;
       this.likeCount += target ? -1 : 1;
       Toast.show($r('app.string.action_failed'));

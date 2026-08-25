@@ -9,39 +9,32 @@ const TAG: string = 'HttpClient';
 const TIMEOUT_CONNECT_MS: number = 10000;
 const TIMEOUT_TRANSFER_MS: number = 15000;
 
-/** 本地接口：用于构建 multipart 文件字段，绕过 SDK 类型属性名差异 */
-interface MultipartFileField {
-  contentType: string;
-  remoteFileName: string;
-  filePath: string;
-}
-
 /** 查询参数容器。ArkTS 不支持动态属性访问，用显式 append 构建。 */
 export class QueryParams {
   private parts: string[] = [];
 
   put(key: string, value: string): QueryParams {
     if (value.length > 0) {
-      this.parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+      this.parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(value));
     }
     return this;
   }
 
   putNumber(key: string, value: number): QueryParams {
-    this.parts.push(`${encodeURIComponent(key)}=${value}`);
+    this.parts.push(encodeURIComponent(key) + '=' + value.toString());
     return this;
   }
 
   /** 值为 0 视为未设置，用于 maxCookTime 这类"0 表示不限"的可选参数 */
   putPositive(key: string, value: number): QueryParams {
     if (value > 0) {
-      this.parts.push(`${encodeURIComponent(key)}=${value}`);
+      this.parts.push(encodeURIComponent(key) + '=' + value.toString());
     }
     return this;
   }
 
   toString(): string {
-    return this.parts.length === 0 ? '' : `?${this.parts.join('&')}`;
+    return this.parts.length === 0 ? '' : '?' + this.parts.join('&');
   }
 }
 
@@ -81,7 +74,7 @@ export class HttpClient {
   }
 
   private static url(path: string): string {
-    return `${BuildProfile.API_BASE_URL as string}${path}`;
+    return BuildProfile.API_BASE_URL + path;
   }
 
   static async get<T>(path: string, params?: QueryParams): Promise<T> {
@@ -106,12 +99,12 @@ export class HttpClient {
   /** multipart 上传，目前只用于头像 */
   static async upload<T>(path: string, filePath: string, fieldName: string = 'file'): Promise<T> {
     const form: rcp.MultipartForm = new rcp.MultipartForm({});
-    const field: MultipartFileField = {
-      contentType: 'application/octet-stream',
+    const field: rcp.MultipartFormFieldValue = {
       remoteFileName: 'avatar.jpg',
-      filePath: filePath
+      contentType: 'application/octet-stream',
+      contentOrPath: filePath
     };
-    form.fields[fieldName] = field as object as rcp.MultipartFormFieldValue;
+    form.fields[fieldName] = field;
     return HttpClient.execute<T>(() => HttpClient.getSession().post(HttpClient.url(path), form));
   }
 
@@ -120,14 +113,14 @@ export class HttpClient {
     try {
       response = await call();
     } catch (e) {
-      throw HttpClient.toNetError(e as Object);
+      throw HttpClient.toNetError(e);
     }
     return HttpClient.unwrap<T>(response);
   }
 
   /** 解包统一响应体 `{ code, message, data }` */
   private static unwrap<T>(response: rcp.Response): T {
-    const status: number = response.statusCode ?? 0;
+    const status: number = response.statusCode !== undefined && response.statusCode !== null ? response.statusCode : 0;
     if (status >= 500) {
       throw NetError.server();
     }
@@ -135,19 +128,20 @@ export class HttpClient {
       // 走到这里说明拦截器刷新失败，登录态已被清除
       throw NetError.unauthorized();
     }
-    const text: string = response.toString() ?? '';
+    const raw: string | null = response.toString();
+    const text: string = raw !== null && raw !== undefined ? raw : '';
     if (text.length === 0) {
       throw NetError.unknown();
     }
     let parsed: ApiResponseDto<T>;
     try {
-      parsed = JSON.parse(text) as ApiResponseDto<T>;
+      parsed = JSON.parse(text);
     } catch (e) {
-      Logger.e(TAG, 'parse response failed', e as Object);
+      Logger.e(TAG, 'parse response failed', e);
       throw NetError.unknown();
     }
     if (parsed.code !== BizCode.SUCCESS) {
-      throw new BizError(parsed.code, parsed.message ?? '');
+      throw new BizError(parsed.code, parsed.message !== null && parsed.message !== undefined ? parsed.message : '');
     }
     return parsed.data;
   }
@@ -157,9 +151,16 @@ export class HttpClient {
    * 断网与超时的错误码区间见 RCP 文档；无法归类的一律 unknown，不把原始异常抛给 UI。
    */
   private static toNetError(err: Object): NetError {
-    const e: BusinessError = err as BusinessError;
-    const code: number = e.code ?? 0;
-    Logger.w(TAG, `transport error code=${code} message=${e.message ?? ''}`);
+    let code: number = 0;
+    let message: string = '';
+    try {
+      const errorObj: BusinessError = JSON.parse(JSON.stringify(err));
+      code = errorObj.code !== undefined && errorObj.code !== null ? errorObj.code : 0;
+      message = errorObj.message !== undefined && errorObj.message !== null ? errorObj.message : '';
+    } catch (e) {
+      // ignore
+    }
+    Logger.w(TAG, 'transport error code=' + code.toString() + ' message=' + message);
     // 1007900028 超时；1007900005/1007900006 解析/连接失败
     if (code === 1007900028) {
       return NetError.timeout();

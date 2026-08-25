@@ -11,24 +11,25 @@ const PREFIX: string = 'EatApp';
  */
 export class Logger {
   private static get verbose(): boolean {
-    return BuildProfile.LOG_ENABLED as boolean;
+    return BuildProfile.LOG_ENABLED;
   }
 
   private static format(tag: string, message: string, args: Object[]): string {
     if (args.length === 0) {
-      return `[${tag}] ${message}`;
+      return '[' + tag + '] ' + message;
     }
     const extra: string = args.map((it: Object) => Logger.stringify(it)).join(' ');
-    return `[${tag}] ${message} ${extra}`;
+    return '[' + tag + '] ' + message + ' ' + extra;
   }
 
   private static stringify(value: Object): string {
     if (value instanceof Error) {
-      const err: Error = value as Error;
-      return `${err.name}: ${err.message}`;
+      const err: Error = value;
+      return err.name + ': ' + err.message;
     }
     if (typeof value === 'string') {
-      return value as string;
+      const str: string = value;
+      return str;
     }
     try {
       return JSON.stringify(value);

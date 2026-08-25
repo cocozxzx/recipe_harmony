@@ -46,7 +46,7 @@ export class CategoryViewModel {
       this.tags = await RecipeRepository.getTags();
     } catch (e) {
       // 标签栏拉不到不阻塞列表，用户仍可浏览"全部"
-      Logger.w(TAG, 'loadTags failed', e as Object);
+      Logger.w(TAG, 'loadTags failed', e);
     }
   }
 
@@ -109,8 +109,8 @@ export class CategoryViewModel {
       this.state.success(result.list.length > 0);
       this.resetScrollToken += 1;
     } catch (e) {
-      Logger.e(TAG, 'reload failed', e as Object);
-      this.state.error(readableMessage(e as Object));
+      Logger.e(TAG, 'reload failed', e);
+      this.state.error(readableMessage(e));
     }
   }
 
@@ -128,7 +128,7 @@ export class CategoryViewModel {
       this.recipes.appendAll(result.list);
       this.loadMoreStatus = this.hasMore ? LoadMoreStatus.IDLE : LoadMoreStatus.NO_MORE;
     } catch (e) {
-      Logger.e(TAG, 'loadMore failed', e as Object);
+      Logger.e(TAG, 'loadMore failed', e);
       this.loadMoreStatus = LoadMoreStatus.FAILED;
     } finally {
       this.loading = false;

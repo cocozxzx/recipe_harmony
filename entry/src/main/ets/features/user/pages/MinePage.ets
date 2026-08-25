@@ -215,7 +215,7 @@ export struct MinePage {
       id: '', nickname: '', avatar: '', phone: '', email: '',
       hasPassword: false, favoriteCount: 0, likeCount: 0, bindings: []
     };
-    return this.auth.user ?? fallback;
+    return this.auth.user !== null && this.auth.user !== undefined ? this.auth.user : fallback;
   }
 
   private openDoc(docKey: string, title: Resource): void {

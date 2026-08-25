@@ -21,7 +21,7 @@ export class PreferenceUtil {
       PreferenceUtil.store = await preferences.getPreferences(context, options);
       Logger.i(TAG, 'preferences ready');
     } catch (e) {
-      Logger.e(TAG, 'init failed', e as Object);
+      Logger.e(TAG, 'init failed', e);
     }
   }
 
@@ -32,14 +32,17 @@ export class PreferenceUtil {
   static async getString(key: string, defValue: string = ''): Promise<string> {
     const store: preferences.Preferences | null = PreferenceUtil.store;
     if (store === null) {
-      Logger.w(TAG, `getString before init: ${key}`);
+      Logger.w(TAG, 'getString before init: ' + key);
       return defValue;
     }
     try {
       const value: preferences.ValueType = await store.get(key, defValue);
-      return value as string;
+      if (typeof value === 'string') {
+        return value;
+      }
+      return defValue;
     } catch (e) {
-      Logger.e(TAG, `getString failed: ${key}`, e as Object);
+      Logger.e(TAG, 'getString failed: ' + key, e);
       return defValue;
     }
   }
@@ -47,14 +50,14 @@ export class PreferenceUtil {
   static async putString(key: string, value: string): Promise<void> {
     const store: preferences.Preferences | null = PreferenceUtil.store;
     if (store === null) {
-      Logger.w(TAG, `putString before init: ${key}`);
+      Logger.w(TAG, 'putString before init: ' + key);
       return;
     }
     try {
       await store.put(key, value);
       await store.flush();
     } catch (e) {
-      Logger.e(TAG, `putString failed: ${key}`, e as Object);
+      Logger.e(TAG, 'putString failed: ' + key, e);
     }
   }
 
@@ -65,9 +68,12 @@ export class PreferenceUtil {
     }
     try {
       const value: preferences.ValueType = await store.get(key, defValue);
-      return value as boolean;
+      if (typeof value === 'boolean') {
+        return value;
+      }
+      return defValue;
     } catch (e) {
-      Logger.e(TAG, `getBoolean failed: ${key}`, e as Object);
+      Logger.e(TAG, 'getBoolean failed: ' + key, e);
       return defValue;
     }
   }
@@ -81,7 +87,7 @@ export class PreferenceUtil {
       await store.put(key, value);
       await store.flush();
     } catch (e) {
-      Logger.e(TAG, `putBoolean failed: ${key}`, e as Object);
+      Logger.e(TAG, 'putBoolean failed: ' + key, e);
     }
   }
 
@@ -94,7 +100,7 @@ export class PreferenceUtil {
       await store.delete(key);
       await store.flush();
     } catch (e) {
-      Logger.e(TAG, `delete failed: ${key}`, e as Object);
+      Logger.e(TAG, 'delete failed: ' + key, e);
     }
   }
 
@@ -107,7 +113,7 @@ export class PreferenceUtil {
       await store.clear();
       await store.flush();
     } catch (e) {
-      Logger.e(TAG, 'clear failed', e as Object);
+      Logger.e(TAG, 'clear failed', e);
     }
   }
 }

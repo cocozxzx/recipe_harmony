@@ -15,6 +15,7 @@ const COUNTDOWN_SECONDS: number = 60;
 /** 表单登录方式。华为账号不在其中——它是独立的官方按钮，不参与切换。 */
 export enum LoginMode {
   SMS,
+  EMAIL,
   PASSWORD
 }
 
@@ -89,8 +90,8 @@ export class LoginViewModel {
       this.captchaImage = captcha.image;
       this.captchaCode = '';
     } catch (e) {
-      Logger.e(TAG, 'load captcha failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'load captcha failed', e);
+      Toast.show(readableMessage(e));
     }
   }
 
@@ -110,8 +111,8 @@ export class LoginViewModel {
       Toast.show($r('app.string.login_code_sent'));
       this.startCountdown();
     } catch (e) {
-      Logger.e(TAG, 'sendCode failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'sendCode failed', e);
+      Toast.show(readableMessage(e));
     }
   }
 
@@ -128,8 +129,8 @@ export class LoginViewModel {
       await AuthService.get().onLoginSuccess(result);
       Toast.show($r('app.string.login_success'));
     } catch (e) {
-      Logger.e(TAG, 'login failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'login failed', e);
+      Toast.show(readableMessage(e));
       // 图形验证码是一次性的，这次请求已经把它消费掉了，无论因为什么失败都得换一张
       if (this.mode === LoginMode.PASSWORD) {
         await this.refreshCaptcha();
@@ -157,8 +158,8 @@ export class LoginViewModel {
       await AuthService.get().onLoginSuccess(result);
       Toast.show($r('app.string.login_success'));
     } catch (e) {
-      Logger.e(TAG, 'huawei login failed', e as Object);
-      Toast.show(readableMessage(e as Object));
+      Logger.e(TAG, 'huawei login failed', e);
+      Toast.show(readableMessage(e));
     } finally {
       this.submitting = false;
     }
@@ -167,7 +168,7 @@ export class LoginViewModel {
   /** 华为账号登录按钮回调失败：按错误码给出可操作的提示，不要一律"登录失败" */
   onHuaweiError(error: BusinessError): void {
     const code: number = error.code;
-    Logger.e(TAG, `huawei button failed, code=${code}, msg=${error.message}`);
+    Logger.e(TAG, 'huawei button failed, code=' + code.toString() + ', msg=' + error.message);
     if (code === HuaweiErrorCode.REQUEST_REFUSE || code === HuaweiErrorCode.USER_CANCEL) {
       return;
     }
@@ -188,8 +189,8 @@ export class LoginViewModel {
       return;
     }
     // debug 包直接把原始错误码显示出来，否则真机上除了「登录失败」什么都看不到
-    if (BuildProfile.LOG_ENABLED as boolean) {
-      Toast.show(`华为登录失败 code=${code} ${error.message}`, 4000);
+    if (BuildProfile.LOG_ENABLED) {
+      Toast.show('华为登录失败 code=' + code.toString() + ' ' + error.message, 4000);
       return;
     }
     Toast.show($r('app.string.login_huawei_failed'));

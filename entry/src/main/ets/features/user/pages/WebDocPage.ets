@@ -61,12 +61,12 @@ export struct WebDocPage {
     this.state.loading();
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-      const bytes: Uint8Array = context.resourceManager.getRawFileContentSync(`${this.param.docKey}.txt`);
+      const bytes: Uint8Array = context.resourceManager.getRawFileContentSync(this.param.docKey + '.txt');
       const decoder: util.TextDecoder = util.TextDecoder.create('utf-8', { ignoreBOM: true });
       this.content = decoder.decodeToString(bytes);
       this.state.success(this.content.length > 0);
     } catch (e) {
-      Logger.e(TAG, `load doc ${this.param.docKey} failed`, e as Object);
+      Logger.e(TAG, 'load doc ' + this.param.docKey + ' failed', e);
       this.state.error('');
     }
   }

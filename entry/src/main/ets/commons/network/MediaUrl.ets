@@ -26,7 +26,7 @@ export class MediaUrl {
       return url;
     }
     const origin: string = MediaUrl.origin();
-    return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`;
+    return url.startsWith('/') ? origin + url : origin + '/' + url;
   }
 
   /** 从 API_BASE_URL 里截出 scheme://host:port，丢掉 /api/app/v1 这段路径 */
@@ -34,7 +34,7 @@ export class MediaUrl {
     if (MediaUrl.cachedOrigin.length > 0) {
       return MediaUrl.cachedOrigin;
     }
-    const base: string = BuildProfile.API_BASE_URL as string;
+    const base: string = BuildProfile.API_BASE_URL;
     const schemeEnd: number = base.indexOf('://');
     const pathStart: number = schemeEnd < 0 ? base.indexOf('/') : base.indexOf('/', schemeEnd + 3);
     MediaUrl.cachedOrigin = pathStart < 0 ? base : base.substring(0, pathStart);

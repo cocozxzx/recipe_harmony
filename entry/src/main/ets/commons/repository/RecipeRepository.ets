@@ -19,7 +19,7 @@ export class RecipeRepository {
     const params: QueryParams = new QueryParams();
     params.put('tagId', query.tagId);
     params.put('keyword', query.keyword);
-    params.put('sort', query.sort as string);
+    params.put('sort', query.sort);
     if (query.difficulties.length > 0) {
       params.put('difficulty', query.difficulties.join(','));
     }

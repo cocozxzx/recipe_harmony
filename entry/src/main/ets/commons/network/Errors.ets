@@ -70,12 +70,11 @@ export class BizCode {
  */
 export function readableMessage(err: Object): string {
   if (err instanceof BizError) {
-    const biz: BizError = err as BizError;
-    if (biz.message.length > 0) {
-      return biz.message;
+    if (err.message.length > 0) {
+      return err.message;
     }
   } else if (err instanceof NetError) {
-    return (err as NetError).message;
+    return err.message;
   }
   return Strings.get($r('app.string.net_error_unknown'), '出了点问题，请稍后重试');
 }

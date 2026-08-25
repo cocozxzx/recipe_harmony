@@ -18,7 +18,7 @@ export default class EntryAbility extends UIAbility {
     try {
       ImageKnife.getInstance().initFileCache(this.context, 256, 256 * 1024 * 1024);
     } catch (e) {
-      Logger.e(TAG, 'init imageknife failed', e as Object);
+      Logger.e(TAG, 'init imageknife failed', e);
     }
     // 不做启动强制登录：这里只恢复已有登录态，没有 token 就以游客身份进首页
     await AuthService.bootstrap();
@@ -38,7 +38,7 @@ export default class EntryAbility extends UIAbility {
         statusBarContentColor: '#2D3A34'
       });
     } catch (e) {
-      Logger.e(TAG, 'onWindowStageCreate failed', e as Object);
+      Logger.e(TAG, 'onWindowStageCreate failed', e);
     }
   }
 
