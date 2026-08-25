@@ -26,7 +26,10 @@ export struct StepList {
               .lineHeight(24)
               .width('100%')
 
+<<<<<<< HEAD
             // ✅ 修复：用显式空值判断替代可选链
+=======
+>>>>>>> c0f86ffaaf593cb9523e796d6367f3ff98cd0bdf
             if (step.image?.length > 0) {
               NetImage({
                 url: step.image,

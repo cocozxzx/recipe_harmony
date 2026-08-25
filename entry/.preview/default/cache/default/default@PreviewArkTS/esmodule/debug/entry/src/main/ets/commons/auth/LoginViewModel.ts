@@ -1,4 +1,5 @@
 import type common from "@ohos:app.ability.common";
+import BuildProfile from "@bundle:com.eatapp.recipe/entry/.preview/default/generated/profile/default/BuildProfile";
 import { LoginMode } from "@bundle:com.eatapp.recipe/entry/ets/commons/model/User";
 import type { AuthResult } from "@bundle:com.eatapp.recipe/entry/ets/commons/model/User";
 import { readableMessage } from "@bundle:com.eatapp.recipe/entry/ets/commons/network/Errors";
@@ -8,6 +9,7 @@ import { Logger } from "@bundle:com.eatapp.recipe/entry/ets/commons/utils/Logger
 import { AuthRepository } from "@bundle:com.eatapp.recipe/entry/ets/commons/auth/AuthRepository";
 import { AuthService } from "@bundle:com.eatapp.recipe/entry/ets/commons/auth/AuthService";
 import { HuaweiAuth } from "@bundle:com.eatapp.recipe/entry/ets/commons/auth/HuaweiAuth";
+import type { HuaweiAuthResult } from "@bundle:com.eatapp.recipe/entry/ets/commons/auth/HuaweiAuth";
 const TAG: string = 'LoginViewModel';
 const COUNTDOWN_SECONDS: number = 60;
 /**
@@ -119,12 +121,18 @@ export class LoginViewModel {
         }
         this.submitting = true;
         try {
-            const authCode: string = await HuaweiAuth.getAuthCode(context);
-            if (authCode.length === 0) {
-                Toast.show({ "id": 16777363, "type": 10003, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
+            const auth: HuaweiAuthResult = await HuaweiAuth.getAuthCode(context);
+            if (auth.authCode.length === 0) {
+                // debug 包直接把 Account Kit 的错误码显示出来，否则真机上无从排查
+                if (BuildProfile.LOG_ENABLED as boolean) {
+                    Toast.show(`华为登录失败 code=${auth.errCode} ${auth.errMsg}`, 4000);
+                }
+                else {
+                    Toast.show({ "id": 16777363, "type": 10003, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
+                }
                 return;
             }
-            const result: AuthResult = await AuthRepository.loginByHuawei(authCode);
+            const result: AuthResult = await AuthRepository.loginByHuawei(auth.authCode);
             await AuthService.get().onLoginSuccess(result);
             Toast.show({ "id": 16777372, "type": 10003, params: [], "bundleName": "com.eatapp.recipe", "moduleName": "entry" });
         }

@@ -60,7 +60,7 @@ export class StepList extends ViewV2 {
                 Text.pop();
                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                     If.create();
-                    if (step.image.length > 0) {
+                    if (step.image?.length > 0) {
                         this.ifElseBranchUpdateFunction(0, () => {
                             {
                                 this.observeComponentCreation2((elmtId, isInitialRender) => {

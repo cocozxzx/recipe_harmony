@@ -29,6 +29,12 @@
 		"deliveryWithInstall": true,
 		"installationFree": false,
 		"pages": "$profile:main_pages",
+		"metadata": [
+			{
+				"name": "client_id",
+				"value": "2023500071009563840"
+			}
+		],
 		"abilities": [
 			{
 				"name": "EntryAbility",
@@ -49,6 +55,12 @@
 						]
 					}
 				]
+			},
+			{
+				"name": "FakeUIAbility",
+				"srcEntry": "../../.preview/fakeuiability/FakeUIAbility.ets",
+				"startWindowIcon": "startIcon",
+				"startWindowBackground": "#FFFFFF"
 			}
 		],
 		"requestPermissions": [

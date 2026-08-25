@@ -6,9 +6,12 @@
     "versionName": "1.0.0",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
+<<<<<<< HEAD
     // 允许明文 HTTP。系统默认只放行 HTTPS，联调阶段后端跑在 http://内网IP:8080，
     // 不开这个所有请求会在发出前就被系统拦掉，表现为一律「连接失败」，很难查。
     // ⚠️ 上线前务必去掉：正式环境走 HTTPS，留着等于允许中间人明文读取 token。
 //    "cleartextTraffic": true
+=======
+>>>>>>> c0f86ffaaf593cb9523e796d6367f3ff98cd0bdf
   }
 }

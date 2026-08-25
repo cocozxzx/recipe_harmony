@@ -943,5 +943,9 @@
 			"type":	"string",
 			"name":	"page_show",
 			"id":	"0x010000EB"
+		}, {
+			"type":	"profile",
+			"name":	"network_config",
+			"id":	"0x010000EC"
 		}]
 }
