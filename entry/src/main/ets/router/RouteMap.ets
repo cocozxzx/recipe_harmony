@@ -15,6 +15,7 @@ import { BrowseHistoryPage } from '../features/user/pages/BrowseHistoryPage';
 import { LoginPage } from '../features/user/pages/LoginPage';
 import { MyRecipeListPage } from '../features/user/pages/MyRecipeListPage';
 import { ProfileEditPage } from '../features/user/pages/ProfileEditPage';
+import { RegisterPage } from '../features/user/pages/RegisterPage';
 import { WebDocPage } from '../features/user/pages/WebDocPage';
 import { MyListSource } from '../features/user/viewmodel/MyRecipeListViewModel';
 
@@ -45,6 +46,11 @@ export function routeMap(name: string, param: object) {
   } else if (name === RouteNames.LOGIN) {
     NavDestination() {
       LoginPage()
+    }
+    .hideTitleBar(true)
+  } else if (name === RouteNames.REGISTER) {
+    NavDestination() {
+      RegisterPage()
     }
     .hideTitleBar(true)
   } else if (name === RouteNames.PROFILE_EDIT) {

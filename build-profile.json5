@@ -1,6 +1,20 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\coco\\.ohos\\config\\default_eat_harmony_dbQyACUdnxpnplA2mkWjtBARACpH1rVh_E6zRhGUF3M=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BC55EDF8E72EAE69D1CFCB672CAA7E410C9BF1F9D08EADDFC675F82C92DDD6A079AA776AFE7EBA0",
+          "profile": "C:\\Users\\coco\\.ohos\\config\\default_eat_harmony_dbQyACUdnxpnplA2mkWjtBARACpH1rVh_E6zRhGUF3M=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\coco\\.ohos\\config\\default_eat_harmony_dbQyACUdnxpnplA2mkWjtBARACpH1rVh_E6zRhGUF3M=.p12",
+          "storePassword": "0000001BC25061CA0F43F6C1652237C77C95CDAAFA7E5CF7287FA2D9BE734963352CC89EFC633C8FCEFD97"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",

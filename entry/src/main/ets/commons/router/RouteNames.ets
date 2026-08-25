@@ -9,6 +9,7 @@ export class RouteNames {
   static readonly SEARCH: string = 'search';
   static readonly RECIPE_LIST: string = 'recipeList';       // 通用食谱列表（热门更多 / 标签跳转）
   static readonly LOGIN: string = 'login';                  // 全屏登录页
+  static readonly REGISTER: string = 'register';            // 手机号注册页
   static readonly PROFILE_EDIT: string = 'profileEdit';
   static readonly MY_FAVORITES: string = 'myFavorites';
   static readonly MY_LIKES: string = 'myLikes';

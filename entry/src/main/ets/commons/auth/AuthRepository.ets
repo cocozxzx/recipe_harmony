@@ -2,16 +2,15 @@ import { ApiPaths } from '../network/ApiPaths';
 import { HttpClient } from '../network/HttpClient';
 import { EmptyDto } from '../network/dto/Common';
 import {
-  EmailCodeReq,
-  EmailLoginReq,
   HuaweiLoginReq,
   PasswordLoginReq,
+  RegisterReq,
   SCENE_LOGIN,
   SmsCodeReq,
   SmsLoginReq,
   UpdateProfileReq
 } from '../network/dto/Requests';
-import { AuthResult, UserInfo } from '../model/User';
+import { AuthResult, CaptchaInfo, UserInfo } from '../model/User';
 
 /**
  * 认证与个人资料的数据来源。
@@ -28,8 +27,9 @@ export class AuthRepository {
     return HttpClient.post<AuthResult>(ApiPaths.AUTH_HUAWEI, body);
   }
 
-  static async sendSmsCode(phone: string): Promise<void> {
-    const body: SmsCodeReq = { phone: phone, scene: SCENE_LOGIN };
+  /** scene 决定这条码能用在哪：登录码换不了注册，反之亦然 */
+  static async sendSmsCode(phone: string, scene: string = SCENE_LOGIN): Promise<void> {
+    const body: SmsCodeReq = { phone: phone, scene: scene };
     await HttpClient.post<EmptyDto>(ApiPaths.AUTH_SMS_CODE, body);
   }
 
@@ -38,19 +38,25 @@ export class AuthRepository {
     return HttpClient.post<AuthResult>(ApiPaths.AUTH_SMS_LOGIN, body);
   }
 
-  static async loginByPassword(account: string, password: string): Promise<AuthResult> {
-    const body: PasswordLoginReq = { account: account, password: password };
+  static async loginByPassword(account: string, password: string,
+    captchaKey: string, captchaCode: string): Promise<AuthResult> {
+    const body: PasswordLoginReq = {
+      account: account, password: password, captchaKey: captchaKey, captchaCode: captchaCode
+    };
     return HttpClient.post<AuthResult>(ApiPaths.AUTH_PASSWORD_LOGIN, body);
   }
 
-  static async sendEmailCode(email: string): Promise<void> {
-    const body: EmailCodeReq = { email: email, scene: SCENE_LOGIN };
-    await HttpClient.post<EmptyDto>(ApiPaths.AUTH_EMAIL_CODE, body);
+  static async getCaptcha(): Promise<CaptchaInfo> {
+    return HttpClient.get<CaptchaInfo>(ApiPaths.AUTH_CAPTCHA);
   }
 
-  static async loginByEmail(email: string, code: string): Promise<AuthResult> {
-    const body: EmailLoginReq = { email: email, code: code };
-    return HttpClient.post<AuthResult>(ApiPaths.AUTH_EMAIL_LOGIN, body);
+  /** 注册成功后端直接返回登录态，不用再回登录页 */
+  static async register(phone: string, code: string, password: string,
+    nickname: string): Promise<AuthResult> {
+    const body: RegisterReq = {
+      phone: phone, code: code, password: password, nickname: nickname
+    };
+    return HttpClient.post<AuthResult>(ApiPaths.AUTH_REGISTER, body);
   }
 
   static async logout(): Promise<void> {

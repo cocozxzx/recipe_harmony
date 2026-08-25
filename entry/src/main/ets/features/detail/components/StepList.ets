@@ -1,10 +1,6 @@
 import { RecipeStep } from '../../../commons/model/Recipe';
 import { NetImage } from '../../../commons/uikit/NetImage';
 
-/**
- * 制作步骤：序号圆标 + 描述 + 配图。
- * 配图可能为空（AI 生成食谱的步骤恒无图），此时不渲染图片区域，布局不塌陷。
- */
 @ComponentV2
 export struct StepList {
   @Param steps: RecipeStep[] = [];
@@ -30,7 +26,8 @@ export struct StepList {
               .lineHeight(24)
               .width('100%')
 
-            if (step.image.length > 0) {
+            // ✅ 修复：用显式空值判断替代可选链
+            if (step.image?.length > 0) {
               NetImage({
                 url: step.image,
                 imgWidth: '100%',

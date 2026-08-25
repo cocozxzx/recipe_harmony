@@ -81,6 +81,17 @@ export class AuthService {
     this.runPending();
   }
 
+  /**
+   * 从半屏登录里跳去别的页面（注册、协议）之前收起弹窗。
+   *
+   * 和 onLoginCancelled 的区别是保留 pendingAction：用户是绕路去注册，
+   * 不是放弃登录，注册成功后原来那个动作（比如收藏）还得继续。
+   * 全屏登录页调用它是空操作，所以调用方不必分辨自己在哪个外壳里。
+   */
+  dismissSheetForNavigation(): void {
+    this.sheetVisible = false;
+  }
+
   /** 用户主动关闭登录弹窗：丢弃 pending action，不要在下次登录时莫名其妙地执行 */
   onLoginCancelled(): void {
     this.pendingAction = null;

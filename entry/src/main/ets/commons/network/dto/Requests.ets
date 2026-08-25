@@ -9,7 +9,7 @@ export interface HuaweiLoginReq {
 
 export interface SmsCodeReq {
   phone: string;
-  scene: string;            // 目前固定 "LOGIN"
+  scene: string;            // SCENE_LOGIN | SCENE_REGISTER
 }
 
 export interface SmsLoginReq {
@@ -20,16 +20,15 @@ export interface SmsLoginReq {
 export interface PasswordLoginReq {
   account: string;          // 手机号或邮箱，后端自行判断
   password: string;
+  captchaKey: string;       // 取自 /auth/captcha
+  captchaCode: string;      // 图形验证码答案，后端不区分大小写
 }
 
-export interface EmailCodeReq {
-  email: string;
-  scene: string;
-}
-
-export interface EmailLoginReq {
-  email: string;
-  code: string;
+export interface RegisterReq {
+  phone: string;
+  code: string;             // 短信验证码，scene=REGISTER
+  password: string;
+  nickname: string;         // 留空由后端生成
 }
 
 export interface RefreshReq {
@@ -46,3 +45,4 @@ export interface AiChatReq {
 }
 
 export const SCENE_LOGIN: string = 'LOGIN';
+export const SCENE_REGISTER: string = 'REGISTER';

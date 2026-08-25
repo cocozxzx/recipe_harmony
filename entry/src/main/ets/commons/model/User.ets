@@ -21,11 +21,10 @@ export interface AuthResult {
   user: UserInfo;
 }
 
-/** 登录方式，决定 LoginSheet / LoginPage 呈现哪套表单 */
-export enum LoginMode {
-  SMS,
-  PASSWORD,
-  EMAIL
+/** 图形验证码。image 是 PNG 的 data URI，可直接喂给 Image 组件 */
+export interface CaptchaInfo {
+  captchaKey: string;
+  image: string;
 }
 
 export const PLATFORM_HUAWEI: string = 'HUAWEI';

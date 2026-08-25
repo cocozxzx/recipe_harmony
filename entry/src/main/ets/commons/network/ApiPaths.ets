@@ -8,8 +8,8 @@ export class ApiPaths {
   static readonly AUTH_SMS_CODE: string = '/auth/sms/code';
   static readonly AUTH_SMS_LOGIN: string = '/auth/sms/login';
   static readonly AUTH_PASSWORD_LOGIN: string = '/auth/password/login';
-  static readonly AUTH_EMAIL_CODE: string = '/auth/email/code';
-  static readonly AUTH_EMAIL_LOGIN: string = '/auth/email/login';
+  static readonly AUTH_CAPTCHA: string = '/auth/captcha';
+  static readonly AUTH_REGISTER: string = '/auth/register';
   static readonly AUTH_REFRESH: string = '/auth/refresh';
   static readonly AUTH_LOGOUT: string = '/auth/logout';
   static readonly AUTH_ACCOUNT: string = '/auth/account';

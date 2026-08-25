@@ -126,7 +126,7 @@ export struct DetailPage {
         .width('100%')
 
       Row({ space: 8 }) {
-        if (this.detail().tagName.length > 0) {
+        if (this.detail()?.tagName?.length > 0) {
           MiniTag({
             text: this.detail().tagName,
             bgColor: $r('app.color.brand_primary_light'),
