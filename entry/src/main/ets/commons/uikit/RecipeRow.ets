@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { RecipeListItem } from '../model/Recipe';
 import { Formatter } from '../utils/Formatter';
 import { CookTimeLabel } from './CookTimeLabel';
@@ -10,17 +11,9 @@ import { NetImage } from './NetImage';
  */
 @ComponentV2
 export struct RecipeRow {
-  @Param item: RecipeListItem = {
-    id: '',
-    name: '',
-    coverImage: '',
-    difficulty: 0,
-    cookTime: 0,
-    favoriteCount: 0,
-    likeCount: 0,
-    tagName: ''
-  };
+  @Param item: RecipeListItem = new RecipeListItem();
   @Param showDivider: boolean = true;
+  @Local pressScale: number = 1.0;
   @Event onTap: (item: RecipeListItem) => void = () => {};
 
   build() {
@@ -28,8 +21,8 @@ export struct RecipeRow {
       Row({ space: 12 }) {
         NetImage({
           url: this.item.coverImage,
-          imgWidth: 104,
-          imgHeight: 78,
+          imgWidth: $r('app.float.img_list_w'),
+          imgHeight: $r('app.float.img_list_h'),
           radius: $r('app.float.radius_md')
         })
 
@@ -55,7 +48,7 @@ export struct RecipeRow {
         .alignItems(HorizontalAlign.Start)
         .justifyContent(FlexAlign.Center)
         .layoutWeight(1)
-        .height(78)
+        .height($r('app.float.img_list_h'))
       }
       .width('100%')
       .alignItems(VerticalAlign.Top)
@@ -69,6 +62,18 @@ export struct RecipeRow {
     }
     .width('100%')
     .padding({ top: $r('app.float.space_md'), bottom: this.showDivider ? 0 : $r('app.float.space_md') })
+    .accessibilityText('食谱')
+    .scale({ x: this.pressScale, y: this.pressScale })
+    .animation({ curve: curves.responsiveSpringMotion(0.55, 0.825) })
+    .onTouch((event?: TouchEvent) => {
+      if (event) {
+        if (event.type === TouchType.Down) {
+          this.pressScale = 0.97;
+        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          this.pressScale = 1.0;
+        }
+      }
+    })
     .onClick(() => this.onTap(this.item))
   }
 
@@ -79,6 +84,7 @@ export struct RecipeRow {
         .width($r('app.float.icon_sm'))
         .height($r('app.float.icon_sm'))
         .fillColor($r('app.color.text_tertiary'))
+        .objectFit(ImageFit.Contain)
       Text(Formatter.count(count))
         .fontSize($r('app.float.font_caption'))
         .fontColor($r('app.color.text_tertiary'))

@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { AiMessage, AiRecipeMatch, AiResultType, AiRole } from '../../../commons/model/Ai';
 import { RecipeListItem } from '../../../commons/model/Recipe';
 import { NavUtil } from '../../../commons/router/NavUtil';
@@ -79,6 +80,10 @@ export struct AiMessageItem {
     }
     .width('100%')
     .alignItems(VerticalAlign.Top)
+    .transition(
+      TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 16 }))
+        .animation({ curve: curves.springMotion(0.55, 0.825) })
+    )
   }
 
   @Builder
@@ -119,6 +124,7 @@ export struct AiMessageItem {
     .padding({ left: $r('app.float.space_md'), right: $r('app.float.space_md') })
     .backgroundColor($r('app.color.bg_surface'))
     .borderRadius($r('app.float.radius_md'))
+    .clip(true)
   }
 
   /** 流式中在末尾补一个光标字符，比单独叠一个动画层简单且不引起重排 */

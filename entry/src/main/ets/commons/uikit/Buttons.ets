@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { Motion } from './Theme';
 
 /** 主按钮：背景 brand_primary，高度 48vp，全宽或最小宽度 120vp */
@@ -32,7 +33,7 @@ export struct PrimaryButton {
     .backgroundColor(this.btnEnabled ? $r('app.color.brand_primary') : $r('app.color.text_disabled'))
     .padding({ left: $r('app.float.space_lg'), right: $r('app.float.space_lg') })
     .enabled(this.btnEnabled && !this.loading)
-    .animation(Motion.standard())
+    .animation({ curve: curves.springMotion(0.55, 0.825) })
     .onClick(() => this.onTap())
   }
 }

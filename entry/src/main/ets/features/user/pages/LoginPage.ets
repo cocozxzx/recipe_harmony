@@ -52,6 +52,7 @@ export struct LoginPage {
         .width($r('app.float.icon_lg'))
         .height($r('app.float.icon_lg'))
         .fillColor($r('app.color.text_primary'))
+        .accessibilityText('返回')
         .onClick(() => NavUtil.pop())
       Row().width($r('app.float.icon_lg'))
     }
@@ -65,8 +66,8 @@ export struct LoginPage {
   headerSection() {
     Column({ space: 8 }) {
       Image($r('app.media.app_icon'))
-        .width(72)
-        .height(72)
+        .width($r('app.float.icon_app'))
+        .height($r('app.float.icon_app'))
         .borderRadius($r('app.float.radius_xl'))
         .backgroundColor($r('app.color.bg_surface'))
         .clip(true)

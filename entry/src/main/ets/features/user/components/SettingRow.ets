@@ -27,10 +27,11 @@ export struct SettingRow {
             .width($r('app.float.icon_sm'))
             .height($r('app.float.icon_sm'))
             .fillColor($r('app.color.text_tertiary'))
+            .objectFit(ImageFit.Contain)
         }
       }
       .width('100%')
-      .height(52)
+      .height($r('app.float.row_height'))
       .alignItems(VerticalAlign.Center)
 
       if (this.showDivider) {
@@ -64,6 +65,7 @@ export struct SettingGroup {
       .width('100%')
       .backgroundColor($r('app.color.bg_surface'))
       .borderRadius($r('app.float.radius_lg'))
+      .clip(true)
     }
     .width('100%')
   }

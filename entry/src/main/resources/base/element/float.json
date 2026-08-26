@@ -11,6 +11,7 @@
     { "name": "radius_md",   "value": "12vp" },
     { "name": "radius_lg",   "value": "16vp" },
     { "name": "radius_xl",   "value": "24vp" },
+    { "name": "radius_circle", "value": "9999vp" },
 
     { "name": "font_caption", "value": "12fp" },
     { "name": "font_body_sm", "value": "13fp" },
@@ -20,14 +21,46 @@
     { "name": "font_title_lg","value": "20fp" },
     { "name": "font_display", "value": "24fp" },
 
+    { "name": "icon_xs", "value": "12vp" },
     { "name": "icon_sm", "value": "16vp" },
     { "name": "icon_md", "value": "20vp" },
     { "name": "icon_lg", "value": "24vp" },
+    { "name": "icon_xl", "value": "40vp" },
+    { "name": "icon_app", "value": "72vp" },
 
     { "name": "button_height", "value": "48vp" },
     { "name": "chip_height",   "value": "28vp" },
     { "name": "bar_height",    "value": "56vp" },
     { "name": "cover_height",  "value": "240vp" },
-    { "name": "card_h_width",  "value": "140vp" }
+    { "name": "card_h_width",  "value": "140vp" },
+
+    { "name": "avatar_sm",    "value": "44vp" },
+    { "name": "avatar_md",    "value": "64vp" },
+    { "name": "avatar_lg",    "value": "88vp" },
+    { "name": "avatar_radius_sm", "value": "22vp" },
+    { "name": "avatar_radius_md", "value": "32vp" },
+    { "name": "avatar_radius_lg", "value": "44vp" },
+
+    { "name": "img_empty",     "value": "160vp" },
+    { "name": "img_history_w", "value": "80vp" },
+    { "name": "img_history_h", "value": "60vp" },
+    { "name": "img_list_w",    "value": "104vp" },
+    { "name": "img_list_h",    "value": "78vp" },
+    { "name": "img_card_h",    "value": "140vp" },
+    { "name": "img_step_h",    "value": "180vp" },
+
+    { "name": "tag_icon",     "value": "44vp" },
+    { "name": "row_height",   "value": "52vp" },
+    { "name": "search_height","value": "44vp" },
+    { "name": "filter_btn_h", "value": "40vp" },
+    { "name": "step_num",     "value": "24vp" },
+    { "name": "swipe_btn_w",  "value": "72vp" },
+    { "name": "action_bar_h", "value": "64vp" },
+    { "name": "input_min_w",  "value": "80vp" },
+    { "name": "empty_btn_w",  "value": "120vp" },
+    { "name": "login_btn_w",  "value": "160vp" },
+    { "name": "chip_close",   "value": "12vp" },
+    { "name": "camera_btn_radius", "value": "14vp" },
+    { "name": "confirm_dialog_radius", "value": "16vp" }
   ]
 }

@@ -21,6 +21,7 @@ export struct SearchBar {
         .width($r('app.float.icon_md'))
         .height($r('app.float.icon_md'))
         .fillColor($r('app.color.text_tertiary'))
+        .objectFit(ImageFit.Contain)
 
       if (this.readOnly) {
         Text(this.text.length > 0 ? this.text : this.placeholder)
@@ -31,7 +32,7 @@ export struct SearchBar {
       } else {
         TextInput({ text: this.text, placeholder: this.placeholder, controller: this.controller })
           .layoutWeight(1)
-          .height(40)
+          .height($r('app.float.filter_btn_h'))
           .padding(0)
           .borderRadius(0)
           .backgroundColor($r('app.color.transparent'))
@@ -48,12 +49,13 @@ export struct SearchBar {
             .width($r('app.float.icon_sm'))
             .height($r('app.float.icon_sm'))
             .fillColor($r('app.color.text_tertiary'))
+            .objectFit(ImageFit.Contain)
             .onClick(() => this.onTextChange(''))
         }
       }
     }
     .width('100%')
-    .height(44)
+    .height($r('app.float.search_height'))
     .padding({ left: $r('app.float.space_md'), right: $r('app.float.space_md') })
     .backgroundColor($r('app.color.bg_sunken'))
     .borderRadius($r('app.float.radius_md'))

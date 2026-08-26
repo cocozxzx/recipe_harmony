@@ -77,22 +77,25 @@ export struct AiPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
   loginGuide() {
     Column({ space: 16 }) {
       Image($r('app.media.ic_ai'))
-        .width(72)
-        .height(72)
+        .width($r('app.float.icon_app'))
+        .height($r('app.float.icon_app'))
         .fillColor($r('app.color.brand_primary'))
+        .accessibilityText('AI助手')
+        .objectFit(ImageFit.Contain)
       Text($r('app.string.ai_login_required'))
         .fontSize($r('app.float.font_body'))
         .fontColor($r('app.color.text_secondary'))
       Button($r('app.string.mine_login_register'))
         .type(ButtonType.Normal)
         .height($r('app.float.button_height'))
-        .constraintSize({ minWidth: 160 })
+        .constraintSize({ minWidth: $r('app.float.login_btn_w') })
         .borderRadius($r('app.float.radius_md'))
         .backgroundColor($r('app.color.brand_primary'))
         .fontColor($r('app.color.text_on_brand'))
@@ -121,6 +124,7 @@ export struct AiPage {
       .padding($r('app.float.space_lg'))
     }
     .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
     .layoutWeight(1)
     .align(Alignment.Top)
   }
@@ -185,7 +189,7 @@ export struct AiPage {
       Button(this.vm.streaming ? $r('app.string.ai_stop') : $r('app.string.ai_send'))
         .type(ButtonType.Normal)
         .height($r('app.float.button_height'))
-        .constraintSize({ minWidth: 80 })
+        .constraintSize({ minWidth: $r('app.float.input_min_w') })
         .borderRadius($r('app.float.radius_md'))
         .backgroundColor(this.vm.streaming ? $r('app.color.bg_sunken') : $r('app.color.brand_primary'))
         .fontColor(this.vm.streaming ? $r('app.color.text_secondary') : $r('app.color.text_on_brand'))

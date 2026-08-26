@@ -18,80 +18,118 @@ import { ProfileEditPage } from '../features/user/pages/ProfileEditPage';
 import { RegisterPage } from '../features/user/pages/RegisterPage';
 import { WebDocPage } from '../features/user/pages/WebDocPage';
 import { MyListSource } from '../features/user/viewmodel/MyRecipeListViewModel';
+import { JsonSafe } from '../commons/utils/JsonSafe';
 
-/**
- * NavDestination 注册表。
- *
- * 这是全项目唯一一处能同时 import 多个 feature 的地方——
- * 它属于 entry 层，依赖方向是 entry → features，没有破坏单向依赖。
- * feature 内部跳转只用 RouteNames 里的字符串，不 import 彼此的页面。
- */
+function toRecipeDetailParam(p: object): RecipeDetailParam {
+  const src: Record<string, Object> = p as Record<string, Object>;
+  const param: RecipeDetailParam = new RecipeDetailParam();
+  param.recipeId = JsonSafe.string(src, 'recipeId');
+  return param;
+}
+
+function toSearchParam(p: object): SearchParam {
+  const src: Record<string, Object> = p as Record<string, Object>;
+  const param: SearchParam = new SearchParam();
+  param.keyword = JsonSafe.string(src, 'keyword');
+  return param;
+}
+
+function toRecipeListParam(p: object): RecipeListParam {
+  const src: Record<string, Object> = p as Record<string, Object>;
+  const param: RecipeListParam = new RecipeListParam();
+  param.title = JsonSafe.string(src, 'title');
+  param.tagId = JsonSafe.string(src, 'tagId');
+  param.sort = JsonSafe.string(src, 'sort');
+  return param;
+}
+
+function toWebDocParam(p: object): WebDocParam {
+  const src: Record<string, Object> = p as Record<string, Object>;
+  const param: WebDocParam = new WebDocParam();
+  param.title = JsonSafe.string(src, 'title');
+  param.docKey = JsonSafe.string(src, 'docKey');
+  return param;
+}
+
 @Builder
 export function routeMap(name: string, param: object) {
   if (name === RouteNames.RECIPE_DETAIL) {
     NavDestination() {
-      DetailPage({ param: param as RecipeDetailParam })
+      DetailPage({ param: toRecipeDetailParam(param) })
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.SEARCH) {
     NavDestination() {
-      SearchPage({ param: param as SearchParam })
+      SearchPage({ param: toSearchParam(param) })
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_BOTTOM)
   } else if (name === RouteNames.RECIPE_LIST) {
     NavDestination() {
-      RecipeListPage({ param: param as RecipeListParam })
+      RecipeListPage({ param: toRecipeListParam(param) })
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.LOGIN) {
     NavDestination() {
       LoginPage()
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_BOTTOM)
   } else if (name === RouteNames.REGISTER) {
     NavDestination() {
       RegisterPage()
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_BOTTOM)
   } else if (name === RouteNames.PROFILE_EDIT) {
     NavDestination() {
       ProfileEditPage()
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.MY_FAVORITES) {
     NavDestination() {
       MyRecipeListPage({ source: MyListSource.FAVORITES })
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.MY_LIKES) {
     NavDestination() {
       MyRecipeListPage({ source: MyListSource.LIKES })
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.MY_AI_RECIPES) {
     NavDestination() {
       MyAiRecipesPage()
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.BROWSE_HISTORY) {
     NavDestination() {
       BrowseHistoryPage()
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.ACCOUNT) {
     NavDestination() {
       AccountPage()
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.ABOUT) {
     NavDestination() {
       AboutPage()
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   } else if (name === RouteNames.WEB_DOC) {
     NavDestination() {
-      WebDocPage({ param: param as WebDocParam })
+      WebDocPage({ param: toWebDocParam(param) })
     }
     .hideTitleBar(true)
+    .systemTransition(NavigationSystemTransitionType.SLIDE_RIGHT)
   }
 }

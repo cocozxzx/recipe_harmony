@@ -21,29 +21,29 @@ export class RouteNames {
   static readonly AI_RECIPE_DETAIL: string = 'aiRecipeDetail';
 }
 
-/** 页面参数一律用类型化对象，不传裸 Map。 */
+/** 页面参数一律用类型化 class，不传裸 Map。 */
 
-export interface RecipeDetailParam {
-  recipeId: string;
+export class RecipeDetailParam {
+  recipeId: string = '';
 }
 
-export interface AiRecipeDetailParam {
-  aiRecipeId: string;
+export class AiRecipeDetailParam {
+  aiRecipeId: string = '';
 }
 
-export interface RecipeListParam {
-  title: string;
-  tagId: string;
-  sort: string;        // RecipeSort 的字符串值
+export class RecipeListParam {
+  title: string = '';
+  tagId: string = '';
+  sort: string = '';
 }
 
-export interface SearchParam {
-  keyword: string;
+export class SearchParam {
+  keyword: string = '';
 }
 
-export interface WebDocParam {
-  title: string;
-  docKey: string;      // 'agreement' | 'privacy'
+export class WebDocParam {
+  title: string = '';
+  docKey: string = '';
 }
 
 export const DOC_AGREEMENT: string = 'agreement';

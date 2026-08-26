@@ -1,18 +1,13 @@
 import { RecipeDetail, RecipeListItem, RecipeQuery, RecipeTag } from '../model/Recipe';
 import { ApiPaths } from '../network/ApiPaths';
 import { HttpClient, QueryParams } from '../network/HttpClient';
-import { CountResultDto, EmptyDto, PageResultDto } from '../network/dto/Common';
+import { CountResultDto, PageResultDto } from '../network/dto/Common';
+import { JsonSafe } from '../utils/JsonSafe';
 
-/**
- * 食谱内容的数据来源。
- *
- * 首页、分类、搜索、"我的收藏"都要查同一个 `GET /recipes`，
- * 若按 feature 各写一份就得跨 feature import（违反依赖方向），
- * 因此这层下沉到 commons，各 feature 的 Repository 只做自己独有的聚合。
- */
 export class RecipeRepository {
   static async getTags(): Promise<RecipeTag[]> {
-    return HttpClient.get<RecipeTag[]>(ApiPaths.TAGS);
+    const raw: Record<string, Object>[] = await HttpClient.get<Record<string, Object>[]>(ApiPaths.TAGS);
+    return RecipeTag.fromJsonArray(raw);
   }
 
   static async getRecipes(query: RecipeQuery): Promise<PageResultDto<RecipeListItem>> {
@@ -27,11 +22,13 @@ export class RecipeRepository {
     params.putPositive('maxCookTime', query.maxCookTime);
     params.putNumber('page', query.page);
     params.putNumber('size', query.size);
-    return HttpClient.get<PageResultDto<RecipeListItem>>(ApiPaths.RECIPES, params);
+    const raw: PageResultDto<Record<string, Object>> = await HttpClient.get<PageResultDto<Record<string, Object>>>(ApiPaths.RECIPES, params);
+    return RecipeRepository.toRecipeListPage(raw);
   }
 
   static async getDetail(id: string): Promise<RecipeDetail> {
-    return HttpClient.get<RecipeDetail>(ApiPaths.recipeDetail(id));
+    const raw: Record<string, Object> = await HttpClient.get<Record<string, Object>>(ApiPaths.recipeDetail(id));
+    return RecipeDetail.fromJson(raw);
   }
 
   // ---------- 收藏与点赞 ----------
@@ -67,6 +64,40 @@ export class RecipeRepository {
     const params: QueryParams = new QueryParams();
     params.putNumber('page', page);
     params.putNumber('size', size);
-    return HttpClient.get<PageResultDto<RecipeListItem>>(path, params);
+    const raw: PageResultDto<Record<string, Object>> = await HttpClient.get<PageResultDto<Record<string, Object>>>(path, params);
+    return RecipeRepository.toRecipeListPage(raw);
+  }
+
+  static toRecipeListPage(raw: PageResultDto<Record<string, Object>>): PageResultDto<RecipeListItem> {
+    const list: RecipeListItem[] = RecipeListItem.fromJsonArray(
+      Array.isArray(raw.list) ? raw.list as Record<string, Object>[] : []);
+    return {
+      list: list,
+      total: raw.total,
+      page: raw.page,
+      size: raw.size,
+      hasMore: raw.hasMore
+    };
+  }
+
+  static toRecipeListPageFromRecord(raw: Record<string, Object>): PageResultDto<RecipeListItem> {
+    const list: RecipeListItem[] = RecipeListItem.fromJsonArray(JsonSafe.arr(raw, 'list'));
+    return {
+      list: list,
+      total: JsonSafe.number(raw, 'total'),
+      page: JsonSafe.number(raw, 'page', 1),
+      size: JsonSafe.number(raw, 'size', 20),
+      hasMore: JsonSafe.boolean(raw, 'hasMore')
+    };
+  }
+
+  static emptyPage(): PageResultDto<RecipeListItem> {
+    return {
+      list: [],
+      total: 0,
+      page: 1,
+      size: 20,
+      hasMore: false
+    };
   }
 }

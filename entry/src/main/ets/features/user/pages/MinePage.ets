@@ -1,8 +1,7 @@
 import { AuthService } from '../../../commons/auth/AuthService';
-import { UserInfo } from '../../../commons/model/User';
 import { NavUtil } from '../../../commons/router/NavUtil';
 import { DOC_AGREEMENT, DOC_PRIVACY, RouteNames, WebDocParam } from '../../../commons/router/RouteNames';
-import { ConfirmDialog } from '../../../commons/uikit/ConfirmDialog';
+import { ConfirmDialog, ConfirmParams } from '../../../commons/uikit/ConfirmDialog';
 import { NetImage } from '../../../commons/uikit/NetImage';
 import { Formatter } from '../../../commons/utils/Formatter';
 import { Strings } from '../../../commons/utils/Strings';
@@ -17,16 +16,6 @@ import { MineViewModel } from '../viewmodel/MineViewModel';
 export struct MinePage {
   @Local vm: MineViewModel = new MineViewModel();
   @Local auth: AuthService = AuthService.get();
-
-  private logoutDialog: CustomDialogController = new CustomDialogController({
-    builder: ConfirmDialog({
-      title: $r('app.string.mine_logout'),
-      desc: $r('app.string.mine_logout_confirm'),
-      onConfirm: () => this.vm.logout()
-    }),
-    alignment: DialogAlignment.Center,
-    cornerRadius: 16
-  });
 
   aboutToAppear(): void {
     if (this.auth.isLogin) {
@@ -45,14 +34,15 @@ export struct MinePage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
   guestView() {
     Column({ space: 20 }) {
       Image($r('app.media.img_empty'))
-        .width(160)
-        .height(160)
+        .width($r('app.float.img_empty'))
+        .height($r('app.float.img_empty'))
         .objectFit(ImageFit.Contain)
       Text($r('app.string.mine_guest_slogan'))
         .fontSize($r('app.float.font_body'))
@@ -98,7 +88,13 @@ export struct MinePage {
           .backgroundColor($r('app.color.bg_surface'))
           .fontColor($r('app.color.state_error'))
           .fontSize($r('app.float.font_title_sm'))
-          .onClick(() => this.logoutDialog.open())
+          .onClick(() => {
+            const params: ConfirmParams = new ConfirmParams();
+            params.title = $r('app.string.mine_logout');
+            params.desc = $r('app.string.mine_logout_confirm');
+            params.onConfirm = () => this.vm.logout();
+            ConfirmDialog.show(params);
+          })
       }
       .width('100%')
       .padding({
@@ -109,6 +105,7 @@ export struct MinePage {
       })
     }
     .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
     .width('100%')
     .height('100%')
     .align(Alignment.Top)
@@ -118,21 +115,21 @@ export struct MinePage {
   header() {
     Row({ space: 16 }) {
       NetImage({
-        url: this.user().avatar,
-        imgWidth: 64,
-        imgHeight: 64,
-        radius: 32
+        url: this.auth.getUserOrDefault().avatar,
+        imgWidth: $r('app.float.avatar_md'),
+        imgHeight: $r('app.float.avatar_md'),
+        radius: $r('app.float.avatar_radius_md')
       })
 
       Column({ space: 8 }) {
-        Text(this.user().nickname)
+        Text(this.auth.getUserOrDefault().nickname)
           .fontSize($r('app.float.font_title'))
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
 
         Row({ space: 16 }) {
-          this.countLabel($r('app.string.mine_favorite_count'), this.user().favoriteCount)
-          this.countLabel($r('app.string.mine_like_count'), this.user().likeCount)
+          this.countLabel($r('app.string.mine_favorite_count'), this.auth.getUserOrDefault().favoriteCount)
+          this.countLabel($r('app.string.mine_like_count'), this.auth.getUserOrDefault().likeCount)
         }
       }
       .alignItems(HorizontalAlign.Start)
@@ -142,11 +139,14 @@ export struct MinePage {
         .width($r('app.float.icon_sm'))
         .height($r('app.float.icon_sm'))
         .fillColor($r('app.color.text_tertiary'))
+        .objectFit(ImageFit.Contain)
     }
     .width('100%')
     .padding($r('app.float.space_lg'))
     .backgroundColor($r('app.color.bg_surface'))
     .borderRadius($r('app.float.radius_lg'))
+    .clip(true)
+    .accessibilityText('编辑资料')
     .onClick(() => NavUtil.push(RouteNames.PROFILE_EDIT))
   }
 
@@ -208,14 +208,6 @@ export struct MinePage {
       showDivider: false,
       onTap: () => this.openDoc(DOC_PRIVACY, $r('app.string.mine_privacy'))
     })
-  }
-
-  private user(): UserInfo {
-    const fallback: UserInfo = {
-      id: '', nickname: '', avatar: '', phone: '', email: '',
-      hasPassword: false, favoriteCount: 0, likeCount: 0, bindings: []
-    };
-    return this.auth.user !== null && this.auth.user !== undefined ? this.auth.user : fallback;
   }
 
   private openDoc(docKey: string, title: Resource): void {

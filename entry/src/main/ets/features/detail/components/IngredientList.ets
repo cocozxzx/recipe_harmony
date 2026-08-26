@@ -50,6 +50,7 @@ export struct IngredientList {
     .padding({ left: $r('app.float.space_md'), right: $r('app.float.space_md') })
     .backgroundColor($r('app.color.bg_surface'))
     .borderRadius($r('app.float.radius_md'))
+    .clip(true)
   }
 
   private amountText(item: RecipeIngredient): string {

@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { RecipeListItem } from '../model/Recipe';
 import { Formatter } from '../utils/Formatter';
 import { CookTimeLabel } from './CookTimeLabel';
@@ -11,17 +12,9 @@ import { Shadows } from './Theme';
  */
 @ComponentV2
 export struct RecipeCard {
-  @Param item: RecipeListItem = {
-    id: '',
-    name: '',
-    coverImage: '',
-    difficulty: 0,
-    cookTime: 0,
-    favoriteCount: 0,
-    likeCount: 0,
-    tagName: ''
-  };
+  @Param item: RecipeListItem = new RecipeListItem();
   @Param imageHeight: Length = 140;
+  @Local pressScale: number = 1.0;
   @Event onTap: (item: RecipeListItem) => void = () => {};
 
   build() {
@@ -61,7 +54,24 @@ export struct RecipeCard {
     .padding($r('app.float.space_md'))
     .backgroundColor($r('app.color.bg_surface'))
     .borderRadius($r('app.float.radius_lg'))
+    .clip(true)
     .shadow(Shadows.card)
+    .accessibilityText('食谱卡片')
+    .scale({ x: this.pressScale, y: this.pressScale })
+    .animation({ curve: curves.springMotion(0.3, 0.6) })
+    .gesture(
+      LongPressGesture()
+        .onAction(() => {})
+    )
+    .onTouch((event?: TouchEvent) => {
+      if (event) {
+        if (event.type === TouchType.Down) {
+          this.pressScale = 0.97;
+        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          this.pressScale = 1.0;
+        }
+      }
+    })
     .onClick(() => this.onTap(this.item))
   }
 
@@ -72,6 +82,7 @@ export struct RecipeCard {
         .width($r('app.float.icon_sm'))
         .height($r('app.float.icon_sm'))
         .fillColor($r('app.color.text_tertiary'))
+        .objectFit(ImageFit.Contain)
       Text(Formatter.count(count))
         .fontSize($r('app.float.font_caption'))
         .fontColor($r('app.color.text_tertiary'))

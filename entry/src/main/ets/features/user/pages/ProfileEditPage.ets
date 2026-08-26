@@ -23,18 +23,20 @@ export struct ProfileEditPage {
           Stack({ alignContent: Alignment.BottomEnd }) {
             NetImage({
               url: this.vm.avatar,
-              imgWidth: 88,
-              imgHeight: 88,
-              radius: 44
+              imgWidth: $r('app.float.avatar_lg'),
+              imgHeight: $r('app.float.avatar_lg'),
+              radius: $r('app.float.avatar_radius_lg')
             })
             Image($r('app.media.ic_camera'))
               .width($r('app.float.icon_md'))
               .height($r('app.float.icon_md'))
               .fillColor($r('app.color.text_on_brand'))
               .padding(4)
-              .borderRadius(14)
+              .borderRadius($r('app.float.camera_btn_radius'))
               .backgroundColor($r('app.color.brand_primary'))
+              .accessibilityText('拍照')
           }
+          .accessibilityText('更换头像')
           .onClick(() => {
             const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
             this.vm.pickAndUploadAvatar(context);
@@ -76,6 +78,7 @@ export struct ProfileEditPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
   }
 
   private async save(): Promise<void> {

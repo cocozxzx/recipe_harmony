@@ -8,16 +8,7 @@ import { NetImage } from './NetImage';
  */
 @ComponentV2
 export struct RecipeCardH {
-  @Param item: RecipeListItem = {
-    id: '',
-    name: '',
-    coverImage: '',
-    difficulty: 0,
-    cookTime: 0,
-    favoriteCount: 0,
-    likeCount: 0,
-    tagName: ''
-  };
+  @Param item: RecipeListItem = new RecipeListItem();
   @Event onTap: (item: RecipeListItem) => void = () => {};
 
   build() {
@@ -25,7 +16,7 @@ export struct RecipeCardH {
       NetImage({
         url: this.item.coverImage,
         imgWidth: '100%',
-        imgHeight: 104,
+        imgHeight: $r('app.float.img_card_h'),
         radius: $r('app.float.radius_md')
       })
       Text(this.item.name)

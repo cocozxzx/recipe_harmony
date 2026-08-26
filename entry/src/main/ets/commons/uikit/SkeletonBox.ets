@@ -1,9 +1,6 @@
+import { curves } from '@kit.ArkUI';
 import { Motion } from './Theme';
 
-/**
- * 骨架屏基础块。微光循环 1200ms。
- * 组合使用即可拼出各页面的骨架，不必为每个页面单独画一套。
- */
 @ComponentV2
 export struct SkeletonBox {
   @Param boxWidth: Length = '100%';
@@ -18,7 +15,7 @@ export struct SkeletonBox {
   private startShine(): void {
     animateTo({
       duration: Motion.skeletonDuration,
-      curve: Curve.EaseInOut,
+      curve: curves.springMotion(0.55, 0.825),
       iterations: -1,
       playMode: PlayMode.Alternate
     }, () => {
@@ -33,5 +30,6 @@ export struct SkeletonBox {
       .borderRadius(this.radius)
       .backgroundColor($r('app.color.skeleton_base'))
       .opacity(0.5 + this.shine * 0.5)
+      .transition(TransitionEffect.OPACITY)
   }
 }

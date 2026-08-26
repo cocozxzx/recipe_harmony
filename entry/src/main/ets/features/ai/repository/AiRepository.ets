@@ -5,15 +5,7 @@ import { SseClient, SseHandler } from '../../../commons/network/SseClient';
 import { EmptyDto, PageResultDto } from '../../../commons/network/dto/Common';
 import { AiChatReq } from '../../../commons/network/dto/Requests';
 
-/**
- * AI 能力的数据来源。
- * 对话走 SSE 流式（`POST /ai/chat`），其余是普通 REST。
- */
 export class AiRepository {
-  /**
-   * 发起一轮对话。返回 SseClient 以便调用方随时取消。
-   * 事件解析在 ViewModel 里做——那里才知道当前消息是哪一条。
-   */
   static chat(message: string, handler: SseHandler): SseClient {
     const client: SseClient = new SseClient(handler);
     const body: AiChatReq = { message: message };
@@ -22,7 +14,8 @@ export class AiRepository {
   }
 
   static async getGeneratedRecipe(id: string): Promise<AiGeneratedRecipe> {
-    return HttpClient.get<AiGeneratedRecipe>(ApiPaths.aiRecipeDetail(id));
+    const raw: Record<string, Object> = await HttpClient.get<Record<string, Object>>(ApiPaths.aiRecipeDetail(id));
+    return AiGeneratedRecipe.fromJson(raw);
   }
 
   static async favorite(id: string): Promise<void> {
@@ -37,6 +30,15 @@ export class AiRepository {
     const params: QueryParams = new QueryParams();
     params.putNumber('page', page);
     params.putNumber('size', size);
-    return HttpClient.get<PageResultDto<AiGeneratedRecipe>>(ApiPaths.ME_AI_RECIPES, params);
+    const raw: PageResultDto<Record<string, Object>> = await HttpClient.get<PageResultDto<Record<string, Object>>>(ApiPaths.ME_AI_RECIPES, params);
+    const list: AiGeneratedRecipe[] = AiGeneratedRecipe.fromJsonArray(
+      Array.isArray(raw.list) ? raw.list as Record<string, Object>[] : []);
+    return {
+      list: list,
+      total: raw.total,
+      page: raw.page,
+      size: raw.size,
+      hasMore: raw.hasMore
+    };
   }
 }

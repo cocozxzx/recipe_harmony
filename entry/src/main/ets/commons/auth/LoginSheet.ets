@@ -47,6 +47,7 @@ export struct LoginSheet {
           .width($r('app.float.icon_lg'))
           .height($r('app.float.icon_lg'))
           .fillColor($r('app.color.text_tertiary'))
+          .objectFit(ImageFit.Contain)
           .onClick(() => AuthService.get().onLoginCancelled())
       }
       .width('100%')

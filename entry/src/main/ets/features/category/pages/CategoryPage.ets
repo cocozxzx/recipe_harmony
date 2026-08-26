@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { RecipeListItem, RecipeSort, RecipeTag } from '../../../commons/model/Recipe';
 import { NavUtil } from '../../../commons/router/NavUtil';
 import { RecipeDetailParam, RouteNames } from '../../../commons/router/RouteNames';
@@ -35,6 +36,10 @@ export struct CategoryPage {
       if (this.vm.filterExpanded) {
         FilterPanel({ vm: this.vm })
           .margin({ left: $r('app.float.space_lg'), right: $r('app.float.space_lg') })
+          .transition(
+            TransitionEffect.SLIDE.combine(TransitionEffect.OPACITY)
+              .animation({ curve: curves.springMotion(0.55, 0.825) })
+          )
       }
 
       StateView({
@@ -49,6 +54,7 @@ export struct CategoryPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -72,6 +78,7 @@ export struct CategoryPage {
     }
     .scrollable(ScrollDirection.Horizontal)
     .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
     .width('100%')
     .padding({ top: $r('app.float.space_md'), bottom: $r('app.float.space_md') })
     .align(Alignment.Start)
@@ -95,8 +102,10 @@ export struct CategoryPage {
           .width($r('app.float.icon_sm'))
           .height($r('app.float.icon_sm'))
           .rotate({ angle: this.vm.filterExpanded ? -90 : 90 })
+          .animation({ curve: curves.springMotion(0.3, 0.6) })
           .fillColor(this.hasFilter() ? $r('app.color.brand_primary') : $r('app.color.text_tertiary'))
       }
+      .accessibilityText('筛选')
       .onClick(() => this.vm.toggleFilter())
     }
     .width('100%')

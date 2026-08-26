@@ -39,6 +39,7 @@ export struct WebDocPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -52,6 +53,7 @@ export struct WebDocPage {
         .padding($r('app.float.space_lg'))
     }
     .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
     .width('100%')
     .height('100%')
     .align(Alignment.Top)

@@ -2,7 +2,6 @@ import { PageState, PageStatus } from '../../../commons/model/PageState';
 import { RecipeListItem, RecipeQuery, RecipeSort } from '../../../commons/model/Recipe';
 import { readableMessage } from '../../../commons/network/Errors';
 import { PageResultDto } from '../../../commons/network/dto/Common';
-import { HomeDataDto } from '../../../commons/network/dto/HomeDto';
 import { ApiPaths } from '../../../commons/network/ApiPaths';
 import { HttpClient } from '../../../commons/network/HttpClient';
 import { RecipeRepository } from '../../../commons/repository/RecipeRepository';
@@ -10,6 +9,7 @@ import { HistoryStore } from '../../../commons/storage/HistoryStore';
 import { LazyDataSource } from '../../../commons/uikit/LazyDataSource';
 import { LoadMoreStatus } from '../../../commons/uikit/LoadMoreFooter';
 import { Logger } from '../../../commons/utils/Logger';
+import { JsonSafe } from '../../../commons/utils/JsonSafe';
 
 const TAG: string = 'SearchViewModel';
 const PAGE_SIZE: number = 20;
@@ -43,8 +43,8 @@ export class SearchViewModel {
 
   private async loadHot(): Promise<void> {
     try {
-      const data: HomeDataDto = await HttpClient.get<HomeDataDto>(ApiPaths.HOME);
-      this.hotRecipes = data.hotRecipes;
+      const raw: Record<string, Object> = await HttpClient.get<Record<string, Object>>(ApiPaths.HOME);
+      this.hotRecipes = RecipeListItem.fromJsonArray(JsonSafe.arr(raw, 'hotRecipes'));
     } catch (e) {
       Logger.w(TAG, 'load hot failed', e);
     }

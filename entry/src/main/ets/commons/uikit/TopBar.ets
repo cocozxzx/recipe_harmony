@@ -18,6 +18,8 @@ export struct TopBar {
           .width($r('app.float.icon_lg'))
           .height($r('app.float.icon_lg'))
           .fillColor($r('app.color.text_primary'))
+          .objectFit(ImageFit.Contain)
+          .accessibilityText('返回')
           .onClick(() => NavUtil.pop())
       } else {
         Row().width($r('app.float.icon_lg'))
@@ -37,6 +39,8 @@ export struct TopBar {
           .width($r('app.float.icon_lg'))
           .height($r('app.float.icon_lg'))
           .fillColor($r('app.color.text_secondary'))
+          .objectFit(ImageFit.Contain)
+          .accessibilityText('操作')
           .onClick(() => this.onAction())
       } else {
         Row().width($r('app.float.icon_lg'))

@@ -2,31 +2,17 @@ import { PageState } from '../../../commons/model/PageState';
 import { NavUtil } from '../../../commons/router/NavUtil';
 import { RecipeDetailParam, RouteNames } from '../../../commons/router/RouteNames';
 import { BrowseHistoryItem, HistoryStore } from '../../../commons/storage/HistoryStore';
-import { ConfirmDialog } from '../../../commons/uikit/ConfirmDialog';
+import { ConfirmDialog, ConfirmParams } from '../../../commons/uikit/ConfirmDialog';
+import { LazyDataSource } from '../../../commons/uikit/LazyDataSource';
 import { NetImage } from '../../../commons/uikit/NetImage';
 import { StateView } from '../../../commons/uikit/StateView';
 import { TopBar } from '../../../commons/uikit/TopBar';
 import { Formatter } from '../../../commons/utils/Formatter';
 
-/**
- * 浏览历史。
- * 只存本地（preferences），不建后端表——第一期只有鸿蒙一个端，
- * 等后续做安卓/小程序需要跨端同步时再加表也不晚。
- */
 @ComponentV2
 export struct BrowseHistoryPage {
-  @Local items: BrowseHistoryItem[] = [];
   @Local state: PageState = new PageState();
-
-  private clearDialog: CustomDialogController = new CustomDialogController({
-    builder: ConfirmDialog({
-      title: $r('app.string.history_title'),
-      desc: $r('app.string.history_clear_confirm'),
-      onConfirm: () => this.clear()
-    }),
-    alignment: DialogAlignment.Center,
-    cornerRadius: 16
-  });
+  @Local dataSource: LazyDataSource<BrowseHistoryItem> = new LazyDataSource();
 
   aboutToAppear(): void {
     this.load();
@@ -37,7 +23,13 @@ export struct BrowseHistoryPage {
       TopBar({
         title: $r('app.string.history_title'),
         actionIcon: $r('app.media.ic_delete'),
-        onAction: (): void => { this.clearDialog.open(); }
+        onAction: (): void => {
+          const params: ConfirmParams = new ConfirmParams();
+          params.title = $r('app.string.history_title');
+          params.desc = $r('app.string.history_clear_confirm');
+          params.onConfirm = () => this.clear();
+          ConfirmDialog.show(params);
+        }
       })
 
       StateView({
@@ -52,18 +44,19 @@ export struct BrowseHistoryPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
   listView() {
     List() {
-      ForEach(this.items, (item: BrowseHistoryItem) => {
+      LazyForEach(this.dataSource, (item: BrowseHistoryItem) => {
         ListItem() {
           Row({ space: 12 }) {
             NetImage({
               url: item.coverImage,
-              imgWidth: 80,
-              imgHeight: 60,
+              imgWidth: $r('app.float.img_history_w'),
+              imgHeight: $r('app.float.img_history_h'),
               radius: $r('app.float.radius_md')
             })
             Column({ space: 6 }) {
@@ -95,6 +88,8 @@ export struct BrowseHistoryPage {
     .padding({ left: $r('app.float.space_lg'), right: $r('app.float.space_lg') })
     .divider({ strokeWidth: 1, color: $r('app.color.divider') })
     .scrollBar(BarState.Off)
+    .cachedCount(5)
+    .edgeEffect(EdgeEffect.Spring)
   }
 
   @Builder
@@ -102,7 +97,7 @@ export struct BrowseHistoryPage {
     Text($r('app.string.common_clear'))
       .fontSize($r('app.float.font_body_sm'))
       .fontColor($r('app.color.text_on_brand'))
-      .width(72)
+      .width($r('app.float.swipe_btn_w'))
       .height('100%')
       .textAlign(TextAlign.Center)
       .backgroundColor($r('app.color.state_error'))
@@ -111,18 +106,20 @@ export struct BrowseHistoryPage {
 
   private async load(): Promise<void> {
     this.state.loading();
-    this.items = await HistoryStore.getBrowseHistory();
-    this.state.success(this.items.length > 0);
+    const items: BrowseHistoryItem[] = await HistoryStore.getBrowseHistory();
+    this.dataSource.reset(items);
+    this.state.success(items.length > 0);
   }
 
   private async remove(id: string): Promise<void> {
-    this.items = await HistoryStore.removeBrowseHistory(id);
-    this.state.success(this.items.length > 0);
+    const next: BrowseHistoryItem[] = await HistoryStore.removeBrowseHistory(id);
+    this.dataSource.reset(next);
+    this.state.success(next.length > 0);
   }
 
   private async clear(): Promise<void> {
     await HistoryStore.clearBrowseHistory();
-    this.items = [];
+    this.dataSource.clear();
     this.state.success(false);
   }
 }

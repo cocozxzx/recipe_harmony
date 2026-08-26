@@ -50,6 +50,7 @@ export struct SearchPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -111,9 +112,10 @@ export struct SearchPage {
                     .fontSize($r('app.float.font_body_sm'))
                     .fontColor($r('app.color.text_secondary'))
                   Image($r('app.media.ic_close'))
-                    .width(12)
-                    .height(12)
+                    .width($r('app.float.chip_close'))
+                    .height($r('app.float.chip_close'))
                     .fillColor($r('app.color.text_tertiary'))
+                    .accessibilityText('删除')
                     .onClick(() => this.vm.removeHistory(keyword))
                 }
                 .height($r('app.float.chip_height'))
@@ -146,6 +148,7 @@ export struct SearchPage {
       .padding({ left: $r('app.float.space_lg'), right: $r('app.float.space_lg') })
     }
     .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
     .layoutWeight(1)
     .align(Alignment.Top)
   }

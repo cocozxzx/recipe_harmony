@@ -63,7 +63,7 @@ export struct FilterPanel {
         Button($r('app.string.common_reset'))
           .type(ButtonType.Normal)
           .layoutWeight(1)
-          .height(40)
+          .height($r('app.float.filter_btn_h'))
           .borderRadius($r('app.float.radius_md'))
           .backgroundColor($r('app.color.bg_sunken'))
           .fontColor($r('app.color.text_secondary'))
@@ -73,7 +73,7 @@ export struct FilterPanel {
         Button($r('app.string.common_confirm'))
           .type(ButtonType.Normal)
           .layoutWeight(1)
-          .height(40)
+          .height($r('app.float.filter_btn_h'))
           .borderRadius($r('app.float.radius_md'))
           .backgroundColor($r('app.color.brand_primary'))
           .fontColor($r('app.color.text_on_brand'))
@@ -86,6 +86,7 @@ export struct FilterPanel {
     .padding($r('app.float.space_lg'))
     .backgroundColor($r('app.color.bg_surface'))
     .borderRadius($r('app.float.radius_lg'))
+    .clip(true)
   }
 
   /** 难度用星号表示，与卡片上的星级图标保持同一套语义 */

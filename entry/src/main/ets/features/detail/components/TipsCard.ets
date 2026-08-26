@@ -32,5 +32,6 @@ export struct TipsCard {
     .padding($r('app.float.space_lg'))
     .backgroundColor($r('app.color.accent_light'))
     .borderRadius($r('app.float.radius_md'))
+    .clip(true)
   }
 }

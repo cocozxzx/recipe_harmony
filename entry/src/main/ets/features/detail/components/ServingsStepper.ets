@@ -18,7 +18,7 @@ export struct ServingsStepper {
         .layoutWeight(1)
 
       Row({ space: 12 }) {
-        this.stepButton($r('app.media.ic_minus'), this.canDecrease, () => this.onDecrease())
+        this.stepButton($r('app.media.ic_minus'), this.canDecrease, () => this.onDecrease(), '减少份数')
 
         Text() {
           Span(this.servings.toString())
@@ -30,7 +30,7 @@ export struct ServingsStepper {
         .constraintSize({ minWidth: 44 })
         .textAlign(TextAlign.Center)
 
-        this.stepButton($r('app.media.ic_plus'), this.canIncrease, () => this.onIncrease())
+        this.stepButton($r('app.media.ic_plus'), this.canIncrease, () => this.onIncrease(), '增加份数')
       }
       .alignItems(VerticalAlign.Center)
     }
@@ -38,10 +38,11 @@ export struct ServingsStepper {
     .padding($r('app.float.space_md'))
     .backgroundColor($r('app.color.bg_surface'))
     .borderRadius($r('app.float.radius_md'))
+    .clip(true)
   }
 
   @Builder
-  stepButton(icon: Resource, enabled: boolean, action: () => void) {
+  stepButton(icon: Resource, enabled: boolean, action: () => void, accessibilityLabel: string) {
     Image(icon)
       .width($r('app.float.icon_md'))
       .height($r('app.float.icon_md'))
@@ -49,6 +50,7 @@ export struct ServingsStepper {
       .padding(6)
       .borderRadius($r('app.float.radius_sm'))
       .backgroundColor($r('app.color.bg_sunken'))
+      .accessibilityText(accessibilityLabel)
       .enabled(enabled)
       .onClick(() => action())
   }

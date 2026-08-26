@@ -33,16 +33,8 @@ export struct DesignPreview {
   @Local chipSelected: boolean = true;
   @Local previewStatus: PageStatus = PageStatus.EMPTY;
 
-  private readonly sampleItem: RecipeListItem = {
-    id: 'preview-1',
-    name: '番茄炒蛋盖浇饭',
-    coverImage: '',
-    difficulty: 2,
-    cookTime: 20,
-    favoriteCount: 1280,
-    likeCount: 342,
-    tagName: '家常菜'
-  };
+  private readonly sampleItem: RecipeListItem =
+    RecipeListItem.create('preview-1', '番茄炒蛋盖浇饭', '', 2, 20, 1280, 342, '家常菜');
 
   private readonly colors: ColorSpec[] = [
     { name: 'brand_primary', value: $r('app.color.brand_primary') },
@@ -102,7 +94,7 @@ export struct DesignPreview {
 
         SectionHeader({ title: '卡片' })
         Row({ space: 12 }) {
-          RecipeCard({ item: this.sampleItem }).width(160)
+           RecipeCard({ item: this.sampleItem }).width($r('app.float.img_empty'))
           RecipeCardH({ item: this.sampleItem })
         }
         RecipeRow({ item: this.sampleItem })
@@ -153,7 +145,7 @@ export struct DesignPreview {
       ForEach(this.colors, (spec: ColorSpec) => {
         Column({ space: 4 }) {
           Row()
-            .width(72)
+            .width($r('app.float.icon_app'))
             .height(48)
             .borderRadius($r('app.float.radius_sm'))
             .backgroundColor(spec.value)
@@ -162,7 +154,7 @@ export struct DesignPreview {
           Text(spec.name)
             .fontSize(10)
             .fontColor($r('app.color.text_tertiary'))
-            .width(72)
+            .width($r('app.float.icon_app'))
             .maxLines(2)
         }
         .margin({ right: 8, bottom: 8 })
@@ -208,8 +200,8 @@ export struct DesignPreview {
   shapeBox(label: string, radius: Resource) {
     Column({ space: 4 }) {
       Row()
-        .width(64)
-        .height(64)
+        .width($r('app.float.avatar_md'))
+        .height($r('app.float.avatar_md'))
         .borderRadius(radius)
         .backgroundColor($r('app.color.bg_surface'))
         .shadow(Shadows.card)

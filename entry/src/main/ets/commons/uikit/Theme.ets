@@ -1,10 +1,6 @@
-/**
- * 设计规范中无法放进资源文件的常量。
- * 色值、间距、圆角、字号一律走 $r('app.color.xxx') / $r('app.float.xxx')，不要往这里加。
- */
+import { curves } from '@kit.ArkUI';
 
 export class Shadows {
-  /** 卡片阴影。只有卡片和浮起元素才有阴影，列表项之间用 divider 分隔线。 */
   static readonly card: ShadowOptions = {
     radius: 8, color: '#0F2D3A34', offsetX: 0, offsetY: 2
   };
@@ -14,19 +10,24 @@ export class Shadows {
 }
 
 export class Motion {
-  /** 转场与状态切换统一 250ms EaseOut。小清新的关键是克制，不做花哨动效。 */
   static readonly duration: number = 250;
-  static readonly curve: Curve = Curve.EaseOut;
-  /** 点击反馈：缩放至 0.97，150ms */
-  static readonly pressDuration: number = 150;
+  /** 华为官方推荐弹簧曲线，物理自然感，取代硬编码 Curve.EaseOut */
+  static readonly springCurve: ICurve = curves.springMotion(0.55, 0.825);
+  /** 弹跳用更快的弹簧：response=0.3 快速回弹，dampingFraction=0.6 欠阻尼可过冲 */
+  static readonly bounceCurve: ICurve = curves.springMotion(0.3, 0.6);
+  /** 跟手弹簧曲线，用于手势/触摸反馈 */
+  static readonly responsiveCurve: ICurve = curves.responsiveSpringMotion(0.55, 0.825);
+  /** 点击反馈：缩放至 0.97 */
   static readonly pressScale: number = 0.97;
   /** 骨架屏微光循环 */
   static readonly skeletonDuration: number = 1200;
-  /** 收藏/点赞点击弹跳 */
-  static readonly bounceDuration: number = 200;
 
   static standard(): AnimateParam {
-    return { duration: Motion.duration, curve: Motion.curve };
+    return { duration: Motion.duration, curve: Motion.springCurve };
+  }
+
+  static bounce(): AnimateParam {
+    return { curve: Motion.bounceCurve };
   }
 }
 

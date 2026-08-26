@@ -1,6 +1,7 @@
 import { AuthService } from '../commons/auth/AuthService';
 import { LoginSheet } from '../commons/auth/LoginSheet';
 import { AppNavState, AppTab, NavUtil } from '../commons/router/NavUtil';
+import { ConfirmDialog } from '../commons/uikit/ConfirmDialog';
 import { Motion } from '../commons/uikit/Theme';
 import { AiPage } from '../features/ai/pages/AiPage';
 import { CategoryPage } from '../features/category/pages/CategoryPage';
@@ -27,6 +28,7 @@ struct Index {
 
   aboutToAppear(): void {
     NavUtil.bind(this.stack);
+    ConfirmDialog.init(this.getUIContext());
   }
 
   /** 其他页面通过 NavUtil.switchTab 改状态，这里负责真正切 Tab */
@@ -103,6 +105,7 @@ struct Index {
         .width($r('app.float.icon_lg'))
         .height($r('app.float.icon_lg'))
         .fillColor(this.nav.tabIndex === index ? $r('app.color.brand_primary') : $r('app.color.text_tertiary'))
+        .objectFit(ImageFit.Contain)
       Text(label)
         .fontSize($r('app.float.font_caption'))
         .fontColor(this.nav.tabIndex === index ? $r('app.color.brand_primary') : $r('app.color.text_tertiary'))

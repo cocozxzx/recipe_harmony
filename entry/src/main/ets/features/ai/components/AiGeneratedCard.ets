@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { AiGeneratedRecipe } from '../../../commons/model/Ai';
 import { displayAmount, RecipeIngredient, RecipeStep, RecipeTip } from '../../../commons/model/Recipe';
 import { CookTimeLabel } from '../../../commons/uikit/CookTimeLabel';
@@ -14,20 +15,7 @@ import { Formatter } from '../../../commons/utils/Formatter';
  */
 @ComponentV2
 export struct AiGeneratedCard {
-  @Param recipe: AiGeneratedRecipe = {
-    id: '',
-    name: '',
-    summary: '',
-    difficulty: 0,
-    calorie: 0,
-    cookTime: 0,
-    baseServings: 0,
-    ingredients: [],
-    steps: [],
-    tips: [],
-    favorited: false,
-    createTime: ''
-  };
+  @Param recipe: AiGeneratedRecipe = new AiGeneratedRecipe();
   @Param expandable: boolean = true;
   @Local expanded: boolean = false;
   @Event onToggleFavorite: () => void = () => {};
@@ -93,7 +81,12 @@ export struct AiGeneratedCard {
     .padding($r('app.float.space_md'))
     .backgroundColor($r('app.color.bg_surface'))
     .borderRadius($r('app.float.radius_lg'))
+    .clip(true)
     .shadow(Shadows.card)
+    .transition(
+      TransitionEffect.OPACITY.combine(TransitionEffect.scale({ x: 0.95, y: 0.95 }))
+        .animation({ curve: curves.springMotion(0.55, 0.825) })
+    )
   }
 
   @Builder

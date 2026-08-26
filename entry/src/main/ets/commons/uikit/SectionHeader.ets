@@ -22,6 +22,7 @@ export struct SectionHeader {
             .width($r('app.float.icon_sm'))
             .height($r('app.float.icon_sm'))
             .fillColor($r('app.color.text_tertiary'))
+            .objectFit(ImageFit.Contain)
         }
         .onClick(() => this.onAction())
       }

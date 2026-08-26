@@ -36,8 +36,8 @@ export struct TagGrid {
   cell(label: ResourceStr, highlight: boolean) {
     Column({ space: 6 }) {
       Row()
-        .width(44)
-        .height(44)
+        .width($r('app.float.tag_icon'))
+        .height($r('app.float.tag_icon'))
         .borderRadius($r('app.float.radius_md'))
         .backgroundColor(highlight ? $r('app.color.accent_light') : $r('app.color.brand_primary_light'))
       Text(label)

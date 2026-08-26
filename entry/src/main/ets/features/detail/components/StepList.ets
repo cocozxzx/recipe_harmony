@@ -13,8 +13,8 @@ export struct StepList {
             .fontSize($r('app.float.font_body_sm'))
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_on_brand'))
-            .width(24)
-            .height(24)
+            .width($r('app.float.step_num'))
+            .height($r('app.float.step_num'))
             .borderRadius(12)
             .backgroundColor($r('app.color.brand_primary'))
             .textAlign(TextAlign.Center)
@@ -30,7 +30,7 @@ export struct StepList {
               NetImage({
                 url: step.image,
                 imgWidth: '100%',
-                imgHeight: 180,
+                imgHeight: $r('app.float.img_step_h'),
                 radius: $r('app.float.radius_md')
               })
             }

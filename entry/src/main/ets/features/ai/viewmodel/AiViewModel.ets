@@ -1,15 +1,14 @@
-import { AiGeneratedRecipe, AiMessage, AiResultType, AiRole, AiScene } from '../../../commons/model/Ai';
+import { AiGeneratedRecipe, AiMessage, AiRecipeMatch, AiResultType, AiRole, AiScene } from '../../../commons/model/Ai';
 import { readableMessage } from '../../../commons/network/Errors';
 import { SseClient, SseEvent, SseHandler } from '../../../commons/network/SseClient';
 import {
   AiEventName,
   AiErrorEventDto,
-  AiGeneratedEventDto,
   AiGeneratingEventDto,
-  AiIntentEventDto,
-  AiRecipesEventDto
+  AiIntentEventDto
 } from '../../../commons/network/dto/AiDto';
 import { Toast } from '../../../commons/uikit/Toast';
+import { JsonSafe } from '../../../commons/utils/JsonSafe';
 import { Logger } from '../../../commons/utils/Logger';
 import { Strings } from '../../../commons/utils/Strings';
 import { AiRepository } from '../repository/AiRepository';
@@ -105,8 +104,8 @@ export class AiViewModel {
         const dto: AiIntentEventDto = JSON.parse(event.data);
         message.hint = this.hintForScene(dto.scene);
       } else if (event.event === AiEventName.RECIPES) {
-        const dto: AiRecipesEventDto = JSON.parse(event.data);
-        message.recipes = dto.matches;
+        const dto: Record<string, Object> = JSON.parse(event.data);
+        message.recipes = AiRecipeMatch.fromJsonArray(JsonSafe.arr(dto, 'matches'));
         message.resultType = AiResultType.RECIPES;
         message.hint = '';
       } else if (event.event === AiEventName.GENERATING) {
@@ -114,8 +113,11 @@ export class AiViewModel {
         message.text += dto.delta;
         message.hint = '';
       } else if (event.event === AiEventName.GENERATED) {
-        const dto: AiGeneratedEventDto = JSON.parse(event.data);
-        message.generated = dto.recipe;
+        const dto: Record<string, Object> = JSON.parse(event.data);
+        const recipeObj: Record<string, Object> | null = JsonSafe.obj(dto, 'recipe');
+        if (recipeObj !== null) {
+          message.generated = AiGeneratedRecipe.fromJson(recipeObj);
+        }
         message.resultType = AiResultType.GENERATED;
         message.hint = '';
       } else if (event.event === AiEventName.ERROR) {

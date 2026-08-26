@@ -17,6 +17,10 @@ const DEBOUNCE_MS: number = 300;
 export class DetailViewModel {
   @Trace state: PageState = new PageState();
   @Trace detail: RecipeDetail | null = null;
+
+  getDetail(): RecipeDetail {
+    return this.detail ?? new RecipeDetail();
+  }
   @Trace servings: number = 1;
   @Trace favorited: boolean = false;
   @Trace liked: boolean = false;
@@ -136,12 +140,7 @@ export class DetailViewModel {
 
   /** 浏览历史只存本地（preferences），第一期不建后端表 */
   private async recordHistory(detail: RecipeDetail): Promise<void> {
-    const item: BrowseHistoryItem = {
-      id: detail.id,
-      name: detail.name,
-      coverImage: detail.coverImage,
-      time: Date.now()
-    };
+    const item: BrowseHistoryItem = BrowseHistoryItem.create(detail.id, detail.name, detail.coverImage, Date.now());
     await HistoryStore.addBrowseHistory(item);
   }
 }

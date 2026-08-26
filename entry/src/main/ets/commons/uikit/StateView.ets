@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { PageStatus } from '../model/PageState';
 import { SkeletonBox } from './SkeletonBox';
 
@@ -44,9 +45,13 @@ export struct StateView {
   placeholder(image: Resource, text: ResourceStr, actionText: ResourceStr, action: () => void) {
     Column({ space: 12 }) {
       Image(image)
-        .width(160)
-        .height(160)
+        .width($r('app.float.img_empty'))
+        .height($r('app.float.img_empty'))
         .objectFit(ImageFit.Contain)
+        .transition(
+          TransitionEffect.OPACITY.combine(TransitionEffect.scale({ x: 0.9, y: 0.9 }))
+            .animation({ curve: curves.springMotion(0.55, 0.825) })
+        )
       Text(text)
         .fontSize($r('app.float.font_body'))
         .fontColor($r('app.color.text_secondary'))
@@ -54,7 +59,7 @@ export struct StateView {
       if (actionText !== '') {
         Button(actionText)
           .height($r('app.float.button_height'))
-          .constraintSize({ minWidth: 120 })
+          .constraintSize({ minWidth: $r('app.float.empty_btn_w') })
           .backgroundColor($r('app.color.brand_primary_light'))
           .fontColor($r('app.color.brand_primary'))
           .fontSize($r('app.float.font_title_sm'))

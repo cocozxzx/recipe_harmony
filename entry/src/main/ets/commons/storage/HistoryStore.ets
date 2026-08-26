@@ -1,3 +1,4 @@
+import { JsonSafe } from '../utils/JsonSafe';
 import { PreferenceUtil, PrefKeys } from './PreferenceUtil';
 import { Logger } from '../utils/Logger';
 
@@ -9,11 +10,21 @@ const MAX_SEARCH: number = 10;
  * 浏览历史条目。
  * 第一期只存本地——只有鸿蒙一个端，没有跨端同步需求，不值当为此建后端表。
  */
-export interface BrowseHistoryItem {
-  id: string;
-  name: string;
-  coverImage: string;
-  time: number;      // 毫秒时间戳
+@ObservedV2
+export class BrowseHistoryItem {
+  @Trace id: string = '';
+  @Trace name: string = '';
+  @Trace coverImage: string = '';
+  @Trace time: number = 0;
+
+  static create(id: string, name: string, coverImage: string, time: number): BrowseHistoryItem {
+    const item: BrowseHistoryItem = new BrowseHistoryItem();
+    item.id = id;
+    item.name = name;
+    item.coverImage = coverImage;
+    item.time = time;
+    return item;
+  }
 }
 
 /** 浏览历史 / 搜索历史，均落 preferences */
@@ -83,8 +94,20 @@ export class HistoryStore {
 
   private static parseBrowse(raw: string): BrowseHistoryItem[] {
     try {
-      const parsed: BrowseHistoryItem[] = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      const parsed: Record<string, Object>[] = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      const result: BrowseHistoryItem[] = [];
+      for (const obj of parsed) {
+        const item: BrowseHistoryItem = new BrowseHistoryItem();
+        item.id = JsonSafe.string(obj, 'id');
+        item.name = JsonSafe.string(obj, 'name');
+        item.coverImage = JsonSafe.string(obj, 'coverImage');
+        item.time = JsonSafe.number(obj, 'time');
+        result.push(item);
+      }
+      return result;
     } catch (e) {
       Logger.e(TAG, 'parse browse history failed', e);
       return [];

@@ -51,12 +51,14 @@ export struct RegisterPage {
         })
       }
       .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
       .align(Alignment.Top)
       .layoutWeight(1)
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
   }
 
   @Builder

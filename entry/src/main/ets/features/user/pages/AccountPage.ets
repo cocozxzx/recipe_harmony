@@ -1,7 +1,7 @@
 import { AuthService } from '../../../commons/auth/AuthService';
-import { OauthBinding, PLATFORM_HUAWEI, UserInfo } from '../../../commons/model/User';
+import { OauthBinding, PLATFORM_HUAWEI } from '../../../commons/model/User';
 import { NavUtil } from '../../../commons/router/NavUtil';
-import { ConfirmDialog } from '../../../commons/uikit/ConfirmDialog';
+import { ConfirmDialog, ConfirmParams } from '../../../commons/uikit/ConfirmDialog';
 import { TopBar } from '../../../commons/uikit/TopBar';
 import { Strings } from '../../../commons/utils/Strings';
 import { SettingGroup, SettingRow } from '../components/SettingRow';
@@ -18,18 +18,6 @@ export struct AccountPage {
   @Local vm: MineViewModel = new MineViewModel();
   @Local auth: AuthService = AuthService.get();
 
-  private deleteDialog: CustomDialogController = new CustomDialogController({
-    builder: ConfirmDialog({
-      title: $r('app.string.account_delete_title'),
-      desc: $r('app.string.account_delete_desc'),
-      confirmText: $r('app.string.account_delete_confirm'),
-      danger: true,
-      onConfirm: () => this.confirmDelete()
-    }),
-    alignment: DialogAlignment.Center,
-    cornerRadius: 16
-  });
-
   build() {
     Column() {
       TopBar({ title: $r('app.string.mine_account') })
@@ -45,18 +33,19 @@ export struct AccountPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
   bindingGroup() {
     SettingRow({
       title: $r('app.string.account_phone'),
-      value: this.bindingText(this.user().phone),
+      value: this.bindingText(this.auth.getUserOrDefault().phone),
       showArrow: false
     })
     SettingRow({
       title: $r('app.string.account_email'),
-      value: this.bindingText(this.user().email),
+      value: this.bindingText(this.auth.getUserOrDefault().email),
       showArrow: false
     })
     SettingRow({
@@ -73,26 +62,24 @@ export struct AccountPage {
       title: $r('app.string.account_delete'),
       danger: true,
       showDivider: false,
-      onTap: (): void => { this.deleteDialog.open(); }
+      onTap: (): void => {
+        const params: ConfirmParams = new ConfirmParams();
+        params.title = $r('app.string.account_delete_title');
+        params.desc = $r('app.string.account_delete_desc');
+        params.confirmText = $r('app.string.account_delete_confirm');
+        params.danger = true;
+        params.onConfirm = () => this.confirmDelete();
+        ConfirmDialog.show(params);
+      }
     })
   }
 
-  private user(): UserInfo {
-    const fallback: UserInfo = {
-      id: '', nickname: '', avatar: '', phone: '', email: '',
-      hasPassword: false, favoriteCount: 0, likeCount: 0, bindings: []
-    };
-    return this.auth.user !== null && this.auth.user !== undefined ? this.auth.user : fallback;
-  }
-
-  /** 后端已做脱敏，前端只判断是否为空 */
   private bindingText(value: string): string {
     return value.length > 0 ? value : Strings.get($r('app.string.account_unbound'));
   }
 
   private huaweiText(): string {
-    const bindings: OauthBinding[] = this.user().bindings !== null && this.user().bindings !== undefined
-      ? this.user().bindings : [];
+    const bindings: OauthBinding[] = this.auth.getUserOrDefault().bindings ?? [];
     const huawei: OauthBinding | undefined =
       bindings.find((it: OauthBinding) => it.platform === PLATFORM_HUAWEI);
     const bound: boolean = huawei !== undefined && huawei.bound;

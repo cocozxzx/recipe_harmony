@@ -15,8 +15,8 @@ export struct AboutPage {
       Column({ space: 24 }) {
         Column({ space: 12 }) {
           Image($r('app.media.app_icon'))
-            .width(72)
-            .height(72)
+            .width($r('app.float.icon_app'))
+            .height($r('app.float.icon_app'))
             .borderRadius($r('app.float.radius_lg'))
           Text($r('app.string.app_name'))
             .fontSize($r('app.float.font_title'))
@@ -37,6 +37,7 @@ export struct AboutPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder

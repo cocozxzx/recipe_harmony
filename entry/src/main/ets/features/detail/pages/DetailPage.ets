@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import BuildProfile from 'BuildProfile';
 import { RecipeDetail } from '../../../commons/model/Recipe';
@@ -36,7 +37,7 @@ export struct DetailPage {
   @Monitor('vm.favoriteBounce')
   onFavoriteBounce(): void {
     this.favoriteScale = 1.3;
-    animateTo({ duration: Motion.bounceDuration, curve: Curve.EaseOut }, () => {
+    animateTo(Motion.bounce(), () => {
       this.favoriteScale = 1.0;
     });
   }
@@ -44,7 +45,7 @@ export struct DetailPage {
   @Monitor('vm.likeBounce')
   onLikeBounce(): void {
     this.likeScale = 1.3;
-    animateTo({ duration: Motion.bounceDuration, curve: Curve.EaseOut }, () => {
+    animateTo(Motion.bounce(), () => {
       this.likeScale = 1.0;
     });
   }
@@ -66,11 +67,13 @@ export struct DetailPage {
         .height($r('app.float.icon_lg'))
         .fillColor($r('app.color.bg_surface'))
         .margin({ left: $r('app.float.space_lg'), top: $r('app.float.space_lg') })
+        .accessibilityText('返回')
         .onClick(() => NavUtil.pop())
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -79,7 +82,7 @@ export struct DetailPage {
       Scroll() {
         Column({ space: 24 }) {
           NetImage({
-            url: this.detail().coverImage,
+            url: this.vm.getDetail().coverImage,
             imgWidth: '100%',
             imgHeight: $r('app.float.cover_height'),
             fit: ImageFit.Cover
@@ -100,21 +103,21 @@ export struct DetailPage {
             Column({ space: 12 }) {
               SectionHeader({ title: $r('app.string.detail_ingredients') })
               IngredientList({
-                ingredients: this.detail().ingredients,
+                ingredients: this.vm.getDetail().ingredients,
                 servings: this.vm.servings,
-                baseServings: this.detail().baseServings
+                baseServings: this.vm.getDetail().baseServings
               })
             }
 
             Column({ space: 12 }) {
               SectionHeader({ title: $r('app.string.detail_steps') })
-              StepList({ steps: this.detail().steps })
+              StepList({ steps: this.vm.getDetail().steps })
             }
 
-            if (this.detail().tips.length > 0) {
+            if (this.vm.getDetail().tips.length > 0) {
               Column({ space: 12 }) {
                 SectionHeader({ title: $r('app.string.detail_tips') })
-                TipsCard({ tips: this.detail().tips })
+                TipsCard({ tips: this.vm.getDetail().tips })
               }
             }
           }
@@ -125,6 +128,7 @@ export struct DetailPage {
         .padding({ bottom: 96 })
       }
       .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)
       .align(Alignment.Top)
 
@@ -137,22 +141,22 @@ export struct DetailPage {
   @Builder
   titleSection() {
     Column({ space: 10 }) {
-      Text(this.detail().name)
+      Text(this.vm.getDetail().name)
         .fontSize($r('app.float.font_title_lg'))
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
         .width('100%')
 
       Row({ space: 8 }) {
-        if (this.detail().tagName.length > 0) {
+        if (this.vm.getDetail().tagName.length > 0) {
           MiniTag({
-            text: this.detail().tagName,
+            text: this.vm.getDetail().tagName,
             bgColor: $r('app.color.brand_primary_light'),
             textColor: $r('app.color.brand_primary')
           })
         }
-        DifficultyStars({ value: this.detail().difficulty })
-        CookTimeLabel({ minutes: this.detail().cookTime, withIcon: true })
+        DifficultyStars({ value: this.vm.getDetail().difficulty })
+        CookTimeLabel({ minutes: this.vm.getDetail().cookTime, withIcon: true })
       }
       .width('100%')
 
@@ -162,7 +166,7 @@ export struct DetailPage {
           .fontSize($r('app.float.font_caption'))
           .fontColor($r('app.color.text_tertiary'))
         Text() {
-          Span(Formatter.caloriePerServing(this.detail().calorie, this.detail().baseServings).toString())
+          Span(Formatter.caloriePerServing(this.vm.getDetail().calorie, this.vm.getDetail().baseServings).toString())
           Span($r('app.string.detail_kcal'))
         }
         .fontSize($r('app.float.font_caption'))
@@ -175,8 +179,8 @@ export struct DetailPage {
 
   @Builder
   summarySection() {
-    if (this.detail().summary.length > 0) {
-      Text(this.detail().summary)
+    if (this.vm.getDetail().summary.length > 0) {
+      Text(this.vm.getDetail().summary)
         .fontSize($r('app.float.font_body_sm'))
         .fontColor($r('app.color.text_secondary'))
         .lineHeight(22)
@@ -192,25 +196,28 @@ export struct DetailPage {
         this.vm.favorited ? $r('app.color.action_favorite') : $r('app.color.text_tertiary'),
         Formatter.count(this.vm.favoriteCount),
         this.favoriteScale,
-        () => this.vm.toggleFavorite()
+        () => this.vm.toggleFavorite(),
+        '收藏'
       )
       this.actionItem(
         this.vm.liked ? $r('app.media.ic_like_fill') : $r('app.media.ic_like'),
         this.vm.liked ? $r('app.color.action_like') : $r('app.color.text_tertiary'),
         Formatter.count(this.vm.likeCount),
         this.likeScale,
-        () => this.vm.toggleLike()
+        () => this.vm.toggleLike(),
+        '点赞'
       )
       this.actionItem(
         $r('app.media.ic_share'),
         $r('app.color.text_tertiary'),
         '',
         1.0,
-        () => this.share()
+        () => this.share(),
+        '分享'
       )
     }
     .width('100%')
-    .height(64)
+    .constraintSize({ minHeight: $r('app.float.action_bar_h') })
     .padding({ left: $r('app.float.space_xl'), right: $r('app.float.space_xl') })
     .backgroundColor($r('app.color.bg_surface'))
     .shadow(Shadows.float)
@@ -219,14 +226,14 @@ export struct DetailPage {
   }
 
   @Builder
-  actionItem(icon: Resource, color: ResourceColor, label: string, bounceToken: number, action: () => void) {
+  actionItem(icon: Resource, color: ResourceColor, label: string, bounceToken: number, action: () => void, accessibilityLabel: string) {
     Row({ space: 6 }) {
       Image(icon)
         .width($r('app.float.icon_lg'))
         .height($r('app.float.icon_lg'))
         .fillColor(color)
-        .scale({ x: 1, y: 1 })
-        .animation({ duration: Motion.bounceDuration, curve: Curve.EaseOut })
+        .scale({ x: bounceToken, y: bounceToken })
+        .animation({ curve: curves.springMotion(0.3, 0.6) })
       if (label.length > 0) {
         Text(label)
           .fontSize($r('app.float.font_caption'))
@@ -234,23 +241,12 @@ export struct DetailPage {
       }
     }
     .padding($r('app.float.space_sm'))
+    .accessibilityText(accessibilityLabel)
     .onClick(() => action())
   }
 
-  /** detail 在 SUCCESS 态下必然非空；这里收敛一次判空，避免每处都写 ?. */
-  private detail(): RecipeDetail {
-    const fallback: RecipeDetail = {
-      id: '', name: '', coverImage: '', summary: '',
-      difficulty: 0, calorie: 0, cookTime: 0, baseServings: 0,
-      tagId: '', tagName: '', favoriteCount: 0, likeCount: 0,
-      favorited: false, liked: false,
-      ingredients: [], steps: [], tips: []
-    };
-    return this.vm.detail !== null && this.vm.detail !== undefined ? this.vm.detail : fallback;
-  }
-
   private share(): void {
-    const detail: RecipeDetail = this.detail();
+    const detail: RecipeDetail = this.vm.getDetail();
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     const link: string = BuildProfile.SHARE_BASE_URL + detail.id;
     ShareHelper.share(context, detail.name, detail.summary, link);

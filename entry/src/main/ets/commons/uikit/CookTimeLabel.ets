@@ -16,6 +16,7 @@ export struct CookTimeLabel {
           .width($r('app.float.icon_sm'))
           .height($r('app.float.icon_sm'))
           .fillColor(this.fontColor)
+          .objectFit(ImageFit.Contain)
       }
       Text() {
         Span(this.minutes.toString())

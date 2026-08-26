@@ -1,3 +1,4 @@
+import { curves } from '@kit.ArkUI';
 import { PageStatus } from '../../../commons/model/PageState';
 import { RecipeListItem, RecipeSort, RecipeTag } from '../../../commons/model/Recipe';
 import { AppTab, NavUtil } from '../../../commons/router/NavUtil';
@@ -38,7 +39,10 @@ export struct HomePage {
         SearchBar({
           readOnly: true,
           placeholder: $r('app.string.home_search_placeholder'),
-          onTap: () => NavUtil.push(RouteNames.SEARCH, { keyword: '' } as SearchParam)
+          onTap: () => {
+            const param: SearchParam = { keyword: '' };
+            NavUtil.push(RouteNames.SEARCH, param);
+          }
         })
       }
       .width('100%')
@@ -61,6 +65,7 @@ export struct HomePage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -99,6 +104,10 @@ export struct HomePage {
               onTap: (target: RecipeListItem) => this.openDetail(target)
             })
               .padding({ left: $r('app.float.space_lg'), right: $r('app.float.space_lg') })
+              .transition(
+                TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 }))
+                  .animation({ curve: curves.springMotion(0.55, 0.825) })
+              )
           }
         }, (item: RecipeListItem) => item.id)
 
@@ -139,6 +148,7 @@ export struct HomePage {
         }
         .scrollable(ScrollDirection.Horizontal)
         .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring)
         .width('100%')
         .align(Alignment.Start)
       }

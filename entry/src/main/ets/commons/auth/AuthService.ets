@@ -21,6 +21,10 @@ const TAG: string = 'AuthService';
 export class AuthService {
   @Trace isLogin: boolean = false;
   @Trace user: UserInfo | null = null;
+
+  getUserOrDefault(): UserInfo {
+    return this.user ?? new UserInfo();
+  }
   /** 由 Index.ets 监听：true 时弹出半屏登录 */
   @Trace sheetVisible: boolean = false;
 
@@ -46,8 +50,8 @@ export class AuthService {
     const cached: string = await PreferenceUtil.getString(PrefKeys.USER_INFO);
     if (cached.length > 0) {
       try {
-        const parsed: UserInfo = JSON.parse(cached);
-        service.user = parsed;
+        const parsed: Record<string, Object> = JSON.parse(cached);
+        service.user = UserInfo.fromJson(parsed);
         service.isLogin = true;
       } catch (err) {
         Logger.e(TAG, 'parse cached user failed', err);
@@ -73,12 +77,13 @@ export class AuthService {
 
   /** 登录成功：存 token → 更新状态 → 关弹窗 → 执行 pending action */
   async onLoginSuccess(result: AuthResult): Promise<void> {
+    const user: UserInfo = result.user;
     await TokenManager.save(result.token, result.refreshToken);
-    await this.cacheUser(result.user);
-    this.user = result.user;
+    await this.cacheUser(user);
+    this.user = user;
     this.isLogin = true;
     this.sheetVisible = false;
-    Logger.i(TAG, 'login success: ' + result.user.id);
+    Logger.i(TAG, 'login success: ' + user.id);
     this.runPending();
   }
 
